@@ -47,17 +47,31 @@ typedef struct erow {
   char *render;
 } erow;
 
-struct editorConfig {
+/* One cursor: a position plus its own selection anchor. Molly keeps a *list* of
+ * these rather than a single cursor, even though only one is ever created so
+ * far, because multi-cursor editing has to thread through every edit path and
+ * the whole undo grouping. Retrofitting a list later would mean touching all of
+ * that twice; carrying one from the start costs an indirection and nothing
+ * else. `cx` is a byte offset into the row's chars, `rx` the display column it
+ * renders to, and the anchor is meaningful only while sel_active. */
+struct cursor {
   int cx, cy, rx;
-  int rowoff;
+  int sel_active;   /* a selection is in progress (anchor + this cursor) */
+  int sx, sy;       /* selection anchor; this cursor is the far end */
+};
+
+struct editorConfig {
+  struct cursor *cursors;  /* never NULL once init_editor has run */
+  int ncursors;            /* >= 1 */
+  int cursorcap;
+  int primary;             /* index into cursors[]; the one that scrolls */
+  int drowoff;        /* first *display* row on screen (see struct drow) */
   int coloff;
   int screenrows;
   int screencols;
   int numrows;
   int rowcap;         /* allocated capacity of row[], grown by doubling */
   int dirty;
-  int sel_active;     /* a selection is in progress (anchor + cursor) */
-  int sx, sy;         /* selection anchor; the cursor (cx,cy) is the far end */
   char *clipboard;    /* in-editor clipboard for Ctrl-C/X/V; kept across files */
   int clipsize;       /* bytes held in clipboard (not necessarily NUL-terminated) */
   int eol_crlf;       /* write \r\n line endings, as the loaded file used */
@@ -102,6 +116,12 @@ struct undoState {
 
 static struct editorConfig E;
 static struct undoState U;
+
+/* The cursor that scrolls the view and owns the status-bar position. Every
+ * single-cursor code path uses this; a path that must act on all of them loops
+ * over E.cursors[0 .. E.ncursors) instead. */
+#define CUR (E.cursors[E.primary])
+
 
 /* Width available for text once the line-number gutter takes its columns. The
  * horizontal scroll, the row draw budget and the cursor column are all measured
@@ -175,6 +195,46 @@ static char *xstrdup(const char *s) {
   char *p = strdup(s);
   if (p == NULL) die("strdup");
   return p;
+}
+
+/* --- cursors: one list, normally holding exactly one entry ---------------- */
+
+/* Allocate the cursor list with a single cursor at the top of the buffer. */
+static void cursors_init(void) {
+  E.cursorcap = 4;
+  E.cursors = xmalloc(sizeof(struct cursor) * (size_t)E.cursorcap);
+  E.ncursors = 1;
+  E.primary = 0;
+  memset(E.cursors, 0, sizeof(struct cursor) * (size_t)E.cursorcap);
+}
+
+/* Discard every cursor but the primary, which becomes cursor 0. Anything that
+ * invalidates positions wholesale -- loading another file, or undoing past the
+ * point where the extra cursors were made -- collapses rather than trying to
+ * fix them up. */
+static void cursors_collapse(void) {
+  if (E.ncursors > 1) {
+    if (E.primary != 0) E.cursors[0] = E.cursors[E.primary];
+    E.ncursors = 1;
+  }
+  E.primary = 0;
+}
+
+/* Clamp every cursor into the buffer. A deletion can leave a cursor past the
+ * last row or past the end of its line; with one cursor this is the same clamp
+ * the movement code already does, and with several it is the only thing keeping
+ * the far ones valid. */
+static void cursors_clamp(void) {
+  int i;
+  for (i = 0; i < E.ncursors; i++) {
+    struct cursor *c = &E.cursors[i];
+    if (c->cy > E.numrows) c->cy = E.numrows;
+    if (c->cy < 0) c->cy = 0;
+    if (c->cy < E.numrows && c->cx > E.row[c->cy].size)
+      c->cx = E.row[c->cy].size;
+    if (c->cy >= E.numrows) c->cx = 0;
+    if (c->cx < 0) c->cx = 0;
+  }
 }
 
 /* --- UTF-8: the buffer holds raw bytes, but the cursor moves and deletes by
@@ -964,8 +1024,8 @@ void uc_apply(struct uchange *u, int redo) {
       case UC_SPLIT: uc_do_split(u); break;
       case UC_NEWROW: uc_do_newrow(u); break;
     }
-    E.cx = u->cx1;
-    E.cy = u->cy1;
+    CUR.cx = u->cx1;
+    CUR.cy = u->cy1;
   } else {
     switch (u->kind) {
       case UC_INSERT: uc_do_delete(u); break;
@@ -974,8 +1034,8 @@ void uc_apply(struct uchange *u, int redo) {
       case UC_SPLIT: uc_do_join(u); break;
       case UC_NEWROW: uc_do_delrow(u); break;
     }
-    E.cx = u->cx0;
-    E.cy = u->cy0;
+    CUR.cx = u->cx0;
+    CUR.cy = u->cy0;
   }
   editor_recompute_dirty();
 }
@@ -1090,35 +1150,35 @@ static int editor_render_byte_to_cx(erow *row, int rbyte) {
 }
 
 void editor_insert_char(int c) {
-  int pre_cx = E.cx, pre_cy = E.cy;
-  if (E.cy == E.numrows) {
+  int pre_cx = CUR.cx, pre_cy = CUR.cy;
+  if (CUR.cy == E.numrows) {
     editor_insert_row(E.numrows, "", 0);
-    struct uchange *ur = uc_new(UC_NEWROW, E.cy, 0, "", 0);
+    struct uchange *ur = uc_new(UC_NEWROW, CUR.cy, 0, "", 0);
     ur->cx0 = pre_cx;
     ur->cy0 = pre_cy;
     ur->cx1 = pre_cx;
     ur->cy1 = pre_cy;
     undo_push(ur);
   }
-  editor_row_insert_char(&E.row[E.cy], E.cx, c);
-  E.cx++;
+  editor_row_insert_char(&E.row[CUR.cy], CUR.cx, c);
+  CUR.cx++;
 
   struct uchange *top = U.undo_n ? U.undo[U.undo_n - 1] : NULL;
-  if (!U.locked && top && top->kind == UC_INSERT && top->row == E.cy &&
-      top->at + (int)top->len == E.cx - 1) {
+  if (!U.locked && top && top->kind == UC_INSERT && top->row == CUR.cy &&
+      top->at + (int)top->len == CUR.cx - 1) {
     top->text = xrealloc(top->text, top->len + 2);
     top->text[top->len++] = c;
     top->text[top->len] = '\0';
     U.undo_bytes++;
-    top->cx1 = E.cx;
-    top->cy1 = E.cy;
+    top->cx1 = CUR.cx;
+    top->cy1 = CUR.cy;
   } else {
     char ch = c;
-    struct uchange *u = uc_new(UC_INSERT, E.cy, E.cx - 1, &ch, 1);
+    struct uchange *u = uc_new(UC_INSERT, CUR.cy, CUR.cx - 1, &ch, 1);
     u->cx0 = pre_cx;
     u->cy0 = pre_cy;
-    u->cx1 = E.cx;
-    u->cy1 = E.cy;
+    u->cx1 = CUR.cx;
+    u->cy1 = CUR.cy;
     undo_push(u);
     clear_redo();
   }
@@ -1126,59 +1186,59 @@ void editor_insert_char(int c) {
 }
 
 void editor_insert_newline(void) {
-  if (E.cx == 0) {
-    struct uchange *u = uc_new(UC_NEWROW, E.cy, 0, "", 0);
+  if (CUR.cx == 0) {
+    struct uchange *u = uc_new(UC_NEWROW, CUR.cy, 0, "", 0);
     u->cx0 = 0;
-    u->cy0 = E.cy;
+    u->cy0 = CUR.cy;
     u->cx1 = 0;
-    u->cy1 = E.cy + 1;
+    u->cy1 = CUR.cy + 1;
     undo_push(u);
-    editor_insert_row(E.cy, "", 0);
+    editor_insert_row(CUR.cy, "", 0);
   } else {
-    erow *row = &E.row[E.cy];
+    erow *row = &E.row[CUR.cy];
     struct uchange *u =
-        uc_new(UC_SPLIT, E.cy, E.cx, row->chars + E.cx, row->size - E.cx);
-    u->cx0 = E.cx;
-    u->cy0 = E.cy;
+        uc_new(UC_SPLIT, CUR.cy, CUR.cx, row->chars + CUR.cx, row->size - CUR.cx);
+    u->cx0 = CUR.cx;
+    u->cy0 = CUR.cy;
     u->cx1 = 0;
-    u->cy1 = E.cy + 1;
+    u->cy1 = CUR.cy + 1;
     undo_push(u);
-    editor_insert_row(E.cy + 1, &row->chars[E.cx], row->size - E.cx);
-    row = &E.row[E.cy];
-    row->size = E.cx;
+    editor_insert_row(CUR.cy + 1, &row->chars[CUR.cx], row->size - CUR.cx);
+    row = &E.row[CUR.cy];
+    row->size = CUR.cx;
     row->chars[row->size] = '\0';
     editor_update_row(row);
   }
-  E.cy++;
-  E.cx = 0;
+  CUR.cy++;
+  CUR.cx = 0;
   clear_redo();
   U.locked = 0;
 }
 
 void editor_delete_char(void) {
-  if (E.cy > E.numrows) return;
-  int pre_cx = E.cx, pre_cy = E.cy;
+  if (CUR.cy > E.numrows) return;
+  int pre_cx = CUR.cx, pre_cy = CUR.cy;
 
   /* The cursor rests on the phantom row past the last line (where typing
    * starts a new line): backspace deletes from the end of the real last
    * line instead. The undo record still restores the phantom position. */
-  if (E.cy == E.numrows) {
+  if (CUR.cy == E.numrows) {
     if (E.numrows == 0) return;
-    E.cy = E.numrows - 1;
-    E.cx = E.row[E.cy].size;
+    CUR.cy = E.numrows - 1;
+    CUR.cx = E.row[CUR.cy].size;
   }
-  if (E.cx == 0 && E.cy == 0) return;
+  if (CUR.cx == 0 && CUR.cy == 0) return;
 
-  erow *row = &E.row[E.cy];
-  if (E.cx > 0) {
-    int at = utf8_prev(row->chars, E.cx);
-    int nbytes = E.cx - at;
+  erow *row = &E.row[CUR.cy];
+  if (CUR.cx > 0) {
+    int at = utf8_prev(row->chars, CUR.cx);
+    int nbytes = CUR.cx - at;
     struct uchange *top = U.undo_n ? U.undo[U.undo_n - 1] : NULL;
     /* A run of single-byte backspaces coalesces into one undo step. A
      * multibyte character is deleted as its own step -- simpler, and rare
      * enough that grouping it buys little. */
     if (nbytes == 1 && !U.locked && top && top->kind == UC_DELETE &&
-        top->row == E.cy && top->at == E.cx && top->back) {
+        top->row == CUR.cy && top->at == CUR.cx && top->back) {
       char *nt = xmalloc(top->len + 2);
       nt[0] = row->chars[at];
       memcpy(nt + 1, top->text, top->len);
@@ -1189,135 +1249,200 @@ void editor_delete_char(void) {
       U.undo_bytes++;
       top->at--;
       top->cx1 = at;
-      top->cy1 = E.cy;
+      top->cy1 = CUR.cy;
     } else {
-      struct uchange *u = uc_new(UC_DELETE, E.cy, at, row->chars + at,
+      struct uchange *u = uc_new(UC_DELETE, CUR.cy, at, row->chars + at,
                                  (size_t)nbytes);
       u->back = 1;
       u->cx0 = pre_cx;
       u->cy0 = pre_cy;
       u->cx1 = at;
-      u->cy1 = E.cy;
+      u->cy1 = CUR.cy;
       undo_push(u);
       clear_redo();
     }
     editor_row_delete_n(row, at, nbytes);
-    E.cx = at;
+    CUR.cx = at;
   } else {
-    erow *prev = &E.row[E.cy - 1];
+    erow *prev = &E.row[CUR.cy - 1];
     struct uchange *u =
-        uc_new(UC_JOIN, E.cy - 1, prev->size, row->chars, row->size);
+        uc_new(UC_JOIN, CUR.cy - 1, prev->size, row->chars, row->size);
     u->cx0 = pre_cx;
     u->cy0 = pre_cy;
     u->cx1 = prev->size;
-    u->cy1 = E.cy - 1;
+    u->cy1 = CUR.cy - 1;
     undo_push(u);
     clear_redo();
-    E.cx = prev->size;
+    CUR.cx = prev->size;
     editor_row_append_string(prev, row->chars, row->size);
-    editor_delete_row(E.cy);
-    E.cy--;
+    editor_delete_row(CUR.cy);
+    CUR.cy--;
   }
   U.locked = 0;
 }
 
 void editor_del_char(void) {
-  if (E.cy >= E.numrows) return;
-  int pre_cx = E.cx, pre_cy = E.cy;
-  erow *row = &E.row[E.cy];
-  if (E.cx < row->size) {
-    int nbytes = utf8_char_bytes(row->chars, row->size, E.cx);
+  if (CUR.cy >= E.numrows) return;
+  int pre_cx = CUR.cx, pre_cy = CUR.cy;
+  erow *row = &E.row[CUR.cy];
+  if (CUR.cx < row->size) {
+    int nbytes = utf8_char_bytes(row->chars, row->size, CUR.cx);
     struct uchange *top = U.undo_n ? U.undo[U.undo_n - 1] : NULL;
     if (nbytes == 1 && !U.locked && top && top->kind == UC_DELETE &&
-        top->row == E.cy && top->at == E.cx && !top->back) {
-      size_t at = E.cx;
+        top->row == CUR.cy && top->at == CUR.cx && !top->back) {
+      size_t at = CUR.cx;
       size_t l = top->len;
       top->text = xrealloc(top->text, l + 2);
       top->text[l] = row->chars[at];
       top->text[l + 1] = '\0';
       top->len++;
       U.undo_bytes++;
-      top->cx1 = E.cx;
-      top->cy1 = E.cy;
+      top->cx1 = CUR.cx;
+      top->cy1 = CUR.cy;
     } else {
-      struct uchange *u = uc_new(UC_DELETE, E.cy, E.cx, row->chars + E.cx,
+      struct uchange *u = uc_new(UC_DELETE, CUR.cy, CUR.cx, row->chars + CUR.cx,
                                  (size_t)nbytes);
       u->back = 0;
       u->cx0 = pre_cx;
       u->cy0 = pre_cy;
-      u->cx1 = E.cx;
-      u->cy1 = E.cy;
+      u->cx1 = CUR.cx;
+      u->cy1 = CUR.cy;
       undo_push(u);
       clear_redo();
     }
-    editor_row_delete_n(row, E.cx, nbytes);
-  } else if (E.cy < E.numrows - 1) {
+    editor_row_delete_n(row, CUR.cx, nbytes);
+  } else if (CUR.cy < E.numrows - 1) {
     struct uchange *u =
-        uc_new(UC_JOIN, E.cy, row->size, E.row[E.cy + 1].chars,
-            E.row[E.cy + 1].size);
+        uc_new(UC_JOIN, CUR.cy, row->size, E.row[CUR.cy + 1].chars,
+            E.row[CUR.cy + 1].size);
     u->cx0 = pre_cx;
     u->cy0 = pre_cy;
     u->cx1 = row->size;
-    u->cy1 = E.cy;
+    u->cy1 = CUR.cy;
     undo_push(u);
     clear_redo();
-    editor_row_append_string(row, E.row[E.cy + 1].chars, E.row[E.cy + 1].size);
-    editor_delete_row(E.cy + 1);
+    editor_row_append_string(row, E.row[CUR.cy + 1].chars, E.row[CUR.cy + 1].size);
+    editor_delete_row(CUR.cy + 1);
   }
   U.locked = 0;
 }
 
+/* --- display rows: the view addresses screen lines, not file lines ---------
+ *
+ * A "display row" is one line of the text area. With soft wrap off there is
+ * exactly one per file row, spanning the whole row, and every function below is
+ * the identity mapping -- which is the point: the view, the scroll offset, the
+ * draw loop and vertical movement all speak display rows *now*, so turning wrap
+ * on later means changing these three functions rather than every caller.
+ *
+ * Wrap will make a file row produce ceil(width / text_cols) display rows, each
+ * covering a range of render columns. That is why a slice is expressed in render
+ * columns and not byte offsets: wrapping happens where the glyphs land on screen,
+ * not where the bytes fall. */
+struct drow {
+  int filerow;  /* file row this slice belongs to; may be >= numrows past EOF */
+  int rcol0;    /* first render column of that row shown on this line */
+  int rcols;    /* render columns shown; DROW_ALL means to the end of the row */
+  int frag;     /* 0 for the first slice of a file row, 1.. for continuations */
+};
+
+#define DROW_ALL INT_MAX
+
+/* Display rows the buffer occupies. */
+static int drow_total(void) {
+  return E.numrows;
+}
+
+/* The display row holding a cursor. */
+static int drow_of_cursor(const struct cursor *c) {
+  return c->cy;
+}
+
+/* Resolve a display-row index. An index past the end of the buffer yields a
+ * slice whose filerow is >= numrows, which the draw loop paints as a tilde. */
+static void drow_at(int index, struct drow *out) {
+  out->filerow = index;
+  out->rcol0 = 0;
+  out->rcols = DROW_ALL;
+  out->frag = 0;
+}
+
+/* Step a cursor one display row up (dir < 0) or down (dir > 0). Unwrapped that
+ * is one file row. Wrapped, it will move between slices of the same long line
+ * before reaching the next line, which is why vertical movement goes through
+ * here rather than touching cy directly. cy == numrows is the phantom row just
+ * past the last line, which the editor allows the cursor to occupy. */
+static void drow_step(struct cursor *c, int dir) {
+  if (dir < 0) {
+    if (c->cy != 0) c->cy--;
+  } else {
+    if (c->cy < E.numrows) c->cy++;
+  }
+}
+
 void editor_move_cursor(int key) {
-  erow *row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
+  erow *row = (CUR.cy >= E.numrows) ? NULL : &E.row[CUR.cy];
 
   switch (key) {
     case ARROW_LEFT:
-      if (E.cx != 0) {
-        E.cx = utf8_prev(row->chars, E.cx);
-      } else if (E.cy > 0) {
-        E.cy--;
-        E.cx = E.row[E.cy].size;
+      if (CUR.cx != 0) {
+        CUR.cx = utf8_prev(row->chars, CUR.cx);
+      } else if (CUR.cy > 0) {
+        CUR.cy--;
+        CUR.cx = E.row[CUR.cy].size;
       }
       break;
     case ARROW_RIGHT:
-      if (row && E.cx < row->size) {
-        E.cx += utf8_char_bytes(row->chars, row->size, E.cx);
-      } else if (row && E.cx == row->size) {
-        E.cy++;
-        E.cx = 0;
+      if (row && CUR.cx < row->size) {
+        CUR.cx += utf8_char_bytes(row->chars, row->size, CUR.cx);
+      } else if (row && CUR.cx == row->size) {
+        CUR.cy++;
+        CUR.cx = 0;
       }
       break;
     case ARROW_UP:
-      if (E.cy != 0) E.cy--;
+      drow_step(&CUR, -1);
       break;
     case ARROW_DOWN:
-      if (E.cy < E.numrows) E.cy++;
+      drow_step(&CUR, 1);
       break;
   }
 
-  row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
+  row = (CUR.cy >= E.numrows) ? NULL : &E.row[CUR.cy];
   if (row) {
-    if (E.cx > row->size) E.cx = row->size;
+    if (CUR.cx > row->size) CUR.cx = row->size;
     /* A vertical move can land the byte offset inside a character on the new
      * line; step back to the character boundary. */
-    while (E.cx > 0 && E.cx < row->size &&
-           utf8_is_cont((unsigned char)row->chars[E.cx]))
-      E.cx = utf8_prev(row->chars, E.cx);
+    while (CUR.cx > 0 && CUR.cx < row->size &&
+           utf8_is_cont((unsigned char)row->chars[CUR.cx]))
+      CUR.cx = utf8_prev(row->chars, CUR.cx);
   } else {
-    E.cx = 0;
+    CUR.cx = 0;
   }
 }
 
 void editor_scroll(void) {
-  E.rx = 0;
-  if (E.cy < E.numrows) {
-    E.rx = editor_row_cx_to_rx(&E.row[E.cy], E.cx);
+  /* Every edit path funnels through a refresh, so clamping here keeps the whole
+   * list valid without each one having to remember to. With a single cursor
+   * this is the clamp the movement code already applies. */
+  cursors_clamp();
+
+  CUR.rx = 0;
+  if (CUR.cy < E.numrows) {
+    CUR.rx = editor_row_cx_to_rx(&E.row[CUR.cy], CUR.cx);
   }
 
-  if (E.cy < E.rowoff) E.rowoff = E.cy;
-  if (E.cy >= E.rowoff + E.screenrows) E.rowoff = E.cy - E.screenrows + 1;
-  if (E.rx < E.coloff) E.coloff = E.rx;
-  if (E.rx >= E.coloff + TEXT_COLS()) E.coloff = E.rx - TEXT_COLS() + 1;
+  {
+    int cur_drow = drow_of_cursor(&CUR);
+    int total = drow_total();
+    if (cur_drow < E.drowoff) E.drowoff = cur_drow;
+    if (cur_drow >= E.drowoff + E.screenrows)
+      E.drowoff = cur_drow - E.screenrows + 1;
+    if (E.drowoff > total) E.drowoff = total;
+    if (E.drowoff < 0) E.drowoff = 0;
+  }
+  if (CUR.rx < E.coloff) E.coloff = CUR.rx;
+  if (CUR.rx >= E.coloff + TEXT_COLS()) E.coloff = CUR.rx - TEXT_COLS() + 1;
 }
 
 /* --- selection: an anchor (sx,sy) plus the live cursor (cx,cy). Movement with
@@ -1326,15 +1451,15 @@ void editor_scroll(void) {
  * editor_draw_text_row(), and the byte count is surfaced in the status bar. --- */
 
 static void selection_clear(void) {
-  E.sel_active = 0;
+  CUR.sel_active = 0;
 }
 
 /* Order the anchor and cursor into a top-left / bottom-right pair, clamped to
  * valid rows so the phantom line past the last row never indexes out of
  * bounds. Returns 0 (leaving the outputs undefined) when no selection. */
 static int selection_range(int *ax, int *ay, int *bx, int *by) {
-  if (!E.sel_active) return 0;
-  int y0 = E.sy, y1 = E.cy, x0 = E.sx, x1 = E.cx;
+  if (!CUR.sel_active) return 0;
+  int y0 = CUR.sy, y1 = CUR.cy, x0 = CUR.sx, x1 = CUR.cx;
   if (y0 > y1 || (y0 == y1 && x0 > x1)) {
     int ty = y0, tx = x0;
     y0 = y1; x0 = x1; y1 = ty; x1 = tx;
@@ -1468,13 +1593,13 @@ static void selection_delete(void) {
   undo_group_begin();
   if (by == E.numrows) {
     if (E.numrows == 0) { undo_group_end(); return; }
-    E.cy = E.numrows - 1;
-    E.cx = E.row[E.numrows - 1].size;
+    CUR.cy = E.numrows - 1;
+    CUR.cx = E.row[E.numrows - 1].size;
   } else {
-    E.cy = by;
-    E.cx = bx;
+    CUR.cy = by;
+    CUR.cx = bx;
   }
-  while (!(E.cy == ay && E.cx == ax)) editor_delete_char();
+  while (!(CUR.cy == ay && CUR.cx == ax)) editor_delete_char();
   undo_group_end();
 }
 
@@ -1613,24 +1738,29 @@ static int gutter_tilde_str(char *dst, int gutter_w) {
  * selection changes the row's bytes and forces just that row to redraw. When
  * there is no selection the emitted bytes are identical to before. */
 static void editor_draw_text_row(struct abuf *ab, int y, erow *row,
-                                 int sel0, int sel1) {
+                                 const struct drow *d, int sel0, int sel1) {
   const char *r = row->render;
   int rs = row->rsize;
   int col = 0, i = 0;
 
+  /* First render column to show: where this slice starts, plus the horizontal
+   * scroll. Wrap and horizontal scrolling are alternatives -- a wrapped view has
+   * nothing to scroll sideways to -- so only one of the two is ever nonzero. */
+  int skip = d->rcol0 + E.coloff;
+
   /* Skip whole characters that lie entirely left of the viewport. */
-  while (i < rs && col < E.coloff) {
+  while (i < rs && col < skip) {
     int nb, w = utf8_char_cols(r, rs, i, &nb);
-    if (col + w > E.coloff) break;
+    if (col + w > skip) break;
     col += w;
     i += nb;
   }
   /* A wide glyph straddling the left edge is dropped; its visible right half
    * becomes that many leading spaces. */
   int left_pad = 0;
-  if (i < rs && col < E.coloff) {
+  if (i < rs && col < skip) {
     int nb, w = utf8_char_cols(r, rs, i, &nb);
-    left_pad = (col + w) - E.coloff;
+    left_pad = (col + w) - skip;
     i += nb;
     col += w;
   }
@@ -1643,8 +1773,11 @@ static void editor_draw_text_row(struct abuf *ab, int y, erow *row,
   int has_sel = (sel1 > sel0);
   int gw = E.gutter_w;
   int text_cols = TEXT_COLS();
+  /* Stop at the end of the slice as well as the edge of the screen. Unwrapped,
+   * the slice is the whole row (DROW_ALL) and the screen is the only limit. */
+  if (d->rcols < text_cols) text_cols = d->rcols;
   char gnum[32];
-  int gbytes = gutter_number_str(y + E.rowoff, gnum, gw);
+  int gbytes = gutter_number_str(d->filerow, gnum, gw);
   drawbuf_ensure(gbytes + left_pad + rs * 12 + 16);
   int p = 0;
   if (gbytes) {
@@ -1681,7 +1814,10 @@ void editor_draw_rows(struct abuf *ab) {
   int gw = E.gutter_w;
   int text_cols = TEXT_COLS();
   for (y = 0; y < E.screenrows; y++) {
-    int filerow = y + E.rowoff;
+    struct drow d;
+    int filerow;
+    drow_at(y + E.drowoff, &d);
+    filerow = d.filerow;
     if (filerow >= E.numrows) {
       if (E.numrows == 0 && y == E.screenrows / 3) {
         char text[96];
@@ -1727,7 +1863,7 @@ void editor_draw_rows(struct abuf *ab) {
     } else {
       int s0, s1;
       selection_row_rx(filerow, &s0, &s1);
-      editor_draw_text_row(ab, y, &E.row[filerow], s0, s1);
+      editor_draw_text_row(ab, y, &E.row[filerow], &d, s0, s1);
     }
   }
 }
@@ -1741,18 +1877,18 @@ void editor_draw_status_bar(struct abuf *ab) {
   int len = snprintf(status, sizeof(status), "%.20s - %d lines %s",
       E.filename ? E.filename : "[No Name]", E.numrows,
       E.dirty ? "(modified)" : "");
-  /* The character column: the Nth character in the line, not E.rx's
+  /* The character column: the Nth character in the line, not CUR.rx's
    * tab-stop- and glyph-width-aware display column, which jumps around
    * (a leading tab alone puts the display column at 9) and doesn't match
-   * what "column" means in most editors and tools. E.cy == E.numrows is
+   * what "column" means in most editors and tools. CUR.cy == E.numrows is
    * the phantom line past the last row, which has no erow to index. */
-  int charcol = (E.cy < E.numrows)
-      ? editor_row_cx_to_charcol(&E.row[E.cy], E.cx) : 0;
-  int rlen = E.sel_active
+  int charcol = (CUR.cy < E.numrows)
+      ? editor_row_cx_to_charcol(&E.row[CUR.cy], CUR.cx) : 0;
+  int rlen = CUR.sel_active
       ? snprintf(rstatus, sizeof(rstatus), "Ln %d, Col %d  Sel %d",
-          E.cy + 1, charcol + 1, selection_bytes())
+          CUR.cy + 1, charcol + 1, selection_bytes())
       : snprintf(rstatus, sizeof(rstatus), "Ln %d, Col %d",
-          E.cy + 1, charcol + 1);
+          CUR.cy + 1, charcol + 1);
   if (len > E.screencols) len = E.screencols;
   ab_append(ab, status, len);
   /* Right-align the cursor position when it fits; otherwise pad to the edge. */
@@ -1826,7 +1962,8 @@ void editor_refresh_screen(void) {
 
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH",
-      (E.cy - E.rowoff) + 1, (E.rx - E.coloff) + 1 + E.gutter_w);
+      (drow_of_cursor(&CUR) - E.drowoff) + 1,
+      (CUR.rx - E.coloff) + 1 + E.gutter_w);
   ab_append(&ab, buf, strlen(buf));
 
   ab_append(&ab, "\x1b[?25h", 6);
@@ -1945,21 +2082,21 @@ enum search_sweep {
  * the search term, looping forever as the row grows without bound. */
 static int editor_search_string(const char *query, int qlen, int dir,
     int exclude_current, enum search_sweep sweep) {
-  int saved_cx = E.cx;
-  int saved_cy = E.cy;
+  int saved_cx = CUR.cx;
+  int saved_cy = CUR.cy;
   int saved_coloff = E.coloff;
-  int saved_rowoff = E.rowoff;
+  int saved_drowoff = E.drowoff;
 
   int n = E.numrows;
   int k;
   if (n == 0) return 0;
   /* The cursor may sit on the phantom line past the last row; anchor the
    * sweep to a real row in that case. */
-  int cur = (E.cy >= n) ? 0 : E.cy;
+  int cur = (CUR.cy >= n) ? 0 : CUR.cy;
   /* The cursor's position as a render byte offset -- render is what the
-   * search scans, and the cursor's display column (E.rx) is no longer the
+   * search scans, and the cursor's display column (CUR.rx) is no longer the
    * same thing once a line holds wide or combining characters. */
-  int cur_rb = editor_row_cx_to_rbyte(&E.row[cur], E.cx);
+  int cur_rb = editor_row_cx_to_rbyte(&E.row[cur], CUR.cx);
   /* SEARCH_WRAP runs k to n inclusive, so the starting row is visited a
    * second time at the end of the wrap. Only then is it scanned from its
    * beginning, which is what makes a match earlier on the cursor's own row
@@ -1977,15 +2114,15 @@ static int editor_search_string(const char *query, int qlen, int dir,
     int i = dir > 0 ? (cur + k) % n : ((cur - k) % n + n) % n;
     erow *row = &E.row[i];
     int maxstart = row->rsize - qlen;
-    int on_start_row = (i == E.cy) && (k == 0);
+    int on_start_row = (i == CUR.cy) && (k == 0);
     if (dir > 0) {
       int start = on_start_row ? (exclude_current ? cur_rb + 1 : cur_rb) : 0;
       int col;
       for (col = start; col <= maxstart; col++) {
         if (render_match(row->render + col, query, qlen) &&
             match_is_char_aligned(row->render + col, qlen)) {
-          E.cy = i;
-          E.cx = editor_render_byte_to_cx(row, col);
+          CUR.cy = i;
+          CUR.cx = editor_render_byte_to_cx(row, col);
           return 1;
         }
       }
@@ -1997,18 +2134,18 @@ static int editor_search_string(const char *query, int qlen, int dir,
       for (col = start; col >= 0; col--) {
         if (render_match(row->render + col, query, qlen) &&
             match_is_char_aligned(row->render + col, qlen)) {
-          E.cy = i;
-          E.cx = editor_render_byte_to_cx(row, col);
+          CUR.cy = i;
+          CUR.cx = editor_render_byte_to_cx(row, col);
           return 1;
         }
       }
     }
   }
 
-  E.cx = saved_cx;
-  E.cy = saved_cy;
+  CUR.cx = saved_cx;
+  CUR.cy = saved_cy;
   E.coloff = saved_coloff;
-  E.rowoff = saved_rowoff;
+  E.drowoff = saved_drowoff;
   return 0;
 }
 
@@ -2086,15 +2223,15 @@ void editor_goto_line(void) {
   }
 
   /* Clamp into the file's real rows, not the phantom line past the last
-   * row (E.cy == E.numrows) that an unclamped high value would otherwise
+   * row (CUR.cy == E.numrows) that an unclamped high value would otherwise
    * be allowed to land on for an empty request like "line 999999". */
   int max_cy = (E.numrows > 0) ? E.numrows - 1 : 0;
   int target = (int)line - 1;
   if (target < 0) target = 0;
   if (target > max_cy) target = max_cy;
-  E.cy = target;
-  E.cx = 0;
-  editor_set_status_message("Ln %d", E.cy + 1);
+  CUR.cy = target;
+  CUR.cx = 0;
+  editor_set_status_message("Ln %d", CUR.cy + 1);
 }
 
 void editor_replace(void) {
@@ -2123,8 +2260,8 @@ void editor_replace(void) {
   int grouped = 0;
 
   if (all) {
-    E.cy = 0;
-    E.cx = 0;
+    CUR.cy = 0;
+    CUR.cx = 0;
   }
 
   /* replace-all sweeps with SEARCH_NO_WRAP: the cursor only ever moves
@@ -2141,30 +2278,30 @@ void editor_replace(void) {
       grouped = 1;
     }
 
-    erow *row = &E.row[E.cy];
-    int cx_start = E.cx;
+    erow *row = &E.row[CUR.cy];
+    int cx_start = CUR.cx;
     int mlen = editor_match_char_len(row, cx_start, qlen);
 
-    struct uchange *ud = uc_new(UC_DELETE, E.cy, cx_start,
+    struct uchange *ud = uc_new(UC_DELETE, CUR.cy, cx_start,
         row->chars + cx_start, (size_t)mlen);
     ud->back = 0;
     ud->cx0 = cx_start;
-    ud->cy0 = E.cy;
+    ud->cy0 = CUR.cy;
     ud->cx1 = cx_start;
-    ud->cy1 = E.cy;
+    ud->cy1 = CUR.cy;
     undo_push(ud);
     editor_row_delete_n(row, cx_start, mlen);
 
-    struct uchange *ui = uc_new(UC_INSERT, E.cy, cx_start, repl, rlen);
+    struct uchange *ui = uc_new(UC_INSERT, CUR.cy, cx_start, repl, rlen);
     ui->cx0 = cx_start;
-    ui->cy0 = E.cy;
+    ui->cy0 = CUR.cy;
     ui->cx1 = cx_start + (int)rlen;
-    ui->cy1 = E.cy;
+    ui->cy1 = CUR.cy;
     undo_push(ui);
     editor_row_insert_n(row, cx_start, repl, rlen);
 
     count++;
-    E.cx = cx_start + (int)rlen;
+    CUR.cx = cx_start + (int)rlen;
 
     if (!all) break;
   }
@@ -2501,12 +2638,12 @@ void editor_check_recovery(void) {
   int i;
   for (i = 0; i < E.numrows; i++) editor_free_row(&E.row[i]);
   E.numrows = 0;
-  E.cx = 0;
-  E.rx = 0;
-  E.cy = 0;
-  E.rowoff = 0;
+  CUR.cx = 0;
+  CUR.rx = 0;
+  CUR.cy = 0;
+  E.drowoff = 0;
   E.coloff = 0;
-  E.sel_active = 0;
+  CUR.sel_active = 0;
   if (editor_fill_rows(fp) == -1) {
     /* Only reachable if the file turns unreadable between the stat and the
      * read; the buffer is left holding whatever was salvaged. */
@@ -2937,12 +3074,10 @@ static void editor_switch_file(char *path) {
   int i;
   for (i = 0; i < E.numrows; i++) editor_free_row(&E.row[i]);
   E.numrows = 0;
-  E.cx = 0;
-  E.rx = 0;
-  E.cy = 0;
-  E.rowoff = 0;
+  cursors_collapse();
+  memset(&CUR, 0, sizeof CUR);
+  E.drowoff = 0;
   E.coloff = 0;
-  E.sel_active = 0;
   editor_free_undo_redo();
   E.eol_crlf = 0;
   E.final_newline = 1;
@@ -2956,14 +3091,14 @@ void editor_process_keypress(void) {
   static int quit_times = KILO_QUIT_TIMES;
   int c = editor_read_key();
   int shift = last_key_shift;
-  int pre_cx = E.cx, pre_cy = E.cy;
+  int pre_cx = CUR.cx, pre_cy = CUR.cy;
   int sel_move = (c == ARROW_UP || c == ARROW_DOWN || c == ARROW_LEFT ||
       c == ARROW_RIGHT || c == HOME_KEY || c == END_KEY ||
       c == PAGE_UP || c == PAGE_DOWN);
 
   switch (c) {
     case '\r':
-      if (E.sel_active) selection_delete();
+      if (CUR.sel_active) selection_delete();
       editor_insert_newline();
       break;
 
@@ -3011,7 +3146,7 @@ void editor_process_keypress(void) {
     case CTRL_KEY('c'): {
       /* Copy: selection to clipboard, selection kept (see the clear guard
        * below). Ctrl-C only reaches here because raw mode clears ISIG. */
-      if (E.sel_active) {
+      if (CUR.sel_active) {
         int n = 0;
         char *s = selection_dup(&n);
         clipboard_set(s, n);
@@ -3024,7 +3159,7 @@ void editor_process_keypress(void) {
 
     case CTRL_KEY('x'):
       /* Cut: copy then delete the selection (one undo step). */
-      if (E.sel_active) {
+      if (CUR.sel_active) {
         int n = 0;
         char *s = selection_dup(&n);
         clipboard_set(s, n);
@@ -3068,17 +3203,17 @@ void editor_process_keypress(void) {
       break;
 
     case HOME_KEY:
-      E.cx = 0;
+      CUR.cx = 0;
       break;
 
     case END_KEY:
-      if (E.cy < E.numrows) E.cx = E.row[E.cy].size;
+      if (CUR.cy < E.numrows) CUR.cx = E.row[CUR.cy].size;
       break;
 
     case BACKSPACE:
     case CTRL_KEY('h'):
     case DEL_KEY:
-      if (E.sel_active) {
+      if (CUR.sel_active) {
         selection_delete();
       } else if (c == DEL_KEY) {
         editor_del_char();
@@ -3129,7 +3264,7 @@ void editor_process_keypress(void) {
        * away and a tab could not be typed at all. Key codes of 1000 and up
        * are outside iscntrl()'s domain and must not reach it. */
       if (c == '\t' || (c < 256 && !iscntrl(c))) {
-        if (E.sel_active) selection_delete();
+        if (CUR.sel_active) selection_delete();
         editor_insert_char(c);
       }
       break;
@@ -3140,10 +3275,10 @@ void editor_process_keypress(void) {
    * plain move, edit, or command drops it. Edits that need the selected text
    * first consume it via selection_delete() above. */
   if (sel_move && shift) {
-    if (!E.sel_active) {
-      E.sx = pre_cx;
-      E.sy = pre_cy;
-      E.sel_active = 1;
+    if (!CUR.sel_active) {
+      CUR.sx = pre_cx;
+      CUR.sy = pre_cy;
+      CUR.sel_active = 1;
     }
   } else if (c != CTRL_KEY('c')) {
     selection_clear();
@@ -3182,13 +3317,16 @@ void editor_cleanup(void) {
   editor_free_undo_redo();
   free(E.filename);
   E.filename = NULL;
+  free(E.cursors);
+  E.cursors = NULL;
+  E.ncursors = 0;
+  E.cursorcap = 0;
+  E.primary = 0;
 }
 
 void init_editor(void) {
-  E.cx = 0;
-  E.cy = 0;
-  E.rx = 0;
-  E.rowoff = 0;
+  cursors_init();
+  E.drowoff = 0;
   E.coloff = 0;
   E.numrows = 0;
   E.rowcap = 0;
@@ -3197,9 +3335,6 @@ void init_editor(void) {
   E.statusmsg[0] = '\0';
   E.statusmsg_time = 0;
   E.dirty = 0;
-  E.sel_active = 0;
-  E.sx = 0;
-  E.sy = 0;
   E.clipboard = NULL;
   E.clipsize = 0;
   E.eol_crlf = 0;
@@ -3282,9 +3417,9 @@ int main(int argc, char *argv[]) {
     int target = (int)startline - 1;
     if (target < 0) target = 0;
     if (target > max_cy) target = max_cy;
-    E.cy = target;
-    E.rx = 0;
-    E.cx = 0;
+    CUR.cy = target;
+    CUR.rx = 0;
+    CUR.cx = 0;
   }
 
   editor_set_status_message(

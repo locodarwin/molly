@@ -128,19 +128,29 @@ is a buffer rewrite** — see §5.
 The boring phase, and the only one where we can *prove* we broke nothing: it
 ends with molly behaving identically and all 298 tests green.
 
-1. **Modularize.** Split along olly's existing comment banners: `utf8`, `term`,
-   `input`, `buffer`, `undo`, `view`, `screen`, `search`, `select`, `ui`,
-   `cmd`, `main`.
-2. **Split the state** into `struct buffer` / `struct view` / app globals; move
-   `U` into `struct buffer`. Keep exactly one of each at first, so behavior
-   cannot change.
-3. **Cell-grid renderer** with attributes and a frame diff, replacing the
-   per-line string cache.
-4. **Command table**, with the existing ~20 actions as its first entries and the
-   help screen generated from it.
-5. **Input layer** with ESC/Alt disambiguation and tests.
-6. **Golden-screen test harness**, so later phases can assert on what the screen
-   looks like rather than only on file contents.
+- [x] **Cursor list.** `struct cursor` (position + own anchor) in a list, N==1,
+      reached through `CUR`. Clamped once per frame from `editor_scroll`.
+- [x] **Display-row view model.** The scroll offset, draw loop, row renderer and
+      vertical movement address display rows; unwrapped is the identity mapping.
+- [ ] **Modularize.** Split along olly's existing comment banners: `utf8`, `term`,
+      `sys`, `input`, `buffer`, `undo`, `view`, `screen`, `search`, `select`,
+      `ui`, `cmd`, `main`. `term` and `sys` hold everything that will not port to
+      Windows.
+- [ ] **Split the state** into `struct buffer` / `struct view` / app globals; move
+      `U` into `struct buffer`, and put row access behind accessors so the
+      big-file rewrite is a swap. Keep one of each at first, so behavior cannot
+      change.
+- [ ] **Cell-grid renderer** with attributes and a frame diff, replacing the
+      per-line string cache.
+- [ ] **Command table**, with the existing ~20 actions as its first entries, the
+      help screen generated from it, and chord parsing/printing for the keymap.
+- [ ] **Input layer** with ESC/Alt disambiguation and tests.
+- [ ] **Async event loop** that waits on keyboard input and child-process output
+      together, behind our own interface rather than `select` directly. LSP and
+      the integrated terminal both need it, and retrofitting it into a blocking
+      read loop is painful.
+- [ ] **Golden-screen test harness**, so later phases can assert on what the
+      screen looks like rather than only on file contents.
 
 ## 4. Phase 1 — The UI shell
 
@@ -191,10 +201,17 @@ Grouped by where they live:
   not survive the fact that it is already linked.
 - **Against:** POSIX ERE is not PCRE. No `\d`, no lazy quantifiers, no
   lookaround, no named groups. Users who know PCRE will file bugs.
-- **Open:** POSIX ERE (free, now) or a hand-rolled PCRE-subset engine (~1,000
-  lines, no dependency, ours to debug forever). I recommend shipping ERE and
-  revisiting only if it genuinely chafes.
-- Capture groups in replacements (`\1`) either way.
+- **Decided: a hand-rolled PCRE-subset engine**, not POSIX ERE. ERE was the free
+  option but it has no `\d`, no lazy quantifiers and no lookaround, and those
+  are what people actually reach for. Scope: character classes and shorthands,
+  greedy and lazy quantifiers, groups with captures, alternation, anchors, word
+  boundaries, and UTF-8-aware matching over the raw byte buffer.
+- **The risk to design for is catastrophic backtracking.** A pattern like
+  `(a+)+b` against a long line will hang a naive backtracker, and this one runs
+  on every keystroke of an incremental search. So: a step budget that aborts the
+  match and reports "pattern too complex" rather than freezing the editor, and a
+  fuzz target from day one, in the spirit of the existing replace-all fuzz.
+- Capture groups in replacements (`\1`).
 
 ### Multiple buffers and tabs — **IN**
 
@@ -244,7 +261,7 @@ Grouped by where they live:
   (timeout + cancel key + output cap), and it is the first place molly executes
   something on the user's behalf.
 
-### Soft wrap — **CALL** (recommend IN, scheduled deliberately)
+### Soft wrap — **IN** (structural groundwork landed)
 
 - **For:** people expect it; prose and Markdown are unusable without it.
 - **Against:** it breaks the one-row-equals-one-line assumption that cursor
@@ -253,9 +270,14 @@ Grouped by where they live:
   multi-cursor. Done late it is a refit of everything; done in Phase 0 — by
   making the view address *display rows*, not file rows, from the start — it is
   much cheaper.
-- **So the decision is needed early even if the feature ships late.**
+- **Landed:** the view now addresses *display rows* rather than file rows. The
+  scroll offset, the draw loop, the row renderer and vertical movement all speak
+  display rows, with the unwrapped mapping being the identity. Turning wrap on
+  means implementing three functions (`drow_total`, `drow_of_cursor`, `drow_at`)
+  instead of revisiting every caller. A slice is expressed in *render columns*,
+  not byte offsets, because wrapping happens where glyphs land on screen.
 
-### Multi-cursor and block selection — **CALL** (recommend LATER)
+### Multi-cursor and block selection — **IN** (model landed, feature later)
 
 - **For:** the headline feature of modern editors, and Fresh has it (Ctrl-D).
   Once you have it you use it constantly.
@@ -263,9 +285,13 @@ Grouped by where they live:
   the entire selection model change: one cursor and one anchor become N of each,
   edits must apply without invalidating each other's positions, and undo has to
   collapse N simultaneous edits into one step.
-- **Compromise I recommend:** in Phase 0, make the selection model a *list* of
-  cursors with N==1. Costs almost nothing now, turns multi-cursor from a rewrite
-  into a feature later. Block selection then comes nearly free with it.
+- **Landed:** the cursor is now `struct cursor` (position + its own selection
+  anchor) held in a list, with `E.ncursors == 1` and a `CUR` macro for the
+  primary. `cursors_clamp()` runs from `editor_scroll`, so every cursor is valid
+  before each frame regardless of which edit path ran, and `cursors_collapse()`
+  drops the extras when positions stop meaning anything (loading another file).
+  The feature itself — Ctrl-D, N simultaneous edits, undo collapsing them into
+  one step — comes after buffers and splits. Block selection follows it.
 
 ### Search in files / grep — **LATER**
 
@@ -292,16 +318,21 @@ only; LSP folding is out until LSP is in.
 Shelling out to `git` for blame, log and diff gutter marks costs no dependency
 and is genuinely useful. Not core, and gated on panels.
 
-### Integrated terminal — **CALL** (recommend NO for v1)
+### Integrated terminal — **IN**
 
 - **For:** Fresh has one; it is a real part of the "never leave the editor" pitch.
 - **Against:** a pty, a second input loop, scrollback, resize handling and
   terminal emulation — effectively a second application inside molly. It is the
   largest item on this list that is not LSP.
-- **Cheaper 80%:** suspend to the shell (Ctrl-Z job control) and the shell
-  filter, which together cover most of what people actually use it for.
+- **Decided: in.** It is the largest non-LSP item here, so it comes late, after
+  splits and panels exist to host it. Two things to get right early: the main
+  event loop must already be able to wait on a child's output alongside keyboard
+  input (the same requirement LSP has, so they share it), and this is the first
+  feature that is genuinely hard to port to Windows, where it needs ConPTY.
+- Suspend-to-shell (Ctrl-Z job control) is worth having anyway and costs almost
+  nothing.
 
-### LSP — **CALL** (genuinely open; recommend "architect for it, defer it")
+### LSP — **IN**
 
 - **For:** completion, diagnostics, go-to-definition and rename are the line
   between "comfortable editor" and "development environment." Doable in C with
@@ -311,8 +342,14 @@ and is genuinely useful. Not core, and gated on panels.
   interleaved with the input loop, subprocess lifecycle, per-language server
   configuration, a completion popup UI, and protocol churn to track forever. It
   also pulls in its own UI surface (hover, diagnostics panel, signature help).
-- **Recommendation:** keep the event loop and panel system LSP-capable, build
-  nothing yet, and decide once the editor is pleasant without it.
+- **Decided: in.** Which makes two things non-negotiable in Phase 0 that would
+  otherwise have been optional: the event loop must multiplex keyboard input with
+  child-process I/O from the start (retrofitting that into a blocking read loop
+  is painful), and the widget toolkit needs a popup/overlay primitive for
+  completion and hover.
+- Build order: diagnostics first (display-only, no new UI interaction), then
+  go-to-definition and hover, then completion last, since completion needs the
+  most UI and is the most sensitive to latency.
 
 ### Plugin runtime — **NO**
 
@@ -333,7 +370,7 @@ and is genuinely useful. Not core, and gated on panels.
   effort.
 - **A GUI**, a daemon, or anything that cannot work on a bare terminal over SSH.
 
-### Big-file handling — **CALL**
+### Big-file handling — **IN**
 
 Replacing the `erow[]` array with a piece table or gap buffer, plus dropping the
 duplicated `render` string, gets molly from 3.5× file size toward ~1×, and is
@@ -343,14 +380,15 @@ the only route to Fresh's multi-gigabyte claim.
   are under a megabyte, where 3.5× is irrelevant.
 - **For:** log files and data dumps are exactly where a fast terminal editor
   should win, and that is where molly currently falls over.
-- **Recommendation:** build `struct buffer` in Phase 0 as a clean seam with all
-  row access behind accessors, then swap the implementation later without
-  touching the rest of molly. Build the seam now; use it when a real file is
-  measurably slow.
+- **Decided: in.** Phase 0 still builds `struct buffer` as a seam with all row
+  access behind accessors, because that is what makes the swap survivable — but
+  the swap is now planned work rather than a maybe. Dropping the duplicated
+  `render` string is the cheaper half and can come first: it is most of the 3.5×
+  and does not need a new data structure, only rendering on demand.
 
 ---
 
-## 6. Keymap: CUA/Fresh vs olly muscle memory — **CALL**
+## 6. Keymap: CUA bindings, fully customizable
 
 Fresh is CUA-style, and olly already agrees on the important ones (`Ctrl-S/O/Q/
 F/R/G/Z/Y/C/X/V`, Shift-arrow selection). Four genuine conflicts:
@@ -370,19 +408,72 @@ Note that two of these resolutions *improve* the UI rather than trading it away
 — a Find dialog with a visible "Match case" checkbox is strictly better than
 `Ctrl-T` with a status-bar message.
 
+**Every binding is remappable**, and that is a requirement rather than a feature,
+because it decides the shape of the keymap code. It means:
+
+- No keypress may be handled by a hardcoded `switch`. The table maps a *chord* to
+  a *command name*, and the dispatcher never names an action directly. This is
+  the same table the menu bar, the command palette and the help screen read, so
+  there is exactly one place a binding exists.
+- A chord needs a real representation — modifiers plus a key, including `F1`-`F12`,
+  Alt-letter, and multi-key sequences like `Ctrl-K Ctrl-F` — with a parser and a
+  printer, because the config file writes them as text (`ctrl-shift-l`) and the
+  menus display them.
+- Conflicts are data, not bugs: two commands can want one chord, so binding
+  resolution needs a defined precedence (user config beats the built-in keymap)
+  and the keybinding dialog has to show and resolve collisions.
+- Named keymaps, so an olly-compatible set can ship alongside the CUA default
+  and olly muscle memory is a config line rather than a fork.
+
+The one thing *not* remappable is the eight Alt-letter menu titles, since those
+are structural to the menu bar.
+
 ---
 
-## 7. Open decisions
+## 7. Decisions made
 
-1. **Soft wrap** — in or out? Needed early (it shapes the view model) even if it
-   ships late.
-2. **Multi-cursor** — accept the cursor-list model in Phase 0 and build the
-   feature later, or commit to it properly, or drop it?
-3. **LSP** — architect-and-defer (my recommendation), commit now, or rule out?
-4. **Integrated terminal** — or settle for suspend + shell filter?
-5. **Big files** — does multi-gigabyte matter enough to rewrite the buffer?
-6. **Keymap** — adopt CUA/Fresh on the four conflicts above, or preserve olly's
-   bindings?
-7. **Regex flavor** — POSIX ERE now, or hand-roll a PCRE subset?
-8. **Platforms** — olly's CI is Ubuntu only. If macOS and the BSDs matter, that
-   constrains terminal and filesystem code from the start.
+| Question | Decision |
+| --- | --- |
+| Command access | Ctrl **and** Alt keys, plus a menu system on Alt |
+| Soft wrap | **In.** Display-row view model landed |
+| Multi-cursor | **In.** Cursor-list model landed; feature after buffers and splits |
+| LSP | **In.** Forces an async event loop and overlay widgets into Phase 0 |
+| Integrated terminal | **In**, late — needs panels first |
+| Big files | **In.** Buffer rewrite is planned, not optional |
+| Keymap | CUA on the four conflicts, and **fully customizable** |
+| Regex | **Hand-rolled PCRE subset**, with a step budget and a fuzz target |
+| Platforms | **Linux now. Windows possibly later. No macOS.** |
+| Plugin runtime | **No** — it would end zero-dependency and instant start |
+
+### What "Windows later" costs, and what to do about it now
+
+Not planning for it at all would be a mistake, and planning for it fully would
+slow everything down. The middle path: keep every platform-specific call behind
+the `term` module and one small `sys` module, and do not let the rest of molly
+call POSIX directly.
+
+The things that will not port, so that they are isolated rather than scattered:
+
+- **`termios` raw mode and SIGWINCH** (molly.c:522, molly.c:493) → Windows uses
+  `SetConsoleMode` and a resize event in the input queue. This is why the input
+  layer is a Phase 0 module rather than a function.
+- **The integrated terminal** → ConPTY instead of `forkpty`, which is the single
+  biggest port item.
+- **Atomic save** (molly.c:2244) → `rename` over an existing file fails on
+  Windows; it needs `MoveFileEx` with `MOVEFILE_REPLACE_EXISTING`. Preserving
+  mode and owner means something different there too.
+- **Crash recovery via signal handlers** (molly.c:480) → no `SIGHUP`/`SIGTERM`;
+  a console control handler instead.
+- **`select`/`poll` on a console handle** does not work; async input and child
+  I/O need `WaitForMultipleObjects`. Since LSP and the terminal both depend on
+  that loop, its interface should be ours, not POSIX's, from the start.
+
+No Windows code gets written now. The point is that the seams land in Phase 0,
+where they are free, instead of being carved out later.
+
+## 8. Still open
+
+- **Phase 2 ordering** beyond "regex first".
+- **Which languages** ship with syntax definitions initially.
+- **Config file syntax** — it has to be machine-writable, since the Options
+  dialogs save to it.

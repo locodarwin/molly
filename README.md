@@ -4,12 +4,14 @@ A feature-rich, dependency-free text editor for the terminal, written in C11.
 
 Molly is the big sister to [olly]: same modeless, start-typing-and-you're-editing
 feel, same zero external dependencies, but without olly's self-imposed ceiling.
-Where olly deliberately stops — one file, one cursor, no regex, no config —
-molly is where those features are allowed to grow.
+Where olly deliberately stops — one file, one cursor, no regex, no config — the
+model is [Fresh](https://github.com/sinelaw/fresh): a terminal editor that
+behaves like a GUI one — menu bar, mouse, dialogs, splits, discoverable everything — built on
+olly's base in C, with no runtime dependencies.
 
 **Status: early.** Molly currently *is* olly, renamed, with olly's full feature
-set and test suite intact (298 passing tests). The roadmap that turns it into
-the bigger editor is being decided now — see [`ROADMAP.md`](ROADMAP.md).
+set and test suite intact (298 passing tests). The feature set and the order of
+work are being decided now — see [`ROADMAP.md`](ROADMAP.md).
 
 [olly]: https://github.com/locodarwin/olly
 
@@ -144,9 +146,10 @@ that capped it:
 
 **Dropped (these were olly's limits, and they are molly's job):**
 
-- The single-source-file rule. Molly may be several files and a real build.
+- The single-source-file rule. Molly is several files and a real build.
 - One file, one cursor, one window.
 - No regex, no configuration, no syntax awareness.
+- Ctrl-keys only: molly uses Alt as well, and puts a menu bar on it.
 
 What molly must *not* become: slow to start, dependent on a runtime, or
 impossible to use without reading the manual first. The features change; the

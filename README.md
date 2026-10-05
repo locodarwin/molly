@@ -1,13 +1,22 @@
-# Olly
+# Molly
 
-A small, dependency-free text editor for the terminal, written in C11.
+A feature-rich, dependency-free text editor for the terminal, written in C11.
 
-Olly is a modeless editor in the spirit of nano: start typing and you're
-editing. It offers incremental search that wraps around the file, grouped
-undo/redo, automatic empty-file creation, and careful, atomic save handling. 
-All this in a single C file with zero external dependencies.
+Molly is the big sister to [olly]: same modeless, start-typing-and-you're-editing
+feel, same zero external dependencies, but without olly's self-imposed ceiling.
+Where olly deliberately stops — one file, one cursor, no regex, no config —
+molly is where those features are allowed to grow.
 
-## Features
+**Status: early.** Molly currently *is* olly, renamed, with olly's full feature
+set and test suite intact (298 passing tests). The roadmap that turns it into
+the bigger editor is being decided now — see [`ROADMAP.md`](ROADMAP.md).
+
+[olly]: https://github.com/locodarwin/olly
+
+## Inherited features
+
+Everything olly does, molly does. These all work today:
+
 
 - **Modeless editing**: type to insert, arrow keys to move, `Ctrl` keys act.
 - **Search, with a case-sensitivity toggle**, that wraps around the file and
@@ -35,12 +44,12 @@ All this in a single C file with zero external dependencies.
   renamed into place, so an interrupted save never leaves it truncated. Line
   endings (`LF` or `CRLF`), a missing final newline, and the file's mode and
   owner are all preserved. If the file changed on disk since it was opened,
-  Olly asks before overwriting it.
+  Molly asks before overwriting it.
 - **UTF-8-aware editing**: the cursor, `Backspace` and `Delete` move over
   whole characters, text round-trips as raw bytes, and display width is
-  honoured so wide (CJK) and combining characters stay aligned on screen.
-- **Crash recovery**: if a signal or an out-of-memory condition kills Olly
-  with unsaved changes, the buffer is written to a `.olly-recover` file.
+  honored so wide (CJK) and combining characters stay aligned on screen.
+- **Crash recovery**: if a signal or an out-of-memory condition kills Molly
+  with unsaved changes, the buffer is written to a `.molly-recover` file.
 - **Open anything**: never errors on a missing file; it simply starts an
   empty buffer.
 - **Open-file dialog**: `Ctrl-O` opens a directory browser so you can browse
@@ -74,11 +83,11 @@ target with `make install PREFIX=/some/dir` or stage a package with
 ## Usage
 
 ```sh
-olly                 # start with an unnamed buffer
-olly file.txt        # open an existing file
-olly new.txt         # open a buffer for a file that doesn't exist yet
-olly file.txt +42    # open with the cursor on line 42 (+42 file.txt works too)
-olly --version       # print the version and exit
+molly                 # start with an unnamed buffer
+molly file.txt        # open an existing file
+molly new.txt         # open a buffer for a file that doesn't exist yet
+molly file.txt +42    # open with the cursor on line 42 (+42 file.txt works too)
+molly --version       # print the version and exit
 ```
 
 Edit immediately. Every key you type is inserted at the cursor. Save with
@@ -118,48 +127,42 @@ resize the terminal window.
 The full write-up — including the grouped-undo rules, the fallback install
 details, and the file-format notes — is in [`MANUAL.md`](MANUAL.md).
 
-## Design & limitations
+## Design
 
-Olly's constraints are design choices: one C file, no external dependencies,
-no config file, no state directories, and modeless editing. Everything Olly
-does should be discoverable from within the editor and readable in that one
-file.
+Molly keeps the parts of olly's discipline that cost nothing and drops the ones
+that capped it:
 
-There is therefore a list of things Olly deliberately does not do — not
-because they are hard, but because each would cost the single file, the zero
-dependencies, or the modelessness that define it:
+**Kept:**
 
-- **No regex.** Search and replace take literal strings. Regex would mean a
-  matching engine, as a dependency or as a second thousand-line program.
-- **No indentation settings.** `Tab` inserts a tab character, displayed at
-  eight-column tab stops; there is no setting to convert it to spaces, no
-  per-file indent rules, no auto-indent.
-- **No splits, buffer lists, or multi-cursor.** One terminal, one file, one
-  cursor. Olly starts instantly, so run as many instances as you like.
-- **No configuration file, themes, or plugins.** Olly behaves the same on
-  every machine, which is rather the point.
-- **No modal editing.** Nothing to learn, and no way to lose work by
-  forgetting which mode you are in.
+- **No runtime dependencies.** C11 and a terminal. Nothing to install, nothing
+  to version-pin, nothing that rots.
+- **Modeless by default.** Type to insert. Nothing to learn before you can edit,
+  and no way to lose work by forgetting which mode you are in.
+- **Instant start and careful saves.** Atomic writes, preserved line endings and
+  file modes, crash recovery, dirty-quit protection.
+- **Discoverable.** Anything molly can do should be findable from inside molly.
 
-A few limits are practical rather than philosophical:
+**Dropped (these were olly's limits, and they are molly's job):**
 
-- Case-insensitive search and case toggling fold ASCII letters (`a`–`z`)
-  only; other bytes are compared exactly, so results never depend on the
-  machine's locale.
-- Undo history is bounded at 32,768 steps or 16 MB of stored text, oldest
-  first.
-- One file per invocation; further file arguments are reported and ignored.
+- The single-source-file rule. Molly may be several files and a real build.
+- One file, one cursor, one window.
+- No regex, no configuration, no syntax awareness.
 
-A feature request that lands on the will-not-do list above is not a bug
-report waiting to happen — it is a sign Olly is not the right tool for that
-job, and there are excellent editors that are.
+What molly must *not* become: slow to start, dependent on a runtime, or
+impossible to use without reading the manual first. The features change; the
+feel should not.
+
+For what is planned, in what order, and what has been ruled out, see
+[`ROADMAP.md`](ROADMAP.md).
+
 
 ## Acknowledgements
 
-Olly builds on the architecture of the classic [kilo] editor by antirez;
-the inherited portions are credited in [`NOTICE`](NOTICE.md).
+Molly is a fork of [olly], which builds on the architecture of the classic
+[kilo] editor by antirez. Both are credited in [`NOTICE`](NOTICE.md).
 
 [kilo]: https://github.com/antirez/kilo
+
 
 ## License
 

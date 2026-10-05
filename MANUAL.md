@@ -1,6 +1,11 @@
-# Olly — A Command-Line Text Editor
+# Molly — A Command-Line Text Editor
 
-Olly is a small, dependency-free text editor for the terminal, written in C.
+> **Note:** molly is at `0.1.0-dev` and currently has exactly the feature set it
+> inherited from [olly](https://github.com/locodarwin/olly). This manual
+> describes that behavior and is accurate today. For where molly is going, see
+> [`ROADMAP.md`](ROADMAP.md).
+
+Molly is a small, dependency-free text editor for the terminal, written in C.
 It provides modaless editing in the style of tools like nano: type to insert,
 the arrow keys move around, and the `Ctrl` combinations do the work.
 
@@ -24,11 +29,11 @@ the arrow keys move around, and the `Ctrl` combinations do the work.
 
 ## Building
 
-Olly builds with any C11 compiler and has no external dependencies.
+Molly builds with any C11 compiler and has no external dependencies.
 
     make
 
-This produces the `olly` binary in the current directory.
+This produces the `molly` binary in the current directory.
 
 ## Installing
 
@@ -51,21 +56,21 @@ To remove the installed binary:
 
 ## Getting Started
 
-    olly                      # start with an unnamed buffer
-    olly file.txt             # open an existing file
-    olly brand-new.txt        # open a file that does not exist yet (created
+    molly                      # start with an unnamed buffer
+    molly file.txt             # open an existing file
+    molly brand-new.txt        # open a file that does not exist yet (created
                               # empty; saved only when you save it)
-    olly file.txt +42         # open with the cursor on line 42 (the number
+    molly file.txt +42         # open with the cursor on line 42 (the number
                               # may also come before the file name, and a
                               # line past the end clamps to the last line)
-    olly --version            # print the version and exit (-v works too)
+    molly --version            # print the version and exit (-v works too)
 
 Only one file is edited at a time; any further file arguments are ignored,
 and the status bar says so rather than dropping them silently. To change
-files from inside Olly, use `Ctrl-O` (see
+files from inside Molly, use `Ctrl-O` (see
 [Opening Another File](#opening-another-file)).
 
-If the file does not exist, Olly opens an empty buffer rather than failing.
+If the file does not exist, Molly opens an empty buffer rather than failing.
 A path that exists but cannot be read in full — a directory, for example — is
 refused with an error instead of being opened as an empty or partial buffer
 that a later save would write back over the original.
@@ -75,7 +80,7 @@ number of lines, whether the buffer is modified, and the cursor position as
 
 ## Editing
 
-Olly is modeless: whatever you type is inserted at the cursor.
+Molly is modeless: whatever you type is inserted at the cursor.
 
 | Key | Action |
 | --- | --- |
@@ -110,7 +115,7 @@ line. A number past the last line goes to the last line instead; a number
 below 1 goes to the first line. Anything that is not a valid number leaves
 the cursor where it was.
 
-The terminal can also be resized freely while Olly is running — the display
+The terminal can also be resized freely while Molly is running — the display
 adjusts to the new size as it happens, without needing a keypress first.
 
 ## Help Screen
@@ -170,19 +175,19 @@ single step with `Ctrl-Z` / `Ctrl-Y`.
 
 Copying and cutting also push the selection to your **system (terminal)
 clipboard** with the OSC 52 escape sequence, so it can be pasted into other
-applications — and pasted back into Olly with the terminal's own paste binding
+applications — and pasted back into Molly with the terminal's own paste binding
 (right-click, `Ctrl-Shift-V`, …), which is handy when a terminal intercepts
 `Ctrl-V` and would otherwise paste an unrelated application's clipboard. This
-depends on your terminal honouring OSC 52 (some disable it by default for
-security); where it is off, Olly's own `Ctrl-V` still pastes its internal
-buffer. Olly does not *read* the system clipboard — `Ctrl-V` pastes only what
-Olly last copied or cut.
+depends on your terminal honoring OSC 52 (some disable it by default for
+security); where it is off, Molly's own `Ctrl-V` still pastes its internal
+buffer. Molly does not *read* the system clipboard — `Ctrl-V` pastes only what
+Molly last copied or cut.
 
 ## Searching
 
 `Ctrl-F` starts a search. Type your query and press `Enter`. Matching begins
 from the current cursor position, and whenever the search wraps around the
-end of the file, Olly just keeps going.
+end of the file, Molly just keeps going.
 
 | Key | Action |
 | --- | --- |
@@ -195,7 +200,7 @@ end of the file, Olly just keeps going.
 
 The same term is remembered for the whole session, so you can keep tapping
 `Ctrl-N` / `Ctrl-P` to step through every occurrence. If there is no previous
-search, Olly tells you and asks you to press `Ctrl-F` again.
+search, Molly tells you and asks you to press `Ctrl-F` again.
 
 Matching is case-insensitive by default. `Ctrl-T` toggles case-sensitive
 matching on or off at any time (not just while a search prompt is open); the
@@ -232,10 +237,10 @@ grouped into a single change, so undoing a whole typed word is one press.
 Undoing a change puts it back onto the redo stack, so `Ctrl-Y` replays it.
 
 The history is bounded: once a stack holds more than 32,768 entries or
-16 MB of stored text, Olly forgets its oldest entries. A long session can
+16 MB of stored text, Molly forgets its oldest entries. A long session can
 therefore only limit how far back `Ctrl-Z` reaches — it can never exhaust
 memory on history alone. (The step limit can be lowered through the
-`OLLY_UNDO_STEPS` environment variable, which is how the test suite
+`MOLLY_UNDO_STEPS` environment variable, which is how the test suite
 exercises the eviction.)
 
 Changes are aggregated this way:
@@ -255,7 +260,7 @@ undo it. Any edit made after an undo clears the redo history — a fresh
 
 ## Opening Another File
 
-`Ctrl-O` opens a file browser. It starts in Olly's working directory — the
+`Ctrl-O` opens a file browser. It starts in Molly's working directory — the
 directory you started it from — so `cd` wherever you like and browse from
 there.
 
@@ -270,7 +275,7 @@ trailing `/` on directory names. Every list offers `..` at the top as the way
 back up; other dot-files are hidden.
 
 The browser replaces the buffer, so it refuses to run while there are unsaved
-changes — save first, and the status bar tells you so. Olly still edits one
+changes — save first, and the status bar tells you so. Molly still edits one
 file at a time: opening another file discards the previous buffer along with
 its undo history, and touches nothing on disk.
 
@@ -287,7 +292,7 @@ buffer keeps its unnamed state and `Ctrl-S` will ask again next time.
 
 ### How a save is written
 
-Olly does not write over your file directly. It creates a uniquely named
+Molly does not write over your file directly. It creates a uniquely named
 temporary file beside the target, writes the buffer there, flushes it to disk,
 and only then renames it into place. A save that is interrupted — by a crash,
 a full disk, or the power going out — therefore leaves the original file
@@ -300,37 +305,37 @@ Two consequences are worth knowing:
 - Saving replaces the file, so any **hard links** to it are broken: the other
   names keep the old contents.
 - Renaming requires a writable **directory**. If the file is writable but its
-  directory is not, Olly falls back to rewriting the file in place and says
+  directory is not, Molly falls back to rewriting the file in place and says
   `written (in place, not atomic)` — your work is saved, but that particular
   write has no crash protection.
 
-When the file name is a symbolic link, Olly follows it and replaces the file
+When the file name is a symbolic link, Molly follows it and replaces the file
 it points at, leaving the link itself alone.
 
-If the file has changed on disk since Olly opened it (or since the last
+If the file has changed on disk since Molly opened it (or since the last
 save) — another process wrote to it in the meantime — `Ctrl-S` asks before
 overwriting that change, rather than silently discarding it. Answering `n`
 aborts the save; `y` proceeds and overwrites it as normal.
 
-Olly protects you from losing work: when there are unsaved changes, the first
+Molly protects you from losing work: when there are unsaved changes, the first
 few presses of `Ctrl-Q` only confirm that you really want to quit, and a
 warning shows how many more presses are needed. A clean buffer quits on the
 first `Ctrl-Q`.
 
-If Olly is stopped from outside instead — its terminal window is closed, or it
+If Molly is stopped from outside instead — its terminal window is closed, or it
 receives `SIGTERM`, `SIGHUP`, `SIGINT` or `SIGQUIT` — it puts your terminal's
 settings back on the way out, so the shell you return to echoes and edits
 normally.
 
 ### Recovery of unsaved work
 
-If Olly is killed by one of those signals, or exits because it ran out of
+If Molly is killed by one of those signals, or exits because it ran out of
 memory, and the buffer had unsaved changes, it writes what was in the buffer
 to a recovery file before it goes. The recovery file sits next to the file you
-were editing, named after it with a `.olly-recover` suffix (for an unnamed
-buffer it is `olly-recover.<pid>` in the current directory).
+were editing, named after it with a `.molly-recover` suffix (for an unnamed
+buffer it is `molly-recover.<pid>` in the current directory).
 
-The next time you open that file, Olly notices the recovery file and asks:
+The next time you open that file, Molly notices the recovery file and asks:
 
     Unsaved changes from a crashed session. R = restore | any key = drop
 
@@ -340,7 +345,7 @@ what is on disk. Any other key continues with the file as it is on disk.
 Either way the recovery file is then removed by the first successful save or
 `Ctrl-Q` quit, so decide at the prompt — after that the data is gone. (This
 prompt only covers named files; for an unnamed buffer, inspect the
-`olly-recover.<pid>` file yourself and rename it over whatever it belongs to.)
+`molly-recover.<pid>` file yourself and rename it over whatever it belongs to.)
 
 After saving, the undo history is kept, but the dirty flag is cleared.
 
@@ -377,7 +382,7 @@ After saving, the undo history is kept, but the dirty flag is cleared.
 - Text is stored and saved as raw bytes, so UTF-8 (and any other encoding)
   round-trips unchanged. The cursor, `Backspace` and `Delete` operate on whole
   UTF-8 characters rather than individual bytes, and the `Col` indicator counts
-  characters. Display width is honoured: East Asian wide characters take two
+  characters. Display width is honored: East Asian wide characters take two
   columns, combining marks take none, so the cursor and horizontal scrolling
   stay aligned with what the terminal actually shows.
 - The status bar shows the file name capped at 20 characters.

@@ -6,36 +6,36 @@ PREFIX  ?= /usr/local
 BINDIR   = $(PREFIX)/bin
 LOCALBIN = $(HOME)/.local/bin
 
-olly: olly.c
-	$(CC) $(CFLAGS) olly.c -o olly
+molly: molly.c
+	$(CC) $(CFLAGS) molly.c -o molly
 
-install: olly
+install: molly
 	@if [ -n "$(DESTDIR)" ]; then \
 		$(INSTALL) -d $(DESTDIR)$(BINDIR); \
-		$(INSTALL) -m 0755 olly $(DESTDIR)$(BINDIR)/olly; \
-		echo "Installed $(DESTDIR)$(BINDIR)/olly"; \
+		$(INSTALL) -m 0755 molly $(DESTDIR)$(BINDIR)/molly; \
+		echo "Installed $(DESTDIR)$(BINDIR)/molly"; \
 	elif mkdir -p "$(BINDIR)" 2>/dev/null && [ -w "$(BINDIR)" ]; then \
-		$(INSTALL) -m 0755 olly "$(BINDIR)/olly"; \
-		echo "Installed $(BINDIR)/olly"; \
+		$(INSTALL) -m 0755 molly "$(BINDIR)/molly"; \
+		echo "Installed $(BINDIR)/molly"; \
 	else \
 		echo "*** $(BINDIR) is not writable; falling back to"; \
 		echo "***   $(LOCALBIN)"; \
 		mkdir -p "$(LOCALBIN)"; \
-		$(INSTALL) -m 0755 olly "$(LOCALBIN)/olly"; \
-		echo "Installed $(LOCALBIN)/olly"; \
+		$(INSTALL) -m 0755 molly "$(LOCALBIN)/molly"; \
+		echo "Installed $(LOCALBIN)/molly"; \
 	fi
 
 uninstall:
-	rm -f $(DESTDIR)$(BINDIR)/olly $(LOCALBIN)/olly
+	rm -f $(DESTDIR)$(BINDIR)/molly $(LOCALBIN)/molly
 
-test: olly
-	python3 tests/test_olly.py ./olly
-	python3 tests/fuzz_replace.py ./olly
+test: molly
+	python3 tests/test_molly.py ./molly
+	python3 tests/fuzz_replace.py ./molly
 
-test-oom: olly
-	python3 tests/oom_sweep.py ./olly
+test-oom: molly
+	python3 tests/oom_sweep.py ./molly
 
 clean:
-	rm -f olly editor
+	rm -f molly editor
 
 .PHONY: clean install uninstall test test-oom

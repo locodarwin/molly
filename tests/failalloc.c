@@ -1,7 +1,7 @@
 /* LD_PRELOAD shim for tests/oom_sweep.py: makes exactly one allocation fail.
  *
- * OLLY_FAIL_AT=N fails the Nth malloc, calloc or realloc call (counting from
- * 1; 0 or unset fails nothing). OLLY_FAIL_HIT names a file that is created
+ * MOLLY_FAIL_AT=N fails the Nth malloc, calloc or realloc call (counting from
+ * 1; 0 or unset fails nothing). MOLLY_FAIL_HIT names a file that is created
  * when that call happens, so the sweep can tell when N has run past the last
  * allocation the session makes. */
 
@@ -20,8 +20,8 @@ static long calls;
 static const char *hit_path;
 
 __attribute__((constructor)) static void failalloc_init(void) {
-  const char *s = getenv("OLLY_FAIL_AT");
-  hit_path = getenv("OLLY_FAIL_HIT");
+  const char *s = getenv("MOLLY_FAIL_AT");
+  hit_path = getenv("MOLLY_FAIL_HIT");
   if (s) fail_at = atol(s);
 }
 

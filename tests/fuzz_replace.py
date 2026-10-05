@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 """Differential fuzz of replace-all against Python's str.replace.
 
-Run with:  make test    (standalone: python3 tests/fuzz_replace.py ./olly)
+Run with:  make test    (standalone: python3 tests/fuzz_replace.py ./molly)
 
 Each iteration generates a small file and a search/replace pair, performs a
-replace-all in olly, and requires the saved file to be byte-identical to
+replace-all in molly, and requires the saved file to be byte-identical to
 Python's own left-to-right, non-overlapping replacement (re.sub with an
-ASCII-only IGNORECASE, which is exactly the fold Olly implements). Olly's
+ASCII-only IGNORECASE, which is exactly the fold Molly implements). Molly's
 sweep continues strictly after each inserted replacement, so the two models
 should agree on every input.
 
 This targets the bug class behind a real 22 GB incident -- a replacement
 containing the search term, which under a wrapping sweep re-matched its own
-output forever. Every olly here runs under `ulimit -v`, so a regression
+output forever. Every molly here runs under `ulimit -v`, so a regression
 turns into a fast, loud mismatch instead of a melted machine.
 
 Deterministic: case i draws from random.Random(SEED * 1000 + i), so a
-failure reproduces with the printed command. Set OLLY_FUZZ_SEED to explore
-elsewhere and OLLY_FUZZ_N for more iterations. Tabs are deliberately absent
+failure reproduces with the printed command. Set MOLLY_FUZZ_SEED to explore
+elsewhere and MOLLY_FUZZ_N for more iterations. Tabs are deliberately absent
 from the generated text: search matches the tab-expanded render buffer, and
 modeling that mapping in Python would duplicate the code under test.
 """
@@ -31,14 +31,14 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pty_harness import run
 
-N = int(os.environ.get("OLLY_FUZZ_N", "40"))
-SEED = int(os.environ.get("OLLY_FUZZ_SEED", "42"))
+N = int(os.environ.get("MOLLY_FUZZ_N", "40"))
+SEED = int(os.environ.get("MOLLY_FUZZ_SEED", "42"))
 SAVE = "\x13"
 QUIT = "\x11"
 TOGGLE_CASE = "\x14"
 REPLACE = "\x12"
 
-# Accented words exercise the ASCII-only fold (neither str.replace nor Olly
+# Accented words exercise the ASCII-only fold (neither str.replace nor Molly
 # folds them, but the bytes must still survive the round trip); CJK words
 # exercise multibyte-safe deletion and insertion offsets.
 VOCAB = ["alpha", "beta", "gamma", "delta", "Cat", "dog", "pea", "Pea",
@@ -84,20 +84,20 @@ def gen_case(rng):
 def expected(text, q, repl, case_sensitive):
     if case_sensitive:
         return text.replace(q, repl)
-    # re.ASCII confines the IGNORECASE fold to A-Z/a-z, matching Olly's
+    # re.ASCII confines the IGNORECASE fold to A-Z/a-z, matching Molly's
     # ascii_fold exactly. Without it, Python's re folds non-ASCII letters
-    # (cafe matching cafe-with-accent), which Olly deliberately never does.
+    # (cafe matching cafe-with-accent), which Molly deliberately never does.
     # The lambda keeps repl literal even when it contains the query.
     return re.sub(re.escape(q), lambda m: repl, text,
                   flags=re.IGNORECASE | re.ASCII)
 
 
 def main():
-    olly = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./olly")
-    if not os.path.exists(olly):
-        sys.exit("no olly binary at %s -- run make first" % olly)
+    molly = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
+    if not os.path.exists(molly):
+        sys.exit("no molly binary at %s -- run make first" % molly)
 
-    tmpdir = tempfile.mkdtemp(prefix="olly-fuzz-")
+    tmpdir = tempfile.mkdtemp(prefix="molly-fuzz-")
     path = os.path.join(tmpdir, "f.txt")
     failures = 0
 
@@ -116,7 +116,7 @@ def main():
         # The ulimit is the safety net: a looping replace-all must die in
         # its tracks rather than eat the machine it fails on.
         out, st = run(["/bin/bash", "-c",
-                       "ulimit -v 2000000; exec %s %s" % (olly, path)],
+                       "ulimit -v 2000000; exec %s %s" % (molly, path)],
                       keys, status=True)
         with open(path, "r") as fh:
             got = fh.read()
@@ -129,15 +129,15 @@ def main():
         # exits 0, while a replace-all that regressed into a loop never
         # reaches it and run() ends in a SIGKILL.
         if not (os.WIFEXITED(st) and os.WEXITSTATUS(st) == 0):
-            problems.append("olly did not quit cleanly (status %r)" % st)
+            problems.append("molly did not quit cleanly (status %r)" % st)
         if problems:
             failures += 1
             print("  FAIL  case %d (seed %d): %s"
                   % (i, SEED * 1000 + i, "; ".join(problems)))
             print("          text: %r\n          query: %r  repl: %r  "
                   "case-sensitive: %s" % (text, q, repl, case_sensitive))
-            print("          reproduce: OLLY_FUZZ_SEED=%d "
-                  "python3 tests/fuzz_replace.py %s" % (SEED, olly))
+            print("          reproduce: MOLLY_FUZZ_SEED=%d "
+                  "python3 tests/fuzz_replace.py %s" % (SEED, molly))
         else:
             print("  pass  case %d: %d match(es), repl %r%s"
                   % (i, hits, repl, "" if case_sensitive else

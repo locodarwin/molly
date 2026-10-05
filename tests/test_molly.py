@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Regression tests for olly.
+"""Regression tests for molly.
 
-Run with:  make test        (or: python3 tests/test_olly.py ./olly)
+Run with:  make test        (or: python3 tests/test_molly.py ./molly)
 
 Every test here pins down a bug that was actually reachable from the keyboard,
 so a failure means a real regression rather than a style drift.
@@ -25,7 +25,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pty_harness import run, run_until_signal, status_lines, cursor_col
 
-OLLY = None
+MOLLY = None
 SAVE = "\x13"
 UNDO = "\x1a"
 REDO = "\x19"
@@ -49,7 +49,7 @@ COPY, CUT, PASTE = "\x03", "\x18", "\x16"
 
 def run_interleaved(argv, before_keys, touch, after_keys, rows=24, cols=80):
     """Like pty_harness.run, but calls touch() between the two key batches --
-    used to simulate another process modifying the file while olly still has
+    used to simulate another process modifying the file while molly still has
     it open, which is not expressible as a single flat key list."""
     pid, fd = pty.fork()
     if pid == 0:
@@ -117,7 +117,7 @@ def edit(tmpdir, original, keys, name="f.txt"):
     path = os.path.join(tmpdir, name)
     with open(path, "w") as fh:
         fh.write(original)
-    run([OLLY, path], keys)
+    run([MOLLY, path], keys)
     with open(path) as fh:
         return fh.read()
 
@@ -128,7 +128,7 @@ def edit_bytes(tmpdir, original, keys, name="f.txt"):
     path = os.path.join(tmpdir, name)
     with open(path, "wb") as fh:
         fh.write(original)
-    run([OLLY, path], keys)
+    run([MOLLY, path], keys)
     with open(path, "rb") as fh:
         return fh.read()
 
@@ -221,7 +221,7 @@ def test_search(tmpdir):
     def find(body, keys):
         with open(path, "w") as fh:
             fh.write(body)
-        return (status_lines(run([OLLY, path], keys)) or [""])[-1]
+        return (status_lines(run([MOLLY, path], keys)) or [""])[-1]
 
     # Regression: the sweep used to visit the starting row once, scanning only
     # from the cursor forward, so a match earlier on that row was unreachable.
@@ -250,7 +250,7 @@ def test_case_sensitive_search(tmpdir):
     def find(body, keys):
         with open(path, "w") as fh:
             fh.write(body)
-        return (status_lines(run([OLLY, path], keys)) or [""])[-1]
+        return (status_lines(run([MOLLY, path], keys)) or [""])[-1]
 
     check("toggling on reports the new mode",
           find("Alpha\n", [TOGGLE_CASE]),
@@ -275,7 +275,7 @@ def test_char_aligned_search(tmpdir):
     def find(body, keys):
         with open(path, "wb") as fh:
             fh.write(body)
-        return (status_lines(run([OLLY, path], keys)) or [""])[-1]
+        return (status_lines(run([MOLLY, path], keys)) or [""])[-1]
 
     # Regression: search compared raw bytes, so a query made of UTF-8
     # continuation or lead bytes could match inside a multibyte character
@@ -428,7 +428,7 @@ def test_save(tmpdir):
     cwd = os.getcwd()
     os.chdir(work)
     try:
-        run([OLLY], ["abc", SAVE, "\r", SAVE, "named.txt", "\r"])
+        run([MOLLY], ["abc", SAVE, "\r", SAVE, "named.txt", "\r"])
         check("empty answer re-prompts instead of stranding the buffer",
               os.path.exists(os.path.join(work, "named.txt")), True)
         if os.path.exists(os.path.join(work, "named.txt")):
@@ -445,7 +445,7 @@ def test_save(tmpdir):
         fh.write("data\n")
     with open(os.path.join(d, "notes.txt.tmp"), "w") as fh:
         fh.write("A REAL FILE\n")
-    run([OLLY, os.path.join(d, "notes.txt")], ["X", SAVE])
+    run([MOLLY, os.path.join(d, "notes.txt")], ["X", SAVE])
     check("unrelated .tmp file survives",
           os.path.exists(os.path.join(d, "notes.txt.tmp")), True)
     with open(os.path.join(d, "notes.txt")) as fh:
@@ -457,11 +457,11 @@ def test_save(tmpdir):
     with open(priv, "w") as fh:
         fh.write("secret\n")
     os.chmod(priv, 0o600)
-    run([OLLY, priv], ["X", SAVE])
+    run([MOLLY, priv], ["X", SAVE])
     check("restrictive mode preserved", os.stat(priv).st_mode & 0o7777, 0o600)
 
     # A writable file inside a read-only directory has no room for a sibling
-    # temp file; olly falls back to an in-place write rather than refusing.
+    # temp file; molly falls back to an in-place write rather than refusing.
     d = tempfile.mkdtemp(dir=tmpdir)
     rod = os.path.join(d, "rod")
     os.makedirs(rod)
@@ -470,7 +470,7 @@ def test_save(tmpdir):
         fh.write("data\n")
     os.chmod(rod, 0o555)
     try:
-        run([OLLY, target], ["X", SAVE])
+        run([MOLLY, target], ["X", SAVE])
         with open(target) as fh:
             check("writable file in read-only dir still saves",
                   fh.read(), "Xdata\n")
@@ -512,7 +512,7 @@ def test_external_change(tmpdir):
 
     with open(path, "w") as fh:
         fh.write("orig\n")
-    out = run_interleaved([OLLY, path], ["X"], touched("external\n"),
+    out = run_interleaved([MOLLY, path], ["X"], touched("external\n"),
                            [SAVE, "n", "\r"])
     msgs = status_lines(out)
     check("declining reports the save was aborted",
@@ -525,7 +525,7 @@ def test_external_change(tmpdir):
 
     with open(path, "w") as fh:
         fh.write("orig\n")
-    out = run_interleaved([OLLY, path], ["X"], touched("external\n"),
+    out = run_interleaved([MOLLY, path], ["X"], touched("external\n"),
                            [SAVE, "y", "\r"])
     msgs = status_lines(out)
     check("confirming reports bytes written",
@@ -573,7 +573,7 @@ def test_symlink_race(tmpdir):
     for _ in range(25):
         keys += ["Z", SAVE, 0.05]
     try:
-        run([OLLY, doc], keys, settle=1.0)
+        run([MOLLY, doc], keys, settle=1.0)
     finally:
         stop.set()
         for p in procs:
@@ -600,7 +600,7 @@ def test_signals(tmpdir):
         fh.write("data\n")
     for name in ("SIGTERM", "SIGHUP", "SIGINT"):
         sig = getattr(signal, name)
-        before, during, after, st = run_until_signal([OLLY, path], sig)
+        before, during, after, st = run_until_signal([MOLLY, path], sig)
         check(name + ": the editor had switched the terminal to raw mode",
               during != before, True)
         check(name + ": terminal modes restored", after, before)
@@ -631,10 +631,10 @@ def test_utf8(tmpdir):
         fh.write(cafe)
     # café is four columns but five bytes; the status bar's Col reports the
     # display column (5 at end of line), never the byte position (6).
-    out = run([OLLY, path], [END])
+    out = run([MOLLY, path], [END])
     check("column reflects display position, not bytes",
           b"Col 5" in out and b"Col 6" not in out, True)
-    found = (status_lines(run([OLLY, path], [HOME, "\x06", "é", "\r"]))
+    found = (status_lines(run([MOLLY, path], [HOME, "\x06", "é", "\r"]))
              or [""])[-1]
     check("a multibyte search term is accepted and found",
           found.startswith("Found"), True)
@@ -649,7 +649,7 @@ def test_wide(tmpdir):
         path = os.path.join(tmpdir, "w.txt")
         with open(path, "wb") as fh:
             fh.write(body.encode("utf-8"))
-        return cursor_col(run([OLLY, path], keys))
+        return cursor_col(run([MOLLY, path], keys))
 
     # A wide glyph (U+3042, HIRAGANA A) occupies two columns but three bytes.
     # End of "aあb" is at display column 4, so the cursor sits at screen col 5
@@ -677,7 +677,7 @@ def test_status_col(tmpdir):
         path = os.path.join(tmpdir, "sc.txt")
         with open(path, "wb") as fh:
             fh.write(body.encode("utf-8"))
-        text = run([OLLY, path], keys).decode("utf-8", "replace")
+        text = run([MOLLY, path], keys).decode("utf-8", "replace")
         m = re.findall(r"Ln \d+, Col (\d+)", text)
         return int(m[-1]) if m else None
 
@@ -705,7 +705,7 @@ def test_selection(tmpdir):
         path = os.path.join(tmpdir, name)
         with open(path, "wb") as fh:
             fh.write(body.encode("utf-8"))
-        text = run([OLLY, path], keys).decode("utf-8", "replace")
+        text = run([MOLLY, path], keys).decode("utf-8", "replace")
         # The status bar is the reverse-video line at row `rows-1`; take its
         # last frame so earlier frames' "Sel" text cannot mask a clear.
         ms = re.findall(r"\x1b\[%d;1H\x1b\[7m([^\x1b]*)" % 23, text)
@@ -784,7 +784,7 @@ def test_selection_highlight(tmpdir):
         path = os.path.join(tmpdir, name)
         with open(path, "wb") as fh:
             fh.write(body.encode("utf-8"))
-        return run([OLLY, path], keys).decode("utf-8", "replace")
+        return run([MOLLY, path], keys).decode("utf-8", "replace")
 
     # The status bar paints in reverse video too, but resets with ESC[m, so
     # ESC[27m -- which only the row highlight emits -- uniquely marks selected
@@ -817,7 +817,7 @@ def test_osc52_clipboard(tmpdir):
         path = os.path.join(tmpdir, name)
         with open(path, "wb") as fh:
             fh.write(body.encode("utf-8"))
-        return run([OLLY, path], keys).decode("latin-1")
+        return run([MOLLY, path], keys).decode("latin-1")
 
     # OSC 52 wraps the base64 of the clipboard: ESC ] 52 ; c ; <b64> BEL.
     # base64("ab") == "YWI=". Selecting the first two chars and copying must
@@ -837,7 +837,7 @@ def test_osc52_clipboard(tmpdir):
           "abcdab\n")
 
     # Bracketed paste is disabled at startup, so terminal-pasted text arrives as
-    # plain keystrokes rather than ESC[200~...~ wrappers Olly can't parse.
+    # plain keystrokes rather than ESC[200~...~ wrappers Molly can't parse.
     check("bracketed paste disabled at startup",
           "\x1b[?2004l" in raw("x\n", []), True)
 
@@ -858,7 +858,7 @@ def test_gutter(tmpdir):
         path = os.path.join(tmpdir, name)
         with open(path, "wb") as fh:
             fh.write(body.encode("utf-8"))
-        return run([OLLY, path], keys, **kw).decode("latin-1")
+        return run([MOLLY, path], keys, **kw).decode("latin-1")
 
     # Default off: text starts at screen column 1, no leading number.
     off = raw("alpha\nbeta\ngamma\n", [])
@@ -908,18 +908,18 @@ def test_gutter(tmpdir):
     welrow = wel[wel.rfind("\x1b[8;1H") + len("\x1b[8;1H"):]
     check("separator continues through the welcome screen",
           welrow.startswith(GRAY + "  " + SEP + " ~" + RST), True)
-    check("welcome banner follows the separator", "Olly editor" in welrow, True)
+    check("welcome banner follows the separator", "Molly editor" in welrow, True)
 
     # The cursor is pushed right by exactly the gutter width (digit + " │ ").
-    a = cursor_col(run([OLLY, _gpath(tmpdir, "hello\n", "c1.txt")], [END]))
-    b = cursor_col(run([OLLY, _gpath(tmpdir, "hello\n", "c2.txt")],
+    a = cursor_col(run([MOLLY, _gpath(tmpdir, "hello\n", "c1.txt")], [END]))
+    b = cursor_col(run([MOLLY, _gpath(tmpdir, "hello\n", "c2.txt")],
                        [LINENUM, END]))
     check("cursor shifted by gutter width", b - a, 4)
 
     # Wide glyphs still count as two columns *plus* the gutter offset, so the
     # cursor lands past the full display width and the gutter (not the byte
     # count) -- the two width adjustments compose.
-    w = cursor_col(run([OLLY, _gpath(tmpdir, "\u3042\u3042\n", "c3.txt")],
+    w = cursor_col(run([MOLLY, _gpath(tmpdir, "\u3042\u3042\n", "c3.txt")],
                        [LINENUM, END]))
     check("gutter + wide-glyph width compose on the cursor", w, 9)
 
@@ -949,7 +949,7 @@ def test_help(tmpdir):
         fh.write("x\n")
 
     def out(cols, rows=40, keys=(HELP,)):
-        return run([OLLY, path], list(keys), rows=rows, cols=cols).decode("utf-8", "replace")
+        return run([MOLLY, path], list(keys), rows=rows, cols=cols).decode("utf-8", "replace")
 
     wide = out(cols=80)
     check("help has a title", "Keyboard Reference" in wide, True)
@@ -986,7 +986,7 @@ def test_help(tmpdir):
     # Resizing while help is open must reflow it live, not keep the size it
     # opened at. Open wide, then shrink below the two-column threshold; the last
     # repaint (taken after the final full-screen clear) is the post-resize one.
-    live = run([OLLY, path], [HELP, (24, 40)],
+    live = run([MOLLY, path], [HELP, (24, 40)],
                rows=24, cols=100).decode("utf-8", "replace")
     check("live resize: two columns while wide", two_col(live), True)
     last = live.rsplit("\x1b[2J", 1)[-1]
@@ -1017,7 +1017,7 @@ def test_line_endings(tmpdir):
     cwd = os.getcwd()
     os.chdir(work)
     try:
-        run([OLLY, "new.txt"], ["hi", SAVE])
+        run([MOLLY, "new.txt"], ["hi", SAVE])
         with open(os.path.join(work, "new.txt"), "rb") as fh:
             check("a brand-new file is saved with LF and a trailing newline",
                   fh.read(), b"hi\n")
@@ -1032,10 +1032,10 @@ def test_recovery(tmpdir):
     path = os.path.join(tmpdir, "doc.txt")
     with open(path, "w") as fh:
         fh.write("original\n")
-    rec = path + ".olly-recover"
+    rec = path + ".molly-recover"
 
     # Regression/feature: work used to vanish when a signal killed the editor.
-    run_until_signal([OLLY, path], signal.SIGTERM, keys=["HELLO"])
+    run_until_signal([MOLLY, path], signal.SIGTERM, keys=["HELLO"])
     check("recovery file is created", os.path.exists(rec), True)
     if os.path.exists(rec):
         with open(rec) as fh:
@@ -1045,11 +1045,11 @@ def test_recovery(tmpdir):
 
     with open(rec, "w") as fh:
         fh.write("stale\n")
-    run([OLLY, path], ["X", SAVE])
+    run([MOLLY, path], ["X", SAVE])
     check("a successful save clears the recovery file",
           os.path.exists(rec), False)
 
-    run_until_signal([OLLY, path], signal.SIGTERM)
+    run_until_signal([MOLLY, path], signal.SIGTERM)
     check("no recovery file when nothing is unsaved",
           os.path.exists(rec), False)
 
@@ -1057,7 +1057,7 @@ def test_recovery(tmpdir):
 def test_recovery_prompt(tmpdir):
     print("\nrecovery: startup offers to restore data left by a crash")
     path = os.path.join(tmpdir, "doc.txt")
-    rec = path + ".olly-recover"
+    rec = path + ".molly-recover"
 
     def setup():
         with open(path, "w") as fh:
@@ -1066,28 +1066,28 @@ def test_recovery_prompt(tmpdir):
             fh.write("rescued\n")
 
     setup()
-    out, _ = run([OLLY, path], [], status=True)
+    out, _ = run([MOLLY, path], [], status=True)
     check("a leftover recovery file triggers a restore prompt",
           any("R = restore" in m for m in status_lines(out)), True)
     check("the recovered data is visible to no keystroke yet",
           b"rescued" in out, False)
 
     os.remove(rec)
-    out, _ = run([OLLY, path], [], status=True)
+    out, _ = run([MOLLY, path], [], status=True)
     check("no prompt when there is no recovery file",
           any("restore" in m for m in status_lines(out)), False)
     setup()
 
     # Any other key continues with the on-disk file; the recovery file then
     # disappears on quit exactly as it always did.
-    out = run([OLLY, path], [DOWN, "\x11"])
+    out = run([MOLLY, path], [DOWN, "\x11"])
     check("dismissing the prompt keeps the on-disk buffer",
           b"on disk" in out, True)
     check("a dismissed recovery file is removed on quit",
           os.path.exists(rec), False)
 
     setup()
-    out = run([OLLY, path], ["r", SAVE, "\x11"])
+    out = run([MOLLY, path], ["r", SAVE, "\x11"])
     with open(path) as fh:
         body = fh.read()
     check("R loads the recovered data and Ctrl-S saves it",
@@ -1099,12 +1099,12 @@ def test_recovery_prompt(tmpdir):
           True)
 
     setup()
-    out = run([OLLY, path], ["r", "\x11"])
+    out = run([MOLLY, path], ["r", "\x11"])
     check("a restored buffer counts as unsaved work (quit warns)",
           any("unsaved" in m.lower() for m in status_lines(out)), True)
 
     setup()
-    run([OLLY, path], ["r", "\x11", "\x11", "\x11", "\x11"])
+    run([MOLLY, path], ["r", "\x11", "\x11", "\x11", "\x11"])
     check("quitting a restored buffer without saving cleans up anyway",
           os.path.exists(rec), False)
 
@@ -1113,7 +1113,7 @@ def test_recovery_prompt(tmpdir):
     os.remove(path)
     with open(rec, "w") as fh:
         fh.write("rescued\n")
-    run([OLLY, path], ["r", SAVE, "\x11"])
+    run([MOLLY, path], ["r", SAVE, "\x11"])
     with open(path) as fh:
         body = fh.read()
     check("restore recreates a file that no longer exists",
@@ -1133,44 +1133,44 @@ def test_cli_args(tmpdir):
         m = re.findall(r"\x1b\[(\d+);(\d+)H", text)
         return int(m[-1][0]) if m else None
 
-    out, st = run([OLLY, "--version"], [], status=True)
+    out, st = run([MOLLY, "--version"], [], status=True)
     check("--version prints the version and exits cleanly",
-          out.strip().decode().startswith("olly 1."), True)
+          bool(re.match(r"^molly \d", out.strip().decode())), True)
     check("--version exits with status 0", os.WIFEXITED(st)
           and os.WEXITSTATUS(st) == 0, True)
-    out, _ = run([OLLY, "-v"], [], status=True)
-    check("-v is the short form", out.strip().decode().startswith("olly "),
+    out, _ = run([MOLLY, "-v"], [], status=True)
+    check("-v is the short form", out.strip().decode().startswith("molly "),
           True)
 
     check("+N opens with the cursor on that line",
-          cursor_row(run([OLLY, path, "+3"], [])), 3)
+          cursor_row(run([MOLLY, path, "+3"], [])), 3)
     check("+N also works before the file name",
-          cursor_row(run([OLLY, "+2", path], [])), 2)
+          cursor_row(run([MOLLY, "+2", path], [])), 2)
     check("+1 lands on the first line",
-          cursor_row(run([OLLY, path, "+1"], [])), 1)
+          cursor_row(run([MOLLY, path, "+1"], [])), 1)
     check("a line past the end clamps to the last row",
-          cursor_row(run([OLLY, path, "+999"], [])), 5)
+          cursor_row(run([MOLLY, path, "+999"], [])), 5)
     check("a high line scrolls the last row into view",
-          b"five" in run([OLLY, path, "+999"], []), True)
+          b"five" in run([MOLLY, path, "+999"], []), True)
     # "+x" is not a line request: as the file it opens, as an extra it warns.
-    out, _ = run([OLLY, path, "+x"], [], status=True)
+    out, _ = run([MOLLY, path, "+x"], [], status=True)
     check("+x is not swallowed as a line request",
           any("+x" in m for m in status_lines(out)), True)
 
     # An argument beyond the file is reported rather than silently dropped.
     extra = os.path.join(tmpdir, "other.txt")
-    out, _ = run([OLLY, path, extra], [], status=True)
+    out, _ = run([MOLLY, path, extra], [], status=True)
     msgs = status_lines(out)
     check("an extra argument warns on the status bar",
           any("extra argument" in m for m in msgs), True)
     check("the warning names the ignored argument",
           any("other.txt" in m for m in msgs), True)
-    out, _ = run([OLLY, path, extra, extra, extra], [], status=True)
+    out, _ = run([MOLLY, path, extra, extra, extra], [], status=True)
     check("several extras are counted",
           any("3 extra arguments" in m for m in status_lines(out)), True)
 
     # With no file at all, +N just starts an empty buffer at the top.
-    out, _ = run([OLLY, "+50"], [], status=True)
+    out, _ = run([MOLLY, "+50"], [], status=True)
     check("+N with no file opens an empty buffer without complaint",
            any("Warning" in m for m in status_lines(out)), False)
 
@@ -1197,7 +1197,7 @@ def test_open_dialog(tmpdir):
             fh.write("zeta body\n")
 
         # List order: ".." first, then the directory, then files.
-        out = run([OLLY], [OPEN])
+        out = run([MOLLY], [OPEN])
         check("Ctrl-O opens the file browser", b"Open File" in out, True)
         check("the browser starts in the working directory",
               d.encode() in out, True)
@@ -1207,34 +1207,34 @@ def test_open_dialog(tmpdir):
               out.find(b"sub") < out.find(b"alpha.txt"), True)
         check("'..' is offered as the way back up", b"../" in out, True)
 
-        out = run([OLLY], [OPEN, DOWN, DOWN, "\r"])
+        out = run([MOLLY], [OPEN, DOWN, DOWN, "\r"])
         check("Enter on a file opens it", b"alpha body" in out, True)
         check("the status bar reports the opened file",
               any("Opened" in m and "alpha.txt" in m
                   for m in status_lines(out)), True)
 
-        out = run([OLLY], [OPEN, DOWN, "\r"])
+        out = run([MOLLY], [OPEN, DOWN, "\r"])
         check("Enter on a directory descends into it",
               b"inner.txt" in out, True)
-        out = run([OLLY], [OPEN, DOWN, "\r", "\r"])
+        out = run([MOLLY], [OPEN, DOWN, "\r", "\r"])
         check("'..' climbs back out", b"alpha.txt" in out, True)
-        out = run([OLLY], [OPEN, DOWN, "\r", DOWN, "\r"])
+        out = run([MOLLY], [OPEN, DOWN, "\r", DOWN, "\r"])
         check("a file two levels deep opens", b"inner body" in out, True)
 
-        out = run([OLLY, zeta], [OPEN, "\x1b"])
+        out = run([MOLLY, zeta], [OPEN, "\x1b"])
         check("Esc closes the dialog without opening anything",
               any("Opened" in m for m in status_lines(out)), False)
         check("the original buffer survives the cancel",
               b"zeta body" in out, True)
 
-        out = run([OLLY, zeta], ["X", OPEN])
+        out = run([MOLLY, zeta], ["X", OPEN])
         check("unsaved changes refuse the dialog outright",
               any("Open aborted" in m and "unsaved" in m
                   for m in status_lines(out)), True)
         check("and the browser never opens", b"Open File" in out, False)
 
         # After the switch, writes and history belong to the new file.
-        run([OLLY, alpha], [OPEN, DOWN, DOWN, DOWN, "\r", "!", SAVE,
+        run([MOLLY, alpha], [OPEN, DOWN, DOWN, DOWN, "\r", "!", SAVE,
                             "\x11"])
         with open(alpha) as fh:
             check("the switch leaves the old file alone",
@@ -1247,7 +1247,7 @@ def test_open_dialog(tmpdir):
         with open(beta, "w") as fh:
             fh.write("beta body\n")
         # beta is list index 3: "..", sub/, alpha.txt, beta.txt.
-        run([OLLY, alpha], [OPEN, DOWN, DOWN, DOWN, "\r", "!", UNDO, SAVE,
+        run([MOLLY, alpha], [OPEN, DOWN, DOWN, DOWN, "\r", "!", UNDO, SAVE,
                             "\x11"])
         with open(beta) as fh:
             check("undo does not cross the switch back to the old buffer",
@@ -1261,7 +1261,7 @@ def test_open_dialog(tmpdir):
 def test_directory_refused(tmpdir):
     print("\nrobustness: a directory is refused, not opened as a buffer")
     d = tempfile.mkdtemp(dir=tmpdir)
-    _, st = run([OLLY, d], [SAVE, "\x11\x11\x11\x11"], status=True)
+    _, st = run([MOLLY, d], [SAVE, "\x11\x11\x11\x11"], status=True)
     check("opening a directory exits with an error",
           os.WIFEXITED(st) and os.WEXITSTATUS(st) == 1, True)
 
@@ -1293,14 +1293,14 @@ def test_undo_cap(tmpdir):
     def play(keys, env=None):
         with open(path, "wb") as fh:
             fh.write(b"x x x\n")
-        run([OLLY, path], keys, env=env)
+        run([MOLLY, path], keys, env=env)
         with open(path, "rb") as fh:
             return fh.read()
 
-    # Each replace-next stores two entries, so OLLY_UNDO_STEPS=2 keeps only
+    # Each replace-next stores two entries, so MOLLY_UNDO_STEPS=2 keeps only
     # the last replacement. Reaching past the cap reports exhaustion instead
     # of undoing, and everything the cap evicted stays applied.
-    capped = {"OLLY_UNDO_STEPS": "2"}
+    capped = {"MOLLY_UNDO_STEPS": "2"}
     check("capped history undoes only the kept steps",
           play(once * 3 + [UNDO, UNDO, SAVE], capped), b"Q Q x\n")
     check("undoing past the cap reports nothing left",
@@ -1310,12 +1310,12 @@ def test_undo_cap(tmpdir):
 
 
 def main():
-    global OLLY
-    OLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./olly")
-    if not os.path.exists(OLLY):
-        sys.exit("no olly binary at %s -- run make first" % OLLY)
+    global MOLLY
+    MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
+    if not os.path.exists(MOLLY):
+        sys.exit("no molly binary at %s -- run make first" % MOLLY)
 
-    tmpdir = tempfile.mkdtemp(prefix="olly-tests-")
+    tmpdir = tempfile.mkdtemp(prefix="molly-tests-")
     try:
         test_keys(tmpdir)
         test_tab(tmpdir)

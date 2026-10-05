@@ -1,7 +1,11 @@
 NOTICE
 ======
 
-Olly builds on the architecture of the "kilo" text editor by Salvatore
+Molly began as a copy of the "olly" text editor by Shawn Smith
+(https://github.com/locodarwin/olly), and incorporates that implementation in
+full; olly is distributed under the MIT License, reproduced in LICENSE.
+
+olly in turn builds on the architecture of the "kilo" text editor by Salvatore
 Sanfilippo (antirez), and incorporates portions of that implementation.
 
 kilo is distributed under the following license:

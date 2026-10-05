@@ -21,7 +21,7 @@
 
 #define KILO_TAB_STOP 8
 #define KILO_QUIT_TIMES 3
-#define OLLY_VERSION "1.1"
+#define MOLLY_VERSION "0.1.0-dev"
 
 #define CTRL_KEY(k) ((k) & 0x1f)
 
@@ -180,7 +180,7 @@ static char *xstrdup(const char *s) {
 /* --- UTF-8: the buffer holds raw bytes, but the cursor moves and deletes by
  * whole characters, so editing never splits a multibyte sequence and leaves
  * invalid bytes behind. On-screen column width for wide and combining glyphs
- * is modelled too (see olly_wcwidth below), so the cursor, horizontal scroll
+ * is modelled too (see molly_wcwidth below), so the cursor, horizontal scroll
  * and the row renderer all agree on where a character lands. --- */
 
 static int utf8_is_cont(unsigned char c) { return (c & 0xC0) == 0x80; }
@@ -244,7 +244,7 @@ static int in_table(uint32_t cp, const struct interval *t, int n) {
   return 0;
 }
 
-static int olly_wcwidth(uint32_t cp) {
+static int molly_wcwidth(uint32_t cp) {
   static const struct interval zero[] = {
     {0x0300, 0x036F}, {0x0483, 0x0489}, {0x0591, 0x05BD}, {0x0610, 0x061A},
     {0x064B, 0x065F}, {0x0670, 0x0670}, {0x06D6, 0x06DC}, {0x06DF, 0x06E4},
@@ -274,7 +274,7 @@ static int olly_wcwidth(uint32_t cp) {
 /* Display columns of the character at index i (tabs are the caller's job). */
 static int utf8_char_cols(const char *s, int size, int i, int *nbytes) {
   uint32_t cp = utf8_decode(s, size, i, nbytes);
-  return olly_wcwidth(cp);
+  return molly_wcwidth(cp);
 }
 
 /* --- saved-content snapshot: the buffer is only "modified" when it really
@@ -442,10 +442,10 @@ static char recovery_path[4096];
 
 void build_recovery_path(void) {
   if (E.filename != NULL)
-    snprintf(recovery_path, sizeof(recovery_path), "%s.olly-recover",
+    snprintf(recovery_path, sizeof(recovery_path), "%s.molly-recover",
         E.filename);
   else
-    snprintf(recovery_path, sizeof(recovery_path), "olly-recover.%ld",
+    snprintf(recovery_path, sizeof(recovery_path), "molly-recover.%ld",
         (long)getpid());
 }
 
@@ -467,7 +467,7 @@ void write_recovery_file(void) {
 }
 
 /* Runs from atexit, where die() -- which calls exit() again -- would be
- * undefined behaviour. If the terminal is already gone there is nothing left
+ * undefined behavior. If the terminal is already gone there is nothing left
  * to restore anyway. */
 void disable_raw_mode(void) {
   tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.orig_termios);
@@ -535,7 +535,7 @@ void enable_raw_mode(void) {
   if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) die("tcsetattr");
 
   /* Turn bracketed paste off even if the terminal or a parent shell left it
-   * on. Olly does not parse the "\x1b[200~...\x1b[201~" wrappers, so with the
+   * on. Molly does not parse the "\x1b[200~...\x1b[201~" wrappers, so with the
    * mode on a paste would arrive as a stray DEL key (the "\x1b[...~" prefix)
    * plus literal text; off, a paste is just literal keystrokes and inserts
    * cleanly. */
@@ -823,7 +823,7 @@ struct uchange *uc_new(int kind, int row, int at, const char *text, size_t len) 
  * Both stacks evict their oldest entries past the caps, so an editing bug
  * (or a pathological session) that pushes forever can degrade undo depth
  * but never consume unbounded memory. The step cap can be lowered through
- * OLLY_UNDO_STEPS for testing. */
+ * MOLLY_UNDO_STEPS for testing. */
 #define UNDO_MAX_STEPS 32768
 #define UNDO_MAX_BYTES (16 * 1024 * 1024)
 static int undo_max_steps = UNDO_MAX_STEPS;
@@ -1498,15 +1498,15 @@ static void editor_paste(void) {
 
 /* Push the clipboard to the terminal's *system* clipboard with OSC 52, so a
  * terminal-native paste (or a Ctrl-V that the terminal intercepts and serves
- * from the system clipboard itself) yields exactly what Olly copied, and what
- * Olly copied can be pasted into other applications too. Without this the
+ * from the system clipboard itself) yields exactly what Molly copied, and what
+ * Molly copied can be pasted into other applications too. Without this the
  * in-editor clipboard is invisible to the terminal, so a paste shows whatever
  * an unrelated application last left on the system clipboard.
  *
  * Written straight to the terminal in fixed chunks: it allocates nothing, so a
  * failed copy can never die here after the in-editor clipboard already landed.
  * Strictly best-effort -- terminals that ignore OSC 52 (or have it disabled)
- * just keep their own clipboard, and Olly's own Ctrl-V still pastes the
+ * just keep their own clipboard, and Molly's own Ctrl-V still pastes the
  * internal buffer. */
 static void clipboard_sync_system(void) {
   static const char tbl[] =
@@ -1602,7 +1602,7 @@ static int gutter_tilde_str(char *dst, int gutter_w) {
                   gutter_w - 3, "");
 }
 
-/* Draw one text row, honouring display width: horizontal scroll (coloff) and
+/* Draw one text row, honoring display width: horizontal scroll (coloff) and
  * the screen width are measured in columns, so a slice starts and ends on
  * character boundaries. A wide glyph split by either edge is dropped and the
  * gap shown as a space, keeping every following column aligned.
@@ -1686,7 +1686,7 @@ void editor_draw_rows(struct abuf *ab) {
       if (E.numrows == 0 && y == E.screenrows / 3) {
         char text[96];
         int welcomelen = snprintf(text, sizeof(text),
-                                  "Olly editor -- version %s", OLLY_VERSION);
+                                  "Molly editor -- version %s", MOLLY_VERSION);
         if (welcomelen > text_cols) welcomelen = text_cols;
         int pad = (text_cols - welcomelen) / 2;
         if (pad > 0) {
@@ -1897,8 +1897,8 @@ static void editor_set_last_query(const char *q) {
 
 /* Explicit ASCII case folding. Deliberately not strncasecmp: that folds
  * according to the current locale, so the same query would match differently
- * under, say, a Turkish locale, and it folds non-ASCII bytes in ways Olly
- * does not control. Olly compares raw bytes everywhere else, so the case
+ * under, say, a Turkish locale, and it folds non-ASCII bytes in ways Molly
+ * does not control. Molly compares raw bytes everywhere else, so the case
  * insensitive fold folds exactly A-Z/a-z and compares every other byte
  * as-is; non-ASCII letters are never case-folded. */
 static int ascii_fold(unsigned char c) {
@@ -2234,7 +2234,7 @@ static void fsync_parent_dir(const char *path) {
   free(copy);
 }
 
-/* The mode a newly created file should end up with, honouring the umask. */
+/* The mode a newly created file should end up with, honoring the umask. */
 static mode_t default_file_mode(void) {
   mode_t um = umask(0);
   umask(um);
@@ -2475,7 +2475,7 @@ void editor_open(char *filename) {
  * continues with the on-disk file, and the stale recovery file is cleaned up
  * by the usual save/quit unlink exactly as it was before this prompt existed.
  * Only files named on the command line are offered: an anonymous buffer's
- * recovery file (olly-recover.PID) has no obvious owner to prompt for. */
+ * recovery file (molly-recover.PID) has no obvious owner to prompt for. */
 void editor_check_recovery(void) {
   if (E.filename == NULL || recovery_path[0] == '\0') return;
   struct stat st;
@@ -2699,7 +2699,7 @@ void editor_help(void) {
     ab_append(&ab, "\x1b[?25l", 6);
     char pos[32];
 
-    help_centered(&ab, "Olly - Keyboard Reference", 1);
+    help_centered(&ab, "Molly - Keyboard Reference", 1);
 
     int k;
     for (k = 0; k < view_h; k++) {
@@ -2809,7 +2809,7 @@ static void browser_fit(const char *s, int w, char *dst, size_t dsz) {
 }
 
 /* The dialog itself: returns a malloc'd path to open, or NULL if the user
- * cancelled. Like the help screen it owns the terminal until dismissed, so
+ * canceled. Like the help screen it owns the terminal until dismissed, so
  * it re-reads the window size itself and repaints the whole frame per pass. */
 static char *editor_open_dialog(void) {
   char dir[PATH_MAX];
@@ -2837,7 +2837,7 @@ static char *editor_open_dialog(void) {
     ab_append(&ab, "\x1b[2J", 4);
     ab_append(&ab, "\x1b[?25l", 6);
     char pos[32];
-    help_centered(&ab, "Olly - Open File", 1);
+    help_centered(&ab, "Molly - Open File", 1);
 
     /* Current directory on row 2; if it does not fit, the tail still shows
      * which corner of the tree we are in, cut only at a UTF-8 boundary. */
@@ -3209,7 +3209,7 @@ void init_editor(void) {
   /* Test hook (documented in MANUAL.md): shrink the undo cap so history
    * eviction is reachable without editing for an hour. */
   {
-    const char *cap = getenv("OLLY_UNDO_STEPS");
+    const char *cap = getenv("MOLLY_UNDO_STEPS");
     if (cap && *cap) {
       long v = strtol(cap, NULL, 10);
       if (v > 0) undo_max_steps = (v > 1000000000L) ? 1000000000 : (int)v;
@@ -3239,7 +3239,7 @@ static int arg_is_line(const char *s, long *out) {
   return 1;
 }
 
-/* olly [--version | -v] [file] [+line] ...
+/* molly [--version | -v] [file] [+line] ...
  * The file is the first argument that is not a flag or a line request;
  * anything past that is reported on the status bar and ignored. */
 int main(int argc, char *argv[]) {
@@ -3253,7 +3253,7 @@ int main(int argc, char *argv[]) {
     const char *a = argv[i];
     if (strcmp(a, "--version") == 0 || strcmp(a, "-v") == 0 ||
         strcmp(a, "-V") == 0) {
-      printf("olly %s\n", OLLY_VERSION);
+      printf("molly %s\n", MOLLY_VERSION);
       return 0;
     }
     long n;

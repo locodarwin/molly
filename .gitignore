@@ -1,8 +1,8 @@
-olly
+molly
 *.o
-olly_asan
-olly_vuln
-*.olly-recover
-olly-recover.*
+molly_asan
+molly_vuln
+*.molly-recover
+molly-recover.*
 __pycache__/
 .claude/

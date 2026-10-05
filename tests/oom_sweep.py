@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Allocation-failure sweep for olly.
+"""Allocation-failure sweep for molly.
 
-Run with:  make test-oom    (or: python3 tests/oom_sweep.py ./olly [LIMIT])
+Run with:  make test-oom    (or: python3 tests/oom_sweep.py ./molly [LIMIT])
 
 Replays one editing session again and again, failing a different single
 allocation each time -- the 1st, then the 2nd, and so on -- until the session
 no longer reaches the failing call (or LIMIT is hit). Whichever allocation
-fails, olly must either carry on or exit through die(). It must never crash,
+fails, molly must either carry on or exit through die(). It must never crash,
 never leave the file half-written, and never leave a temp file behind.
 
 Needs a C compiler for the LD_PRELOAD shim. Slow, so not part of `make test`.
@@ -41,15 +41,15 @@ KEYS = ["X", "\t", "\r", "y", "\x1a", DOWN, "z",
 
 
 def session(args):
-    olly, shim, workroot, fail_at = args
+    molly, shim, workroot, fail_at = args
     work = tempfile.mkdtemp(dir=workroot)
     path = os.path.join(work, "f.txt")
     with open(path, "w") as fh:
         fh.write(ORIGINAL)
     hit = os.path.join(workroot, "hit-%d" % fail_at)
-    env = {"LD_PRELOAD": shim, "OLLY_FAIL_AT": str(fail_at),
-           "OLLY_FAIL_HIT": hit}
-    _, st = run([olly, path], KEYS, env=env, status=True)
+    env = {"LD_PRELOAD": shim, "MOLLY_FAIL_AT": str(fail_at),
+           "MOLLY_FAIL_HIT": hit}
+    _, st = run([molly, path], KEYS, env=env, status=True)
     with open(path, errors="replace") as fh:
         content = fh.read()
     return fail_at, os.path.exists(hit), st, content, sorted(os.listdir(work))
@@ -66,12 +66,12 @@ def outcome(st):
 
 
 def main():
-    olly = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./olly")
+    molly = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
     limit = int(sys.argv[2]) if len(sys.argv) > 2 else None
-    if not os.path.exists(olly):
-        sys.exit("no olly binary at %s -- run make first" % olly)
+    if not os.path.exists(molly):
+        sys.exit("no molly binary at %s -- run make first" % molly)
 
-    workroot = tempfile.mkdtemp(prefix="olly-oom-")
+    workroot = tempfile.mkdtemp(prefix="molly-oom-")
     failures = []
     tally = {}
     last = 0
@@ -81,7 +81,7 @@ def main():
                         os.path.join(HERE, "failalloc.c"), "-o", shim],
                        check=True)
 
-        _, _, st, expected, _ = session((olly, shim, workroot, 0))
+        _, _, st, expected, _ = session((molly, shim, workroot, 0))
         if outcome(st) != "kept running" or expected == ORIGINAL:
             sys.exit("the session does not run cleanly even without failures")
 
@@ -94,7 +94,7 @@ def main():
                     batch = range(n, min(n + workers, limit + 1))
                 reached = False
                 for k, hit, st, content, files in pool.map(
-                        session, [(olly, shim, workroot, k) for k in batch]):
+                        session, [(molly, shim, workroot, k) for k in batch]):
                     if not hit:
                         continue
                     reached = True
@@ -108,7 +108,7 @@ def main():
                         problems.append("file left as %r" % content[:60])
                     # A death with unsaved changes deliberately leaves a
                     # recovery file beside the target; that is not a leak.
-                    if set(files) - {"f.txt", "f.txt.olly-recover"}:
+                    if set(files) - {"f.txt", "f.txt.molly-recover"}:
                         problems.append("stray files %s" % files)
                     if problems:
                         failures.append(k)

@@ -1,6 +1,6 @@
-"""Drive olly inside a real pty and capture what it writes.
+"""Drive molly inside a real pty and capture what it writes.
 
-Olly only runs on a terminal (it calls tcgetattr on stdin at startup), so the
+Molly only runs on a terminal (it calls tcgetattr on stdin at startup), so the
 tests give it one rather than a pipe.
 """
 
@@ -52,7 +52,7 @@ def run(argv, keys, rows=24, cols=80, settle=0.4, env=None, status=False):
         if isinstance(key, tuple):
             r, c = key
             fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", r, c, 0, 0))
-            # olly only notices a SIGWINCH on its ~100ms poll, so give it time
+            # molly only notices a SIGWINCH on its ~100ms poll, so give it time
             # to observe the change and repaint before the next input.
             time.sleep(0.25)
             drain(0.15)
@@ -153,7 +153,7 @@ def cursor_col(out):
 
 
 def status_lines(out, rows=24):
-    """The message-bar texts olly painted, oldest first."""
+    """The message-bar texts molly painted, oldest first."""
     import re
 
     text = out.decode("utf8", "replace")

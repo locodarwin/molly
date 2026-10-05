@@ -10,7 +10,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: make
-      # pty-driven regression suite plus the differential replace-all fuzz.
+      # pty-driven regression suite, the golden-screen snapshots, and the
+      # differential replace-all fuzz.
       - run: make test
       # Allocation-failure sweep: every allocation failed in turn, the
       # editor must survive or exit through die().

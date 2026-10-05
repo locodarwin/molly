@@ -1,0 +1,16 @@
+--- screen ---
+alpha
+beta
+gamma
+~
+sample.txt - 3 lines
+HELP: Ctrl-S = save | Ct
+--- attrs ---
+
+
+
+g
+RRRRRRRRRRRRRRRRRRRRRRRR
+
+--- cursor ---
+row 1 col 1 visible 1

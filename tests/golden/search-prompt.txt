@@ -1,0 +1,52 @@
+--- screen ---
+alpha
+beta
+gamma
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+sample.txt - 3 lines                                                 Ln 1, Col 1
+Search: be (ESC to cancel, Enter to find)
+--- attrs ---
+
+
+
+g
+g
+g
+g
+g
+g
+g
+g
+g
+g
+g
+g
+g
+g
+g
+g
+g
+g
+g
+RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+
+--- cursor ---
+row 1 col 1 visible 1

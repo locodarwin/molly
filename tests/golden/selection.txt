@@ -1,0 +1,52 @@
+--- screen ---
+alpha
+beta
+gamma
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+sample.txt - 3 lines                                          Ln 1, Col 4  Sel 3
+HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | Ctrl-N = next | Ctrl-? = h
+--- attrs ---
+RRR
+
+
+g
+g
+g
+g
+g
+g
+g
+g
+g
+g
+g
+g
+g
+g
+g
+g
+g
+g
+g
+RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+
+--- cursor ---
+row 1 col 4 visible 1

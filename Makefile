@@ -30,7 +30,13 @@ uninstall:
 
 test: molly
 	python3 tests/test_molly.py ./molly
+	python3 tests/test_golden.py ./molly
 	python3 tests/fuzz_replace.py ./molly
+
+# Rewrite the golden screens from current behavior. Only when an output change
+# is intended -- read the diff it produces before committing it.
+golden: molly
+	MOLLY_UPDATE_GOLDEN=1 python3 tests/test_golden.py ./molly
 
 test-oom: molly
 	python3 tests/oom_sweep.py ./molly
@@ -38,4 +44,4 @@ test-oom: molly
 clean:
 	rm -f molly editor
 
-.PHONY: clean install uninstall test test-oom
+.PHONY: clean install uninstall test test-oom golden

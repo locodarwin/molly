@@ -41,6 +41,7 @@ struct cell {
   unsigned char len;    /* bytes used; 0 means a blank */
   unsigned char width;  /* columns: 1, 2, or 0 for the tail of a wide glyph */
   unsigned char role;   /* enum cell_role; the theme turns it into a style */
+  unsigned char attrs;  /* ATTR_BOLD, ATTR_UNDERLINE: modifiers on top of role */
 };
 
 static struct cell *cur;
@@ -48,7 +49,8 @@ static struct cell *prev;
 static int g_rows, g_cols;
 static int g_alloc;        /* cells allocated per plane */
 static int prev_valid;     /* 0 = the terminal's contents are unknown */
-static unsigned char pen;  /* the role new cells are written with */
+static unsigned char pen;        /* the role new cells are written with */
+static unsigned char pen_attrs;  /* and the modifiers they carry */
 static int want_cy, want_cx;
 
 static struct cell *at(struct cell *plane, int y, int x) {
@@ -56,14 +58,16 @@ static struct cell *at(struct cell *plane, int y, int x) {
 }
 
 static int cell_eq(const struct cell *a, const struct cell *b) {
-  if (a->role != b->role || a->width != b->width || a->len != b->len) return 0;
+  if (a->role != b->role || a->attrs != b->attrs ||
+      a->width != b->width || a->len != b->len) return 0;
   return a->len == 0 || memcmp(a->ch, b->ch, a->len) == 0;
 }
 
 /* A cell that would draw as an unstyled space, and so can be produced by
  * erasing rather than by writing. */
 static int cell_blank(const struct cell *c) {
-  return c->len == 0 && c->role == ROLE_TEXT && c->width == 1;
+  return c->len == 0 && c->role == ROLE_TEXT && c->attrs == 0 &&
+         c->width == 1;
 }
 
 /* Match the grid to the terminal size. The contents are dropped and the next
@@ -96,15 +100,25 @@ void grid_begin(void) {
     cur[i].len = 0;
     cur[i].width = 1;
     cur[i].role = ROLE_TEXT;
+    cur[i].attrs = 0;
   }
   pen = ROLE_TEXT;
+  pen_attrs = 0;
   want_cy = 0;
   want_cx = 0;
 }
 
-/* The role that subsequent writes are tagged with. */
+/* The role that subsequent writes are tagged with. Setting a role clears the
+ * modifiers, because a modifier belongs to a run of text -- a mnemonic, a bold
+ * title -- rather than to whatever is drawn next. */
 void grid_role(unsigned char role) {
   pen = role;
+  pen_attrs = 0;
+}
+
+/* Modifiers for subsequent writes, on top of the current role. */
+void grid_attrs(unsigned char attrs) {
+  pen_attrs = attrs;
 }
 
 void grid_cursor_to(int y, int x) {
@@ -143,6 +157,7 @@ int grid_put_char(int y, int x, const char *s, int nbytes, int w) {
     c->len = 0;
     c->width = 1;
     c->role = pen;
+    c->attrs = pen_attrs;
     return 1;
   }
 
@@ -152,11 +167,13 @@ int grid_put_char(int y, int x, const char *s, int nbytes, int w) {
   c->len = (unsigned char)n;
   c->width = (unsigned char)w;
   c->role = pen;
+  c->attrs = pen_attrs;
   if (w == 2) {
     struct cell *t = at(cur, y, x + 1);
     t->len = 0;
     t->width = 0;
     t->role = pen;
+    t->attrs = pen_attrs;
   }
   return w;
 }
@@ -177,6 +194,24 @@ int grid_puts(int y, int x, const char *s, int len) {
 void grid_fill(int y, int x, int n, char c) {
   int i;
   for (i = 0; i < n; i++) grid_put_char(y, x + i, &c, 1, 1);
+}
+
+/* Restyle a rectangle without touching what it says.
+ *
+ * This is how a drop shadow works, and why it costs almost nothing: the dialog
+ * draws after the text, so the characters it is about to overshadow are already in
+ * the grid. Changing their role to a dim one leaves the text legible underneath,
+ * which is exactly what a Turbo Vision shadow looked like -- and considerably
+ * better than painting a blank rectangle over it. */
+void grid_shade(int x, int y, int w, int h, unsigned char role) {
+  int yy, xx;
+  for (yy = y; yy < y + h; yy++) {
+    if (yy < 0 || yy >= g_rows) continue;
+    for (xx = x; xx < x + w; xx++) {
+      if (xx < 0 || xx >= g_cols) continue;
+      at(cur, yy, xx)->role = role;
+    }
+  }
 }
 
 /* --- emitting the difference ---------------------------------------------- */
@@ -216,6 +251,16 @@ static void emit_style(struct abuf *ab, struct style *have,
     ab_append(ab, "\x1b[27m", 5);
     have->reverse = 0;
   }
+  if (want->bold != have->bold) {
+    /* 22 rather than 21: 21 is double-underline on a good many terminals. */
+    ab_append(ab, want->bold ? "\x1b[1m" : "\x1b[22m", want->bold ? 4 : 5);
+    have->bold = want->bold;
+  }
+  if (want->underline != have->underline) {
+    ab_append(ab, want->underline ? "\x1b[4m" : "\x1b[24m",
+              want->underline ? 4 : 5);
+    have->underline = want->underline;
+  }
 }
 
 /* Emit one row, if anything in it changed.
@@ -254,6 +299,8 @@ static void flush_row(struct abuf *ab, int y) {
     struct cell *c = at(cur, y, x);
     if (c->width == 0) continue;  /* tail of a wide glyph, emitted with its head */
     theme_style(c->role, &want);
+    if (c->attrs & ATTR_BOLD) want.bold = 1;
+    if (c->attrs & ATTR_UNDERLINE) want.underline = 1;
     emit_style(ab, &have, &want);
     if (c->len == 0) ab_append(ab, " ", 1);
     else ab_append(ab, c->ch, c->len);

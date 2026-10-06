@@ -32,24 +32,25 @@ struct theme_entry {
   short fg;
   short bg;
   unsigned char reverse;
+  unsigned char bold;
 };
 
 /* The 256-color theme. */
 static const struct theme_entry theme_256[ROLE_COUNT] = {
-  /* ROLE_TEXT      */ {DEFAULT_COLOR, DEFAULT_COLOR, 0},
-  /* ROLE_GUTTER    */ {8,             DEFAULT_COLOR, 0},
-  /* ROLE_SELECTION */ {DEFAULT_COLOR, DEFAULT_COLOR, 1},
-  /* ROLE_STATUS    */ {DEFAULT_COLOR, DEFAULT_COLOR, 1},
-  /* ROLE_MESSAGE   */ {DEFAULT_COLOR, DEFAULT_COLOR, 0},
+  /* ROLE_TEXT      */ {DEFAULT_COLOR, DEFAULT_COLOR, 0, 0},
+  /* ROLE_GUTTER    */ {8,             DEFAULT_COLOR, 0, 0},
+  /* ROLE_SELECTION */ {DEFAULT_COLOR, DEFAULT_COLOR, 1, 0},
+  /* ROLE_STATUS    */ {DEFAULT_COLOR, DEFAULT_COLOR, 1, 0},
+  /* ROLE_MESSAGE   */ {DEFAULT_COLOR, DEFAULT_COLOR, 0, 0},
 };
 
 /* The sixteen-color theme, for terminals that cannot do better. */
 static const struct theme_entry theme_16[ROLE_COUNT] = {
-  /* ROLE_TEXT      */ {DEFAULT_COLOR, DEFAULT_COLOR, 0},
-  /* ROLE_GUTTER    */ {8,             DEFAULT_COLOR, 0},
-  /* ROLE_SELECTION */ {DEFAULT_COLOR, DEFAULT_COLOR, 1},
-  /* ROLE_STATUS    */ {DEFAULT_COLOR, DEFAULT_COLOR, 1},
-  /* ROLE_MESSAGE   */ {DEFAULT_COLOR, DEFAULT_COLOR, 0},
+  /* ROLE_TEXT      */ {DEFAULT_COLOR, DEFAULT_COLOR, 0, 0},
+  /* ROLE_GUTTER    */ {8,             DEFAULT_COLOR, 0, 0},
+  /* ROLE_SELECTION */ {DEFAULT_COLOR, DEFAULT_COLOR, 1, 0},
+  /* ROLE_STATUS    */ {DEFAULT_COLOR, DEFAULT_COLOR, 1, 0},
+  /* ROLE_MESSAGE   */ {DEFAULT_COLOR, DEFAULT_COLOR, 0, 0},
 };
 
 static const struct theme_entry *active = theme_16;
@@ -92,20 +93,26 @@ void theme_style(unsigned char role, struct style *out) {
   out->fg = e->fg;
   out->bg = e->bg;
   out->reverse = e->reverse;
+  out->bold = e->bold;
+  out->underline = 0;  /* never a property of a role; see ATTR_UNDERLINE */
 }
 
 int style_eq(const struct style *a, const struct style *b) {
-  return a->fg == b->fg && a->bg == b->bg && a->reverse == b->reverse;
+  return a->fg == b->fg && a->bg == b->bg && a->reverse == b->reverse &&
+         a->bold == b->bold && a->underline == b->underline;
 }
 
 void style_default(struct style *out) {
   out->fg = DEFAULT_COLOR;
   out->bg = DEFAULT_COLOR;
   out->reverse = 0;
+  out->bold = 0;
+  out->underline = 0;
 }
 
 int style_is_default(const struct style *s) {
-  return s->fg == DEFAULT_COLOR && s->bg == DEFAULT_COLOR && !s->reverse;
+  return s->fg == DEFAULT_COLOR && s->bg == DEFAULT_COLOR && !s->reverse &&
+         !s->bold && !s->underline;
 }
 
 /* Append the SGR for one color. Indices 0-15 use the short forms -- which is both

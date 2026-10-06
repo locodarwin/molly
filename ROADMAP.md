@@ -247,6 +247,23 @@ already taken by a window onto a buffer: buffer → view → layer → widget. A
 `editor_read_key` made static so the compiler enforces that nothing bypasses the
 loop.
 
+### Look and feel, settled
+
+- **Turbo Vision's structure, a modern palette.** Double-line frames, titles and
+  drop shadows — the chrome of a Borland dialog — drawn in restrained modern
+  colors rather than blue-on-cyan. The shadow is the real giveaway and costs
+  almost nothing: it is the cells underneath redrawn in a dim role, text intact.
+- **Dialogs and menus paint their own background** from the theme rather than
+  inheriting the terminal's. They read as panels floating above the text, and
+  molly looks the same wherever it runs, which was rather olly's point.
+- **Menu titles: File, Edit, Search, View, Go, Tools, Options, Help.** Those eight
+  letters (`F E S V G T O H`) are reserved on Alt; every other Alt-letter stays
+  free. Menus list only commands that exist — thin menus beat placeholders that
+  do nothing.
+- **The command palette is `Ctrl-Space`.** It arrives as NUL, which is what
+  `CTRL_KEY(' ')` already produces, so it needs a spelling in the chord parser and
+  nothing else.
+
 ### 4. The widget toolkit
 
 Only what the ported UIs and the menus actually need, which is less than it looks:
@@ -283,6 +300,12 @@ The step that proves the toolkit, and the one that should make the diff negative
 `editor_prompt` becomes an input field, `editor_help` a text pane, the open-file
 dialog a framed list box. All three stop writing escape sequences directly, which
 also removes the last reason the grid has to be told to distrust the screen.
+
+**Interleaved with step 4, not after it.** A toolkit built with no consumer is a
+toolkit nobody has checked, and the open-file dialog — frame, shadow, list box,
+buttons — exercises nearly all of it. So: the grid and theme groundwork lands
+first, then each widget arrives with the UI that needed it, the open dialog first
+and the help screen and prompt behind it.
 
 ### 7. The menu bar
 

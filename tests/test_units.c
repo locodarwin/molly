@@ -195,6 +195,118 @@ static void test_wait_key_services_sources(void) {
   close(kb[1]);
 }
 
+/* ---- the grid ------------------------------------------------------------ */
+
+/* Drive the grid and capture what it wrote.
+ *
+ * grid_flush writes to standard output, so pointing that at a pipe makes the
+ * renderer's actual bytes testable directly, rather than only end to end through a
+ * pty. The byte form matters more than it looks: a stray reset or a missing
+ * attribute-off leaves the terminal in the wrong state for everything after it. */
+static void grid_capture(char *out, size_t outsz, void (*paint)(void)) {
+  int pipefd[2], saved;
+  ssize_t n;
+
+  out[0] = '\0';
+  /* Flush before redirecting, not after: anything still sitting in stdio's buffer
+   * would otherwise drain into the capture pipe and vanish from the test output.
+   * Which is exactly what happened the first time this was written. */
+  fflush(stdout);
+  if (pipe(pipefd) != 0) { perror("pipe"); failures++; return; }
+  saved = dup(STDOUT_FILENO);
+  if (saved < 0 || dup2(pipefd[1], STDOUT_FILENO) < 0) {
+    perror("dup2"); failures++; return;
+  }
+
+  paint();
+
+  fflush(stdout);
+  dup2(saved, STDOUT_FILENO);
+  close(saved);
+  close(pipefd[1]);
+  n = read(pipefd[0], out, outsz - 1);
+  close(pipefd[0]);
+  if (n < 0) n = 0;
+  out[n] = '\0';
+}
+
+static void contains(const char *label, const char *haystack, const char *needle) {
+  if (strstr(haystack, needle) != NULL) {
+    printf("  pass  %s\n", label);
+  } else {
+    printf("  FAIL  %s\n          wanted to find: %s\n          in: %s\n",
+           label, needle, haystack);
+    failures++;
+  }
+}
+
+static void paint_plain(void) {
+  grid_begin();
+  grid_role(ROLE_TEXT);
+  grid_puts(0, 0, "abc", 3);
+  grid_flush();
+}
+
+static void paint_gutter_role(void) {
+  grid_begin();
+  grid_role(ROLE_GUTTER);
+  grid_puts(0, 0, "abc", 3);
+  grid_flush();
+}
+
+static void paint_bold(void) {
+  grid_begin();
+  grid_role(ROLE_TEXT);
+  grid_attrs(ATTR_BOLD);
+  grid_puts(0, 0, "abc", 3);
+  grid_flush();
+}
+
+static void paint_underline(void) {
+  grid_begin();
+  grid_role(ROLE_TEXT);
+  grid_attrs(ATTR_UNDERLINE);
+  grid_puts(0, 0, "abc", 3);
+  grid_flush();
+}
+
+static void paint_shaded(void) {
+  grid_begin();
+  grid_role(ROLE_TEXT);
+  grid_puts(0, 0, "abc", 3);
+  /* What a drop shadow does: restyle without disturbing the text. */
+  grid_shade(0, 0, 3, 1, ROLE_GUTTER);
+  grid_flush();
+}
+
+static void test_grid_emission(void) {
+  char out[4096];
+
+  printf("\ngrid: what reaches the terminal\n");
+
+  grid_resize(4, 20);
+
+  grid_capture(out, sizeof(out), paint_plain);
+  contains("plain text is positioned and cleared to EOL", out, "\x1b[1;1Habc\x1b[K");
+
+  grid_capture(out, sizeof(out), paint_gutter_role);
+  contains("a colored role wraps the run and resets after it", out,
+           "\x1b[1;1H\x1b[90mabc\x1b[m\x1b[K");
+
+  grid_capture(out, sizeof(out), paint_bold);
+  contains("bold turns on and off again", out, "\x1b[1mabc\x1b[22m");
+
+  grid_capture(out, sizeof(out), paint_underline);
+  contains("underline turns on and off again", out, "\x1b[4mabc\x1b[24m");
+
+  /* The shadow's point: the text is still there, in a different role. */
+  grid_capture(out, sizeof(out), paint_shaded);
+  contains("shading restyles without disturbing the text", out,
+           "\x1b[90mabc\x1b[m");
+
+  grid_cleanup();
+}
+
 /* ---- the theme ----------------------------------------------------------- */
 
 static void test_theme_depth(void) {
@@ -285,6 +397,7 @@ static void test_theme_color_bytes(void) {
 int main(void) {
   test_loop_sources();
   test_wait_key_services_sources();
+  test_grid_emission();
   test_theme_depth();
   test_theme_styles();
   test_theme_color_bytes();

@@ -307,12 +307,24 @@ enum cell_role {
   ROLE_COUNT
 };
 
+/* Modifiers a cell can carry on top of its role.
+ *
+ * Separate from the role on purpose. A menu item's mnemonic is the item's own
+ * colors plus an underline; if the modifier were part of the role, every container
+ * would need a second role for its mnemonic, and a third for its mnemonic while
+ * selected. Bold is what a dialog title wants, and italic will be what a comment
+ * wants once there is syntax highlighting. */
+#define ATTR_BOLD      0x01
+#define ATTR_UNDERLINE 0x02
+
 /* A resolved style: palette indices, or -1 for the terminal's own default, which
  * is not the same as black -- a light-background user wants their background. */
 struct style {
   short fg;
   short bg;
   unsigned char reverse;
+  unsigned char bold;
+  unsigned char underline;
 };
 
 struct abuf {
@@ -369,6 +381,7 @@ int grid_cols(void);
 int grid_put_char(int y, int x, const char *s, int nbytes, int w);
 int grid_puts(int y, int x, const char *s, int len);
 int grid_rows(void);
+void grid_attrs(unsigned char attrs);
 void grid_begin(void);
 void grid_cleanup(void);
 void grid_cursor_to(int y, int x);
@@ -377,6 +390,7 @@ void grid_flush(void);
 void grid_invalidate(void);
 void grid_resize(int rows, int cols);
 void grid_role(unsigned char role);
+void grid_shade(int x, int y, int w, int h, unsigned char role);
 
 /* input.c */
 int input_last_key_had_shift(void);

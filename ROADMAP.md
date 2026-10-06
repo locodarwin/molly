@@ -184,17 +184,172 @@ have been speculative now:
 
 ## 4. Phase 1 — The UI shell
 
-- Windows with z-order on the cell grid; save/restore underneath.
-- Menu bar: titles, drop-downs, mnemonics, shortcut hints, greyed-out items,
-  keyboard and mouse navigation, F10 activation.
-- Dialog toolkit: frame, button, input field, checkbox, radio group, list box,
-  focus/tab order, modal loop.
-- Mouse (SGR 1006): click menus and dialogs, click to position the cursor, drag
-  to select, wheel to scroll.
-- **Port olly's help screen, open-file dialog and prompt line onto the toolkit.**
-  Net lines of code should go *down*.
-- Command palette with fuzzy matching — nearly free once the table exists, and
-  it is how you reach the long tail of commands without memorizing anything.
+Phase 0 built the substrate: a cell grid, named commands, an input layer that
+knows Alt from Esc, and a loop that can wait on a child process. Phase 1 builds
+the thing that substrate was for — a menu bar, dialogs and a mouse — and proves
+it by deleting the three hand-rolled full-screen UIs olly left behind.
+
+Ordered so that each step stands on a finished one, and so the port that proves
+the toolkit happens before the menu bar that depends on it.
+
+### 1. Color in the grid
+
+A cell's attributes are two bits today, reverse and gray, which is all olly ever
+needed. Menus, dialogs and syntax highlighting all need color, and that is a
+change to the grid's cell and to the SGR encoder, so it comes first.
+
+- Cells carry a foreground and background from a **semantic palette** — roles like
+  `menu`, `menu.selected`, `menu.disabled`, `dialog.frame`, `dialog.focus`,
+  `status`, `gutter` — never raw color numbers at the call site. A theme then
+  becomes a palette, and syntax highlighting in Phase 2 adds roles rather than
+  touching the renderer.
+- The SGR encoder keeps emitting minimal transitions, as it does now for reverse
+  and gray.
+- Nothing visible changes yet: the existing roles map to exactly what is drawn
+  today, so the fifteen golden screens must still pass untouched.
+- `tests/screen.py` learns to record foreground and background per cell, and the
+  golden snapshots gain a color map. Without this the rest of the phase is
+  untestable, which is the same reason the golden harness came first in Phase 0.
+
+### 2. A view stack
+
+Olly's three UIs each cleared the screen, drew, and asked for a full repaint on the
+way out. With a grid that is rebuilt every frame there is nothing to save and
+restore — the roadmap's earlier wording about preserving what is underneath was a
+holdover from thinking in byte-strings. What is needed is only an ordered list of
+things to draw.
+
+- A view is bounds plus a draw function: the text area, a menu, a dialog, later a
+  completion popup or a split.
+- Drawing walks the stack bottom to top, so overlap is just draw order.
+- The text area becomes the bottom view rather than a special case, which is the
+  groundwork splits need in Phase 2.
+
+### 3. One key wait, through the event loop
+
+`editor_prompt`, `editor_help` and `editor_open_dialog` each run `while (1) { draw;
+editor_read_key(); }`. That read blocks, so while any of them is open the event
+loop is not running and nothing else is serviced. Harmless now; a language server
+whose diagnostics stop arriving whenever a dialog is open, or an integrated
+terminal that freezes mid-build, is not.
+
+- One `ui_wait_key()` that waits through `loop_wait`, so registered sources are
+  serviced whatever is on screen, and every modal loop uses it.
+- See **Decisions, A** for whether this stays a modal loop at all.
+
+### 4. The widget toolkit
+
+Only what the ported UIs and the menus actually need, which is less than it looks:
+
+- **Frame** — a bordered, optionally titled box, with the shadow that makes a
+  dialog read as floating.
+- **Label**, **button** — static text and something to press.
+- **Input field** — an editable line with a cursor, which is `editor_prompt`'s
+  content minus its loop.
+- **List box** — a scrollable selection, which is the open dialog's content and
+  the command palette's.
+- **Text pane** — scrollable read-only text, which is the help screen's content.
+- **Focus and tab order** across a dialog's widgets, and a modal result
+  (accepted / cancelled / which button).
+
+Checkbox and radio group wait for the Find dialog in Phase 2 — including the
+"Match case" checkbox that replaces `Ctrl-T`.
+
+### 5. Mouse (SGR 1006)
+
+Before the menu bar, so the menu bar is clickable the day it exists.
+
+- Decode `ESC [ < b ; x ; y M/m` in the input layer, as press, release, drag and
+  wheel, with the button and modifiers. The input layer already consumes CSI
+  sequences to their terminator, so an undecoded mouse report cannot leak — this
+  adds meaning rather than safety.
+- In the text area: click to position, drag to select, wheel to scroll.
+- Hit-testing against the view stack, so menus and dialogs get their own clicks.
+- See **Decisions, E**.
+
+### 6. Port the three UIs onto the toolkit
+
+The step that proves the toolkit, and the one that should make the diff negative:
+`editor_prompt` becomes an input field, `editor_help` a text pane, the open-file
+dialog a framed list box. All three stop writing escape sequences directly, which
+also removes the last reason the grid has to be told to distrust the screen.
+
+### 7. The menu bar
+
+- Titles with underlined mnemonics, reserving only the eight title letters on Alt
+  (§1) so every other Alt-letter stays free for commands.
+- Drop-downs with the shortcut column on the right, separators, and items that
+  grey themselves out through the command's `enabled` hook — which the command
+  table has a slot for and nothing fills yet.
+- `F10` and Alt-letter to open, arrows and mnemonics to navigate, mouse to click.
+- Built from the command table, so a menu entry is a command name and nothing is
+  written down twice. Menus list only what exists; placeholders that never work
+  are worse than absence.
+
+### 8. The command palette
+
+Nearly free once the table and the list box exist, and the answer to reaching the
+long tail without memorizing it: one key, fuzzy-match command labels, show the
+bound chord beside each.
+
+### Decisions needed before step 3
+
+**A. Modal loops that pump the event loop, or a focus stack?** The one that
+changes the most code.
+
+A *modal loop* is what molly has: `editor_find` calls `editor_prompt`, gets a
+string back, and carries on. Keeping that shape and only changing what it waits on
+means search, replace, go-to-line, Save As, the recovery prompt and the dirty-quit
+countdown all stay as they read now, and background sources still get serviced
+while a dialog is open. The costs are nested loops and that a dialog cannot be
+left open while you do something else.
+
+A *focus stack* has one loop; a dialog is a view that happens to be taking the
+keys. Nothing nests, and non-modal UI becomes possible. The cost is that every
+`result = prompt(...)` becomes a continuation, and incremental search — which
+feeds the prompt a callback per keystroke — is the awkward one. That is a rewrite
+of most of search.c, replace, and the save flow.
+
+**Recommendation: modal loops that pump the event loop.** It gets the property
+that actually matters, which is that a language server or a terminal keeps running
+while a dialog is open, for a fraction of the churn. The one thing it cannot do is
+a *non-modal* overlay, and LSP completion is exactly that — a popup while you keep
+typing in the buffer. That works anyway, because a completion popup is a view that
+draws without taking input, which the view stack already provides; it is only a
+dialog that needs to own the keys. If a later feature genuinely needs a
+backgroundable dialog, that is the point to reconsider.
+
+**B. Is the menu bar always visible?** Fresh's is, and a menu you have to know to
+summon is not much of a discoverability win. It costs one text row permanently —
+`screenrows` goes from `wsrows - 2` to `wsrows - 3`. The alternative is hidden
+until `F10` or Alt, which keeps the row and loses most of the point.
+**Recommendation: always visible**, with the row cost accepted.
+
+**C. Do the ported UIs get reframed, or keep their current look?** The open-file
+dialog is full-screen today; as a toolkit dialog it would be a centered framed box
+with a shadow. Reframing is the visible half of looking like Fresh, and it means
+the golden snapshots for those screens change — deliberately, with the diff read
+rather than waved through. Keeping the current look makes step 6 a pure
+refactor with the snapshots unchanged, and defers the appearance change.
+**Recommendation: keep the look for the port, reframe immediately after**, in its
+own commit. That way "the toolkit produces the same screen" and "the screen
+changes on purpose" are two reviewable facts rather than one tangled one.
+
+**D. How many colors?** Sixteen ANSI colors work on anything, including whatever
+is on the far end of an SSH session into a switch. 256 gives dialogs that look
+like Fresh's rather than like 1993. Because the palette is semantic, the depth is
+a property of the theme and not of the drawing code, so this is reversible — but
+the first theme has to pick one. **Recommendation: author the palette at 256
+colors with a 16-color fallback chosen from `$COLORTERM`/`$TERM`**, and keep a
+golden screen at each depth so neither rots.
+
+**E. Is the mouse on by default?** Turning on SGR 1006 tracking takes drag-select
+away from the terminal: the user's reflex of swiping text and middle-clicking it
+elsewhere stops working, because molly receives those events instead. Most
+terminals still bypass with Shift held, but not all. **Recommendation: on by
+default**, since a menu bar you cannot click is the thing we are trying not to
+build, with a config key to turn it off once configuration exists in Phase 2 — and
+the Shift bypass mentioned in the help screen.
 
 ---
 

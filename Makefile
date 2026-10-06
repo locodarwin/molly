@@ -6,8 +6,14 @@ PREFIX  ?= /usr/local
 BINDIR   = $(PREFIX)/bin
 LOCALBIN = $(HOME)/.local/bin
 
-molly: molly.c
-	$(CC) $(CFLAGS) molly.c -o molly
+SRC = $(wildcard src/*.c)
+OBJ = $(SRC:.c=.o)
+
+molly: $(OBJ)
+	$(CC) $(CFLAGS) $(OBJ) -o molly
+
+src/%.o: src/%.c src/molly.h
+	$(CC) $(CFLAGS) -c $< -o $@
 
 install: molly
 	@if [ -n "$(DESTDIR)" ]; then \
@@ -42,6 +48,6 @@ test-oom: molly
 	python3 tests/oom_sweep.py ./molly
 
 clean:
-	rm -f molly editor
+	rm -f molly editor $(OBJ)
 
 .PHONY: clean install uninstall test test-oom golden

@@ -41,10 +41,23 @@ static void drain_handler(void *user) {
 
 int main(void) {
   int idx[4] = {0, 1, 2, 3};
-  int a[2], b[2];
+  int a[2], b[2], kb[2];
   int ida, idb, r;
 
   printf("\nevent loop: waiting on several sources\n");
+
+  /* Take over standard input first. Inherited stdin may be a terminal, a pipe,
+   * /dev/null or closed, and the last two poll ready immediately -- which made
+   * every "nothing is waiting" assertion depend on how the test was launched.
+   * A pipe nobody writes to is quiet until this test writes to it. */
+  if (pipe(kb) != 0) {
+    fprintf(stderr, "pipe failed\n");
+    return 2;
+  }
+  if (dup2(kb[0], STDIN_FILENO) < 0) {
+    fprintf(stderr, "dup2 failed\n");
+    return 2;
+  }
 
   check("no sources to begin with", loop_source_count(), 0);
 
@@ -118,10 +131,7 @@ int main(void) {
    * here, so writing to it is the same thing as a keystroke as far as the loop
    * is concerned. */
   {
-    int kb[2];
     fired[0] = fired[1] = 0;  /* earlier cases left these set */
-    if (pipe(kb) != 0) return 2;
-    if (dup2(kb[0], STDIN_FILENO) < 0) return 2;
     r = loop_wait(10);
     check("no keyboard input reports nothing", r & LOOP_STDIN, 0);
     if (write(kb[1], "k", 1) != 1) return 2;

@@ -123,34 +123,64 @@ is a buffer rewrite** — see §5.
 
 ---
 
-## 3. Phase 0 — Foundations (no user-visible change)
+## 3. Phase 0 — Foundations — **done**
 
-The boring phase, and the only one where we can *prove* we broke nothing: it
-ends with molly behaving identically and all 298 tests green.
+The boring phase, and the only one where we could *prove* we broke nothing. Molly
+behaves exactly as it did; the suite grew from 298 checks to 367 (292 pty, 15
+golden screens, 20 event-loop unit tests, 40 fuzz cases) plus the
+allocation-failure sweep, and every file is clean under
+`-Wall -Wextra -Wpedantic -Wshadow`.
 
+- [x] **Golden-screen harness** (`tests/screen.py`, `tests/test_golden.py`). A
+      terminal emulator the output is replayed through, so a snapshot records the
+      text, a per-cell attribute map and the cursor position. This is what made
+      the rest of the phase provable rather than hopeful — the renderer was
+      replaced wholesale and the snapshots did not move.
 - [x] **Cursor list.** `struct cursor` (position + own anchor) in a list, N==1,
-      reached through `CUR`. Clamped once per frame from `editor_scroll`.
-- [x] **Display-row view model.** The scroll offset, draw loop, row renderer and
+      reached through `CUR`, clamped once per frame from `editor_scroll`.
+- [x] **Display-row view model.** Scroll offset, draw loop, row renderer and
       vertical movement address display rows; unwrapped is the identity mapping.
-- [ ] **Modularize.** Split along olly's existing comment banners: `utf8`, `term`,
-      `sys`, `input`, `buffer`, `undo`, `view`, `screen`, `search`, `select`,
-      `ui`, `cmd`, `main`. `term` and `sys` hold everything that will not port to
-      Windows.
-- [ ] **Split the state** into `struct buffer` / `struct view` / app globals; move
-      `U` into `struct buffer`, and put row access behind accessors so the
-      big-file rewrite is a swap. Keep one of each at first, so behavior cannot
-      change.
-- [ ] **Cell-grid renderer** with attributes and a frame diff, replacing the
-      per-line string cache.
-- [ ] **Command table**, with the existing ~20 actions as its first entries, the
-      help screen generated from it, and chord parsing/printing for the keymap.
-- [ ] **Input layer** with ESC/Alt disambiguation and tests.
-- [ ] **Async event loop** that waits on keyboard input and child-process output
-      together, behind our own interface rather than `select` directly. LSP and
-      the integrated terminal both need it, and retrofitting it into a blocking
-      read loop is painful.
-- [ ] **Golden-screen test harness**, so later phases can assert on what the
-      screen looks like rather than only on file contents.
+- [x] **State split** into `struct buffer` / `struct view` / app globals, with
+      undo moved inside the buffer and row access behind `row_count()`/`row_at()`,
+      which resolve through the view's buffer rather than naming the global.
+- [x] **Modularized**: one 3,446-line file became `src/molly.h` plus sixteen `.c`
+      files. `sys.c` and `term.c` are deliberately where the calls live that a
+      Windows port has to replace. Five statics that were being shared across the
+      new boundaries each became an API rather than an `extern`.
+- [x] **Cell-grid renderer** (`src/grid.c`): the screen as cells of
+      `(bytes, width, attributes)` in two planes, diffed once per frame. The
+      per-line byte cache, the row scratch buffer and the welcome-line buffer all
+      went with it.
+- [x] **Command table** (`src/cmd.c`): thirty named commands with labels, help
+      text and groups; the keymap written as chord text and parsed at startup; the
+      help screen's key column and descriptions generated from it. The dispatcher
+      never names an action.
+- [x] **Input layer**: Esc/Alt disambiguation, Alt-printable, F1-F12 in all three
+      forms terminals send them, and reads inside a sequence that wait ~300ms
+      instead of giving up after one tick — which is what mangled sequences split
+      by a slow link.
+- [x] **Event loop** (`src/loop.c`): waits on the keyboard and any registered
+      descriptor together, behind our own interface rather than `poll()`, because
+      Windows needs `WaitForMultipleObjects`. LSP and the integrated terminal both
+      depend on this existing.
+
+### What Phase 0 deliberately did not finish
+
+Each of these is cheap to do when the feature that needs it arrives, and would
+have been speculative now:
+
+- **Shift is not part of a chord.** It arrives out of band from the input layer
+  because it modifies movement rather than selecting a different command. Folding
+  it into the key code changes the input layer's contract, and belongs with the
+  remappable keymap.
+- **The help screen and open-file dialog are not on the grid.** They still write
+  escape sequences directly and then ask for a full repaint, which is what keeps
+  the grid honest about a screen it did not draw. Phase 1's widget toolkit brings
+  them in — and should delete code doing it.
+- **`erow` is still visible to the renderer and to search**, so the buffer is not
+  fully isolated. Closing that gap is part of the big-file rewrite, not of
+  laying a seam for it.
+- **The keymap is still olly's.** The CUA moves settled on in §6 are feature work.
 
 ## 4. Phase 1 — The UI shell
 

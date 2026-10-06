@@ -9,9 +9,13 @@ model is [Fresh](https://github.com/sinelaw/fresh): a terminal editor that
 behaves like a GUI one — menu bar, mouse, dialogs, splits, discoverable everything — built on
 olly's base in C, with no runtime dependencies.
 
-**Status: early.** Molly currently *is* olly, renamed, with olly's full feature
-set and test suite intact (298 passing tests). The feature set and the order of
-work are being decided now — see [`ROADMAP.md`](ROADMAP.md).
+**Status: early.** Molly still *does* what olly does — the foundation work is
+finished, the features are not. The editor has been split into modules, the
+screen is a cell grid, every action is a named command reached through a keymap,
+and the event loop can wait on a child process as well as the keyboard, all
+without changing a single thing on screen: 367 checks pass, including golden
+screenshots taken before the renderer was replaced. What comes next, and why, is
+in [`ROADMAP.md`](ROADMAP.md).
 
 [olly]: https://github.com/locodarwin/olly
 

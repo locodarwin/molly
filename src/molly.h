@@ -217,6 +217,11 @@ struct drow {
 
 #define TEXT_COLS() (V.screencols - V.gutter_w)
 
+/* Cell attributes on the grid. Gray is the gutter's dimming; reverse is the
+ * selection and the status bar. Syntax highlighting adds colors here. */
+#define ATTR_REVERSE 0x01
+#define ATTR_GRAY    0x02
+
 struct abuf {
   char *b;
   int len;
@@ -254,6 +259,20 @@ void editor_delete_char(void);
 void editor_insert_char(int c);
 void editor_insert_newline(void);
 
+/* grid.c */
+int grid_cols(void);
+int grid_put_char(int y, int x, const char *s, int nbytes, int w);
+int grid_puts(int y, int x, const char *s, int len);
+int grid_rows(void);
+void grid_begin(void);
+void grid_cleanup(void);
+void grid_cursor_to(int y, int x);
+void grid_fill(int y, int x, int n, char c);
+void grid_flush(void);
+void grid_invalidate(void);
+void grid_pen(unsigned char attr);
+void grid_resize(int rows, int cols);
+
 /* input.c */
 int editor_read_key(void);
 int input_last_key_had_shift(void);
@@ -266,13 +285,10 @@ void init_editor(void);
 /* screen.c */
 int screen_poll_size(void);
 void ab_append(struct abuf *ab, const char *s, int len);
-void cache_ensure(int y);
-void cache_invalidate(void);
-void cache_line_draw(struct abuf *ab, int y, const char *s, int len, int force);
-void editor_draw_message_bar(struct abuf *ab);
-void editor_draw_rows(struct abuf *ab);
-void editor_draw_status_bar(struct abuf *ab);
-void editor_draw_text_row(struct abuf *ab, int y, erow *row, const struct drow *d, int sel0, int sel1);
+void editor_draw_message_bar(void);
+void editor_draw_rows(void);
+void editor_draw_status_bar(void);
+void editor_draw_text_row(int y, erow *row, const struct drow *d, int sel0, int sel1);
 void editor_refresh_screen(void);
 void editor_set_status_message(const char *fmt, ...);
 void screen_cleanup(void);

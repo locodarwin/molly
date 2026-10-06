@@ -40,8 +40,14 @@ def normalize(text):
     return text
 
 
-def check(name, keys, rows=24, cols=80, files=None, args=None, settle=0.5):
-    """Run molly against a fresh copy of `files`, snapshot the screen, compare."""
+def check(name, keys, rows=24, cols=80, files=None, args=None, settle=0.5,
+          final=None):
+    """Run molly against a fresh copy of `files`, snapshot the screen, compare.
+
+    `final` is the (rows, cols) the terminal ends at, for a case that resizes
+    mid-session: molly repaints in full after a resize, so replaying the whole
+    stream into a grid of the final size still lands on the right screen.
+    """
     global passed
 
     # A fixed filename, because it is drawn in the status bar: a temp path would
@@ -53,7 +59,7 @@ def check(name, keys, rows=24, cols=80, files=None, args=None, settle=0.5):
     argv = [MOLLY] + (args if args is not None else ["sample.txt"])
     out = pty_harness.run(argv, keys, rows=rows, cols=cols, settle=settle)
 
-    scr = Screen(rows, cols)
+    scr = Screen(*(final if final else (rows, cols)))
     scr.feed(out)
     got = normalize(scr.snapshot())
 
@@ -143,6 +149,17 @@ def main():
 
     # A small terminal, where the row budget is tightest.
     check("tiny-terminal", [], rows=6, cols=24, files={"sample.txt": THREE_LINES})
+
+    # Resizing: the grid is reallocated and the frame repainted in full. Shrinking
+    # has to drop rows and columns without leaving anything behind; growing has to
+    # fill what was not there before.
+    check("resize-shrink", [(12, 40)], rows=24, cols=80, final=(12, 40),
+          files={"sample.txt": THREE_LINES})
+    check("resize-grow", [(28, 100)], rows=12, cols=40, final=(28, 100),
+          files={"sample.txt": THREE_LINES})
+    # A resize with the gutter on, where the column arithmetic moves with it.
+    check("resize-gutter", ["\x15", (14, 36)], rows=24, cols=80, final=(14, 36),
+          files={"sample.txt": THREE_LINES})
 
     print()
     if failed:

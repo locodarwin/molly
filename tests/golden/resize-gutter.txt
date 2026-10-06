@@ -1,0 +1,32 @@
+--- screen ---
+1 │ alpha
+2 │ beta
+3 │ gamma
+  │ ~
+  │ ~
+  │ ~
+  │ ~
+  │ ~
+  │ ~
+  │ ~
+  │ ~
+  │ ~
+sample.txt - 3 lines     Ln 1, Col 1
+Line numbers: on
+--- attrs ---
+gggg
+gggg
+gggg
+ggggg
+ggggg
+ggggg
+ggggg
+ggggg
+ggggg
+ggggg
+ggggg
+ggggg
+RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+
+--- cursor ---
+row 1 col 5 visible 1

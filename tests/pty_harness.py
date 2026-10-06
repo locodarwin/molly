@@ -152,10 +152,27 @@ def cursor_col(out):
     return int(matches[-1][1]) if matches else None
 
 
-def status_lines(out, rows=24):
-    """The message-bar texts molly painted, oldest first."""
-    import re
+def status_lines(out, rows=24, cols=80):
+    """The message-bar texts molly painted, oldest first.
 
-    text = out.decode("utf8", "replace")
-    pattern = "\x1b\\[%d;1H\x1b\\[K([^\x1b]*)" % rows
-    return [m for m in re.findall(pattern, text) if m.strip()]
+    Read off the rendered screen rather than matched in the byte stream. This
+    used to look for "position to the message row, erase the line, then the
+    text", which is how olly happened to emit it; the cell-grid renderer writes
+    the text and then clears the tail, and a future renderer may do something
+    else again. What the row *said* is the thing these tests care about.
+
+    Molly hides the cursor at the start of every frame, so the stream splits into
+    frames on that, and the message row is sampled once per frame to recover the
+    sequence of messages rather than only the last one.
+    """
+    from screen import Screen
+
+    scr = Screen(rows, cols)
+    seen = []
+    frames = out.split(b"\x1b[?25l")
+    for i, frame in enumerate(frames):
+        scr.feed((b"\x1b[?25l" if i else b"") + frame)
+        row = scr.text()[rows - 1] if len(scr.text()) >= rows else ""
+        if row.strip() and (not seen or seen[-1] != row):
+            seen.append(row)
+    return seen

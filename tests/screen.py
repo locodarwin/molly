@@ -20,6 +20,7 @@ plain cells: molly draws the status bar by turning on reverse video and then
 erasing the rest of the line, so getting this wrong would un-highlight it.
 """
 
+import codecs
 import unicodedata
 
 
@@ -63,8 +64,12 @@ class Screen:
         self.cursor_visible = True
         self.unhandled = []
         self._clear_all()
-        # incremental parser state
-        self._pending = b""
+        # Incremental parser state. The decoder buffers a sequence split across
+        # chunks and substitutes U+FFFD for a byte that is not valid UTF-8 at all
+        # -- molly passes the file's bytes through untouched, so a buffer holding
+        # invalid UTF-8 reaches the screen and must not stall the parser.
+        self._decoder = codecs.getincrementaldecoder("utf-8")("replace")
+        self._pending = ""
 
     # -- grid helpers --------------------------------------------------------
 
@@ -113,16 +118,10 @@ class Screen:
     def feed(self, data):
         """Consume a chunk of output. Safe to call repeatedly."""
         if isinstance(data, bytes):
-            # Hold back a trailing partial UTF-8 sequence or partial escape.
-            data = self._pending + data
-            self._pending = b""
-            try:
-                text = data.decode("utf-8")
-            except UnicodeDecodeError as exc:
-                text = data[: exc.start].decode("utf-8")
-                self._pending = data[exc.start:]
+            text = self._pending + self._decoder.decode(data)
         else:
-            text = data
+            text = self._pending + data
+        self._pending = ""
 
         i = 0
         n = len(text)
@@ -131,7 +130,7 @@ class Screen:
             if ch == "\x1b":
                 consumed = self._escape(text, i)
                 if consumed == 0:      # incomplete; wait for more output
-                    self._pending = text[i:].encode("utf-8") + self._pending
+                    self._pending = text[i:]
                     return
                 i += consumed
                 continue

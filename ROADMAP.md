@@ -264,7 +264,7 @@ loop.
   `CTRL_KEY(' ')` already produces, so it needs a spelling in the chord parser and
   nothing else.
 
-### 4. The widget toolkit
+### 4. The widget toolkit — **in progress**
 
 Only what the ported UIs and the menus actually need, which is less than it looks:
 
@@ -282,6 +282,17 @@ Only what the ported UIs and the menus actually need, which is less than it look
 Checkbox and radio group wait for the Find dialog in Phase 2 — including the
 "Match case" checkbox that replaces `Ctrl-T`.
 
+**Landed so far:** frame with title and drop shadow, label, list box (the open-file
+dialog) and text pane (the help screen). Still to come: the input field, with the
+prompt; buttons and focus order, with the first dialog that has two things to
+focus, which is Phase 2's Find dialog.
+
+**The prompt stays on the message line.** Turbo Vision would have made it a dialog
+— "Find what: [____] [OK] [Cancel]" — but Phase 2 replaces the find and replace
+prompts with exactly that dialog, checkbox and all, so framing them now means
+building them twice. Porting the prompt to an input-field widget on the message
+line is the part that is not wasted.
+
 ### 5. Mouse (SGR 1006)
 
 Before the menu bar, so the menu bar is clickable the day it exists.
@@ -294,7 +305,7 @@ Before the menu bar, so the menu bar is clickable the day it exists.
 - Hit-testing against the view stack, so menus and dialogs get their own clicks.
 - See **Decisions, E**.
 
-### 6. Port the three UIs onto the toolkit
+### 6. Port the three UIs onto the toolkit — **two of three done**
 
 The step that proves the toolkit, and the one that should make the diff negative:
 `editor_prompt` becomes an input field, `editor_help` a text pane, the open-file

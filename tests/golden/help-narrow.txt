@@ -49,5 +49,6 @@ EDITING
 
 
 --- colors ---
+--- modifiers ---
 --- cursor ---
 row 22 col 46 visible 0

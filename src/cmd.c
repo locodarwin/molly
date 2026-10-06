@@ -63,8 +63,9 @@ static int cmd_open(void) {
         "Open aborted: file has unsaved changes (Ctrl-S first)");
     return 0;
   }
+  /* No repaint needed on the way out: the dialog is a layer, so popping it is
+   * enough and the grid works out what to redraw. */
   char *path = editor_open_dialog();
-  screen_force_repaint();
   if (path != NULL) editor_switch_file(path);
   return 0;
 }

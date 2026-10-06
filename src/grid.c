@@ -49,6 +49,7 @@ static struct cell *prev;
 static int g_rows, g_cols;
 static int g_alloc;        /* cells allocated per plane */
 static int prev_valid;     /* 0 = the terminal's contents are unknown */
+static int cursor_shown;         /* a dialog hides it; see grid_cursor_hide */
 static unsigned char pen;        /* the role new cells are written with */
 static unsigned char pen_attrs;  /* and the modifiers they carry */
 static int want_cy, want_cx;
@@ -106,6 +107,7 @@ void grid_begin(void) {
   pen_attrs = 0;
   want_cy = 0;
   want_cx = 0;
+  cursor_shown = 1;
 }
 
 /* The role that subsequent writes are tagged with. Setting a role clears the
@@ -124,6 +126,13 @@ void grid_attrs(unsigned char attrs) {
 void grid_cursor_to(int y, int x) {
   want_cy = y;
   want_cx = x;
+}
+
+/* Leave the cursor hidden for this frame. A dialog with nothing to type into has
+ * no business parking a blinking cursor in the text underneath it. Reset by
+ * grid_begin, so it lasts one frame and has to be asked for again. */
+void grid_cursor_hide(void) {
+  cursor_shown = 0;
 }
 
 int grid_rows(void) { return g_rows; }
@@ -333,7 +342,7 @@ void grid_flush(void) {
   char pos[32];
   int plen = snprintf(pos, sizeof(pos), "\x1b[%d;%dH", want_cy + 1, want_cx + 1);
   ab_append(&ab, pos, plen);
-  ab_append(&ab, "\x1b[?25h", 6);
+  if (cursor_shown) ab_append(&ab, "\x1b[?25h", 6);
 
   write_all(STDOUT_FILENO, ab.b, (size_t)ab.len);
   free(ab.b);

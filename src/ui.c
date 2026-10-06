@@ -286,134 +286,158 @@ static int browser_load(const char *dir, struct browser_entry **out) {
   return n;
 }
 
-/* Truncate a name to fit a table cell without splitting a UTF-8 sequence:
- * a file name is arbitrary bytes and the box has fixed columns. */
-static void browser_fit(const char *s, int w, char *dst, size_t dsz) {
-  int n = 0;
-  while (s[n] != '\0' && n < w) n++;
-  while (n > 0 && ((unsigned char)s[n] & 0xC0) == 0x80) n--;
-  snprintf(dst, dsz, "%.*s", n, s);
+/* The list asks for a row rather than being handed one, so nothing is copied into
+ * the widget to be displayed. Directories are marked with a trailing slash, which
+ * is also how they sort apart from files. */
+struct browser_state {
+  struct browser_entry *ents;
+  int n;
+};
+
+static void browser_row(void *user, int i, char *dst, size_t dsz) {
+  struct browser_state *bs = user;
+  if (i < 0 || i >= bs->n) {
+    if (dsz) dst[0] = '\0';
+    return;
+  }
+  snprintf(dst, dsz, "%s%s", bs->ents[i].name,
+           bs->ents[i].is_dir ? "/" : "");
 }
 
-/* The dialog itself: returns a malloc'd path to open, or NULL if the user
- * canceled. Like the help screen it owns the terminal until dismissed, so
- * it re-reads the window size itself and repaints the whole frame per pass. */
+/* Show the tail of an over-long path: which corner of the tree we are in matters
+ * more than which root, and the cut lands on a character boundary. */
+static const char *path_tail(const char *dir, int cols) {
+  int len = (int)strlen(dir);
+  const char *p = dir;
+  if (cols < 1) cols = 1;
+  if (len > cols) {
+    p = dir + len - cols;
+    while (*p != '\0' && ((unsigned char)*p & 0xC0) == 0x80) p++;
+  }
+  return p;
+}
+
+/* The open-file dialog: returns a malloc'd path to open, or NULL if cancelled.
+ *
+ * A framed dialog on the layer stack now, rather than a full-screen takeover. It
+ * draws no escape sequences and clears nothing: it fills in cells, and the ordinary
+ * refresh paints it over the editor with a shadow. The loop stays here -- laying
+ * out, refreshing and reading a key -- which is what keeps this a straight-line
+ * function instead of a set of callbacks. */
 char *editor_open_dialog(void) {
   char dir[PATH_MAX];
-  if (getcwd(dir, sizeof(dir)) == NULL) snprintf(dir, sizeof(dir), ".");
+  struct browser_state bs;
+  struct widget widgets[4];
+  struct dialog d;
+  struct layer l;
+  const char *msg = "";
+  char *chosen = NULL;
+  int depth, li;
 
-  struct browser_entry *ents;
-  int n = browser_load(dir, &ents);
-  if (n == -1) {
+  if (getcwd(dir, sizeof(dir)) == NULL) snprintf(dir, sizeof(dir), ".");
+  bs.ents = NULL;
+  bs.n = browser_load(dir, &bs.ents);
+  if (bs.n == -1) {
     snprintf(dir, sizeof(dir), ".");
-    n = browser_load(dir, &ents);
-    if (n == -1) return NULL;
+    bs.n = browser_load(dir, &bs.ents);
+    if (bs.n == -1) return NULL;
   }
 
-  int sel = 0, top = 0;
-  const char *msg = "";
+  /* Built once so the selection and scroll position survive a resize; only their
+   * geometry is recomputed per pass. */
+  widget_label(&widgets[0], 0, 0, 1, dir);
+  widget_list(&widgets[1], 0, 1, 1, 1, bs.n, browser_row, &bs);
+  widget_label(&widgets[2], 0, 2, 1, "");
+  widget_label(&widgets[3], 0, 3, 1,
+               "Enter open   Esc cancel");
+
+  depth = layer_count();
+  memset(&l, 0, sizeof(l));
+  li = layer_push(&l);
+  if (li < 0) {
+    browser_free(bs.ents, bs.n);
+    return NULL;
+  }
+
   for (;;) {
-    help_refresh_size();
-    int view_h = V.screenrows - 4;   /* title, dir line, two footer rows */
-    if (view_h < 1) view_h = 1;
-    if (sel >= n) sel = (n > 0) ? n - 1 : 0;
-    if (sel < top) top = sel;
-    if (sel >= top + view_h) top = sel - view_h + 1;
+    struct layer *lp;
+    int cols, rows, list_h, c, ns;
 
-    struct abuf ab = ABUF_INIT;
-    ab_append(&ab, "\x1b[2J", 4);
-    ab_append(&ab, "\x1b[?25l", 6);
-    char pos[32];
-    help_centered(&ab, "Molly - Open File", 1);
+    /* Sized to the terminal, with a ceiling so it stays a dialog on a large
+     * screen rather than growing into one. */
+    cols = grid_cols() - 8;
+    if (cols > 72) cols = 72;
+    if (cols < 16) cols = 16;
+    rows = grid_rows() - 4;
+    if (rows > 20) rows = 20;
+    if (rows < 6) rows = 6;
 
-    /* Current directory on row 2; if it does not fit, the tail still shows
-     * which corner of the tree we are in, cut only at a UTF-8 boundary. */
-    int dl = (int)strlen(dir);
-    int wmax = V.screencols - 2;
-    if (wmax < 1) wmax = 1;
-    const char *dshow = dir;
-    if (dl > wmax) {
-      dshow = dir + dl - wmax;
-      while (*dshow != '\0' && ((unsigned char)*dshow & 0xC0) == 0x80)
-        dshow++;
-    }
-    snprintf(pos, sizeof(pos), "\x1b[2;2H");
-    ab_append(&ab, pos, strlen(pos));
-    ab_append(&ab, dshow, (int)strlen(dshow));
-    ab_append(&ab, "\x1b[K", 3);
+    /* Content rows: the path, the list, a message line, the key hints. */
+    list_h = rows - 2 - 3;
+    if (list_h < 1) list_h = 1;
 
-    int k;
-    for (k = 0; k < view_h && top + k < n; k++) {
-      struct browser_entry *e = &ents[top + k];
-      char name[PATH_MAX];
-      browser_fit(e->name, V.screencols - 2, name, sizeof(name));
-      snprintf(pos, sizeof(pos), "\x1b[%d;2H%s", 4 + k,
-               e == &ents[sel] ? "\x1b[7m" : "");
-      ab_append(&ab, pos, strlen(pos));
-      if (e->is_dir) {
-        ab_append(&ab, name, (int)strlen(name));
-        ab_append(&ab, "/", 1);
-      } else {
-        ab_append(&ab, name, (int)strlen(name));
-      }
-      ab_append(&ab, e == &ents[sel] ? "\x1b[27m\x1b[K" : "\x1b[K",
-                e == &ents[sel] ? 8 : 3);
-    }
-    if (n == 0) {
-      help_centered(&ab, "(empty directory)", 4);
-    }
+    widgets[0].w = cols - 4;
+    widgets[0].text = path_tail(dir, cols - 4);
+    widgets[1].y = 1;
+    widgets[1].w = cols - 4;
+    widgets[1].h = list_h;
+    widgets[1].count = bs.n;
+    widgets[2].y = 1 + list_h;
+    widgets[2].w = cols - 4;
+    widgets[2].text = msg;
+    widgets[3].y = 2 + list_h;
+    widgets[3].w = cols - 4;
+    widget_list_clamp(&widgets[1]);
 
-    help_centered(&ab,
-        "Arrows/PgUp/PgDn move  Enter select  Esc cancel",
-        V.screenrows - 1);
-    help_centered(&ab, msg, V.screenrows);
+    dialog_init(&d, "Open File", widgets, 4, cols - 2, rows - 2);
+    lp = layer_get(li);
+    dialog_layout(&d, lp);
+    editor_refresh_screen();
 
-    write_all(STDOUT_FILENO, ab.b, (size_t)ab.len);
-    free(ab.b);
+    c = ui_wait_key();
     msg = "";
-
-    int c = ui_wait_key();
     if (c == WINCH_KEY) continue;
-    int ns = sel;
-    if (c == ARROW_DOWN || c == CTRL_KEY('n')) ns = sel + 1;
-    else if (c == ARROW_UP || c == CTRL_KEY('p')) ns = sel - 1;
-    else if (c == PAGE_DOWN) ns = sel + view_h;
-    else if (c == PAGE_UP) ns = sel - view_h;
-    else if (c == HOME_KEY) ns = 0;
-    else if (c == END_KEY) ns = n - 1;
+
+    ns = 0;
+    if (c == ARROW_DOWN || c == CTRL_KEY('n')) ns = 1;
+    else if (c == ARROW_UP || c == CTRL_KEY('p')) ns = -1;
+    else if (c == PAGE_DOWN) ns = list_h;
+    else if (c == PAGE_UP) ns = -list_h;
+    else if (c == HOME_KEY) ns = -bs.n;
+    else if (c == END_KEY) ns = bs.n;
     else if (c == '\r') {
-      if (n == 0) continue;
       char path[PATH_MAX];
-      snprintf(path, sizeof(path), "%s/%s", dir, ents[sel].name);
-      if (!ents[sel].is_dir) {
-        browser_free(ents, n);
-        return xstrdup(path);
-      }
       struct browser_entry *ne;
-      int nn = browser_load(path, &ne);
+      int nn;
+      if (bs.n == 0) continue;
+      snprintf(path, sizeof(path), "%s/%s", dir, bs.ents[widgets[1].sel].name);
+      if (!bs.ents[widgets[1].sel].is_dir) {
+        chosen = xstrdup(path);
+        break;
+      }
+      nn = browser_load(path, &ne);
       if (nn == -1) {
         msg = "Cannot enter that directory";
         continue;
       }
-      browser_free(ents, n);
-      ents = ne;
-      n = nn;
+      browser_free(bs.ents, bs.n);
+      bs.ents = ne;
+      bs.n = nn;
       snprintf(dir, sizeof(dir), "%s", path);
-      sel = 0;
-      top = 0;
+      widgets[1].sel = 0;
+      widgets[1].top = 0;
       continue;
-    } else if (c == 27 || c == CTRL_KEY('c')) {
+    } else if (c == '\x1b' || c == CTRL_KEY('c')) {
       break;
     } else {
       continue;
     }
-    if (ns < 0) ns = 0;
-    if (ns > n - 1) ns = (n > 0) ? n - 1 : 0;
-    sel = ns;
+    widget_list_move(&widgets[1], ns);
   }
-  browser_free(ents, n);
-  screen_force_repaint();
-  return NULL;
+
+  layer_pop_to(depth);
+  browser_free(bs.ents, bs.n);
+  return chosen;
 }
 
 /* Replace the whole buffer with another file: the point of the dialog. The

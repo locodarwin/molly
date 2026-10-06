@@ -49,5 +49,6 @@ EDITING                                     Ctrl-L         Redraw screen
 
 
 --- colors ---
+--- modifiers ---
 --- cursor ---
 row 22 col 61 visible 0

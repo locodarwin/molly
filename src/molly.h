@@ -244,6 +244,39 @@ struct layer {
   void *user;
 };
 
+/* --- dialogs and widgets -----------------------------------------------------
+ *
+ * A dialog is a layer with a frame, a title and some widgets. Widgets are declared
+ * by the dialog's owner and positioned relative to the content area inside the
+ * frame; the owner also keeps the key loop, so a dialog stays a straight-line
+ * function rather than a callback. See widget.c. */
+
+enum widget_kind {
+  W_LABEL = 0,
+  W_LIST
+};
+
+/* A list asks its owner for a row's text rather than owning the data, so nothing
+ * has to be copied into the widget to be shown. */
+typedef void (*widget_row_fn)(void *user, int i, char *dst, size_t dsz);
+
+struct widget {
+  int kind;
+  int x, y, w, h;       /* relative to the dialog's content area */
+  const char *text;     /* label */
+  int count;            /* list: rows available */
+  int sel, top;         /* list: selection, and the first row shown */
+  widget_row_fn row;
+  void *user;
+};
+
+struct dialog {
+  const char *title;
+  int cols, rows;       /* content size; the frame adds one on each side */
+  struct widget *widgets;
+  int nwidgets;
+};
+
 /* --- the event loop --------------------------------------------------------
  *
  * What loop_wait returns. The keyboard is reported; every other source is
@@ -304,6 +337,15 @@ enum cell_role {
   ROLE_SELECTION,  /* selected buffer text */
   ROLE_STATUS,     /* the status bar */
   ROLE_MESSAGE,    /* the message bar */
+
+  /* Dialogs paint their own background rather than inheriting the terminal's, so
+   * they read as panels floating over the text and look the same wherever molly
+   * runs. Turbo Vision's chrome, in colors from this century. */
+  ROLE_DIALOG,         /* a dialog's body */
+  ROLE_DIALOG_FRAME,   /* its double-line border */
+  ROLE_DIALOG_TITLE,   /* the title inset in the top border */
+  ROLE_DIALOG_SHADOW,  /* the text it overshadows, dimmed */
+  ROLE_LIST_SELECTED,  /* the current row of a list */
   ROLE_COUNT
 };
 
@@ -384,6 +426,7 @@ int grid_rows(void);
 void grid_attrs(unsigned char attrs);
 void grid_begin(void);
 void grid_cleanup(void);
+void grid_cursor_hide(void);
 void grid_cursor_to(int y, int x);
 void grid_fill(int y, int x, int n, char c);
 void grid_flush(void);
@@ -516,5 +559,14 @@ void cursors_init(void);
 void drow_at(int index, struct drow *out);
 void editor_move_cursor(int key);
 void editor_scroll(void);
+
+/* widget.c */
+void dialog_draw(const struct layer *self);
+void dialog_init(struct dialog *d, const char *title, struct widget *widgets, int nwidgets, int cols, int rows);
+void dialog_layout(struct dialog *d, struct layer *l);
+void widget_label(struct widget *w, int x, int y, int cols, const char *text);
+void widget_list(struct widget *w, int x, int y, int cols, int rows, int count, widget_row_fn row, void *user);
+void widget_list_clamp(struct widget *w);
+void widget_list_move(struct widget *w, int delta);
 
 #endif /* MOLLY_H */

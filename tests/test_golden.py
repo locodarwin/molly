@@ -107,9 +107,15 @@ def main():
                              text=True).stdout.strip().split()[-1]
 
     os.makedirs(GOLDEN_DIR, exist_ok=True)
-    # Run from a scratch directory so the status bar shows a stable name.
+    # Run from a scratch directory with a *fixed* name, not a random one: the
+    # status bar shows the file name and the open dialog shows the directory
+    # path, so a random temp directory would put a different string in the
+    # snapshot on every run.
+    import shutil
     import tempfile
-    tmp = tempfile.mkdtemp(prefix="molly-golden-")
+    tmp = os.path.join(tempfile.gettempdir(), "molly-golden")
+    shutil.rmtree(tmp, ignore_errors=True)
+    os.makedirs(tmp)
     os.chdir(tmp)
 
     print("\ngolden screens (molly %s)" % VERSION)
@@ -149,6 +155,17 @@ def main():
 
     # A small terminal, where the row budget is tightest.
     check("tiny-terminal", [], rows=6, cols=24, files={"sample.txt": THREE_LINES})
+
+    # The open-file dialog: a framed, shadowed layer over the editor. The
+    # listing is this scratch directory, so it is exactly what the test made.
+    os.makedirs("subdir", exist_ok=True)
+    check("open-dialog", ["\x0f"], rows=20, cols=64,
+          files={"sample.txt": THREE_LINES})
+    check("open-dialog-narrow", ["\x0f"], rows=12, cols=40,
+          files={"sample.txt": THREE_LINES})
+    # Moving the selection must move the highlight and nothing else.
+    check("open-dialog-selected", ["\x0f", "\x1b[B", "\x1b[B"], rows=20, cols=64,
+          files={"sample.txt": THREE_LINES})
 
     # Resizing: the grid is reallocated and the frame repainted in full. Shrinking
     # has to drop rows and columns without leaving anything behind; growing has to

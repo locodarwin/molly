@@ -41,5 +41,6 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 10: 0-4 8/-
 11: 0-4 8/-
 12: 0-4 8/-
+--- modifiers ---
 --- cursor ---
 row 1 col 5 visible 1

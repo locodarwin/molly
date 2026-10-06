@@ -67,6 +67,8 @@ class Screen:
         self.reverse = False
         self.fg = None          # palette index, or None for the terminal default
         self.bg = None
+        self.bold = False
+        self.underline = False
         self.cursor_visible = True
         self.unhandled = []
         self._clear_all()
@@ -88,10 +90,14 @@ class Screen:
     def _blank_colors(self):
         return [(None, None)] * self.cols
 
+    def _blank_mods(self):
+        return [""] * self.cols
+
     def _clear_all(self):
         self.grid = [self._blank_row() for _ in range(self.rows)]
         self.attrs = [self._blank_attrs() for _ in range(self.rows)]
         self.colors = [self._blank_colors() for _ in range(self.rows)]
+        self.mods = [self._blank_mods() for _ in range(self.rows)]
 
     def resize(self, rows, cols):
         """Follow a pty resize. Content is dropped; molly repaints in full."""
@@ -99,6 +105,9 @@ class Screen:
         self.cy = min(self.cy, rows - 1)
         self.cx = min(self.cx, cols - 1)
         self._clear_all()
+
+    def _mod_str(self):
+        return ("b" if self.bold else "") + ("u" if self.underline else "")
 
     def _put(self, ch):
         w = char_width(ch)
@@ -118,11 +127,13 @@ class Screen:
         self.grid[self.cy][self.cx] = ch
         self.attrs[self.cy][self.cx] = a
         self.colors[self.cy][self.cx] = (self.fg, self.bg)
+        self.mods[self.cy][self.cx] = self._mod_str()
         self.cx += 1
         if w == 2 and self.cx < self.cols:
             self.grid[self.cy][self.cx] = self.WIDE_TAIL
             self.attrs[self.cy][self.cx] = a
             self.colors[self.cy][self.cx] = (self.fg, self.bg)
+            self.mods[self.cy][self.cx] = self._mod_str()
             self.cx += 1
 
     # -- the parser ----------------------------------------------------------
@@ -211,6 +222,7 @@ class Screen:
                 self.grid[self.cy][x] = " "
                 self.attrs[self.cy][x] = a
                 self.colors[self.cy][x] = (self.fg, self.bg)
+                self.mods[self.cy][x] = self._mod_str()
         elif final == "J":
             mode = nums[0] if nums else 0
             if mode == 2:
@@ -220,10 +232,12 @@ class Screen:
                     self.grid[self.cy][x] = " "
                     self.attrs[self.cy][x] = "."
                     self.colors[self.cy][x] = (None, None)
+                    self.mods[self.cy][x] = ""
                 for y in range(self.cy + 1, self.rows):
                     self.grid[y] = self._blank_row()
                     self.attrs[y] = self._blank_attrs()
                     self.colors[y] = self._blank_colors()
+                    self.mods[y] = self._blank_mods()
         elif final == "m":
             # Parsed sequentially rather than per-parameter, because 38;5;N and
             # 48;5;N are one instruction spread over three parameters.
@@ -236,6 +250,16 @@ class Screen:
                     self.reverse = False
                     self.fg = None
                     self.bg = None
+                    self.bold = False
+                    self.underline = False
+                elif v == 1:
+                    self.bold = True
+                elif v == 22:
+                    self.bold = False
+                elif v == 4:
+                    self.underline = True
+                elif v == 24:
+                    self.underline = False
                 elif v == 7:
                     self.reverse = True
                 elif v == 27:
@@ -319,6 +343,31 @@ class Screen:
                 out.append("%d: %s" % (y + 1, "  ".join(runs)))
         return out
 
+    def mod_rows(self):
+        """Bold and underline, as "row: startcol-endcol flags" runs.
+
+        A separate section rather than more letters in the attribute map: a
+        mnemonic is its container's colors plus an underline, so modifiers combine
+        with everything else and folding them into one character per cell would
+        need a letter per combination.
+        """
+        out = []
+        for y, row in enumerate(self.mods):
+            runs = []
+            x = 0
+            while x < self.cols:
+                if not row[x]:
+                    x += 1
+                    continue
+                flags = row[x]
+                start = x
+                while x < self.cols and row[x] == flags:
+                    x += 1
+                runs.append("%d-%d %s" % (start, x - 1, flags))
+            if runs:
+                out.append("%d: %s" % (y + 1, "  ".join(runs)))
+        return out
+
     def snapshot(self):
         """Screen plus attributes, in the form the golden files store."""
         lines = ["--- screen ---"]
@@ -327,6 +376,8 @@ class Screen:
         lines += self.attr_rows()
         lines.append("--- colors ---")
         lines += self.color_rows()
+        lines.append("--- modifiers ---")
+        lines += self.mod_rows()
         lines.append("--- cursor ---")
         lines.append("row %d col %d visible %d"
                      % (self.cy + 1, self.cx + 1, int(self.cursor_visible)))

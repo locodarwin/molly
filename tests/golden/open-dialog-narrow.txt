@@ -1,0 +1,40 @@
+--- screen ---
+alpha
+beta
+gamm╔═════════ Open File ══════════╗
+~   ║ /tmp/molly-golden            ║
+~   ║ ../                          ║
+~   ║ subdir/                      ║
+~   ║ sample.txt                   ║
+~   ║                              ║
+~   ║ Enter open   Esc cancel      ║
+~   ╚══════════════════════════════╝
+sample.txt - 3 lines         Ln 1, Col 1
+HELP: Ctrl-S = save | Ctrl-Q = quit | Ct
+--- attrs ---
+
+
+....gggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggg
+RRRRRRggggggggggggggggggggggggggggggggRR
+
+--- colors ---
+3: 4-14 7/8  15-23 15/8  24-35 7/8
+4: 0-0 8/-  4-4 7/8  5-34 15/8  35-35 7/8  36-37 8/0
+5: 0-0 8/-  4-4 7/8  5-5 15/8  6-33 15/4  34-34 15/8  35-35 7/8  36-37 8/0
+6: 0-0 8/-  4-4 7/8  5-34 15/8  35-35 7/8  36-37 8/0
+7: 0-0 8/-  4-4 7/8  5-34 15/8  35-35 7/8  36-37 8/0
+8: 0-0 8/-  4-4 7/8  5-34 15/8  35-35 7/8  36-37 8/0
+9: 0-0 8/-  4-4 7/8  5-34 15/8  35-35 7/8  36-37 8/0
+10: 0-0 8/-  4-35 7/8  36-37 8/0
+11: 6-37 8/0
+--- modifiers ---
+3: 15-23 b
+--- cursor ---
+row 1 col 1 visible 0

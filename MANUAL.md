@@ -243,6 +243,12 @@ memory on history alone. (The step limit can be lowered through the
 `MOLLY_UNDO_STEPS` environment variable, which is how the test suite
 exercises the eviction.)
 
+Setting `MOLLY_DUMP_KEYMAP` makes Molly print its keymap as
+`chord<TAB>command` lines and exit without touching the terminal. Every
+binding there has been parsed from chord text at startup and printed back, so
+the output is both a reference for what is bound and how the test suite checks
+the chord code. It is also the form the configuration file will use.
+
 Changes are aggregated this way:
 
 - A run of typed characters undoes as one step.

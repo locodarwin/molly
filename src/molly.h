@@ -232,6 +232,38 @@ struct drow {
 
 #define TEXT_COLS() (V.screencols - V.gutter_w)
 
+/* --- commands ---------------------------------------------------------------
+ *
+ * Every action the editor can perform is one of these, reached by name. The
+ * dispatcher looks a key up in the keymap and runs what it finds; it never names
+ * an action itself, which is what lets the menu bar, a command palette, a macro
+ * recorder and a configurable keymap all be built on the same table. */
+
+/* Flags on a command. */
+#define CMD_MOVEMENT 0x01  /* a shifted press of this extends the selection */
+
+/* What a command tells the dispatcher to do afterwards. */
+#define CMD_KEEP_SELECTION  0x01  /* do not clear the selection (copy) */
+#define CMD_KEEP_QUIT_COUNT 0x02  /* do not reset Ctrl-Q's countdown */
+
+struct command {
+  const char *name;   /* "file.save": stable, for config, macros and the palette */
+  const char *label;  /* menu text; NULL for commands with no menu entry */
+  const char *help;   /* help-screen description; NULL = not listed there */
+  const char *group;  /* help-screen group heading */
+  unsigned flags;     /* CMD_MOVEMENT */
+  int (*run)(void);   /* returns CMD_KEEP_* flags */
+};
+
+/* One line of the help screen. A literal key covers several keys at once, or
+ * behavior that is not a command; otherwise both columns come from the command. */
+struct help_entry {
+  const char *group;  /* non-NULL starts a new group */
+  const char *key;
+  const char *desc;
+  const char *cmd;
+};
+
 /* Cell attributes on the grid. Gray is the gutter's dimming; reverse is the
  * selection and the status bar. Syntax highlighting adds colors here. */
 #define ATTR_REVERSE 0x01
@@ -268,6 +300,18 @@ void saved_snapshot_free(void);
 void saved_snapshot_take(void);
 void write_recovery_file(void);
 
+/* cmd.c */
+const struct command *cmd_find_by_name(const char *name);
+const struct command *keymap_lookup(int key);
+int chord_parse(const char *s);
+int cmd_shortcut(const char *name, char *dst, size_t n);
+int help_entry_count(void);
+void chord_name(int key, char *dst, size_t n);
+void editor_process_keypress(void);
+void help_entry_at(int i, const char **group, char *key, size_t keysz, const char **desc);
+void keymap_dump(FILE *out);
+void keymap_init(void);
+
 /* edit.c */
 void editor_del_char(void);
 void editor_delete_char(void);
@@ -294,7 +338,6 @@ int input_last_key_had_shift(void);
 
 /* main.c */
 void editor_cleanup(void);
-void editor_process_keypress(void);
 void init_editor(void);
 
 /* screen.c */

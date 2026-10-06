@@ -1,206 +1,6 @@
-/* main.c -- Startup, the key dispatch table in all but name, and the main loop. */
+/* main.c -- Startup, teardown and the main loop. Key dispatch lives in cmd.c. */
 
 #include "molly.h"
-
-void editor_process_keypress(void) {
-  static int quit_times = KILO_QUIT_TIMES;
-  int c = editor_read_key();
-  int shift = input_last_key_had_shift();
-  int pre_cx = CUR.cx, pre_cy = CUR.cy;
-  int sel_move = (c == ARROW_UP || c == ARROW_DOWN || c == ARROW_LEFT ||
-      c == ARROW_RIGHT || c == HOME_KEY || c == END_KEY ||
-      c == PAGE_UP || c == PAGE_DOWN);
-
-  switch (c) {
-    case '\r':
-      if (CUR.sel_active) selection_delete();
-      editor_insert_newline();
-      break;
-
-    case CTRL_KEY('q'):
-      if (B.dirty && quit_times > 0) {
-        editor_set_status_message(
-            "WARNING!!! File has unsaved changes. Press Ctrl-Q %d more times to quit.",
-            quit_times);
-        quit_times--;
-        return;
-      }
-      write_all(STDOUT_FILENO, "\x1b[2J", 4);
-      write_all(STDOUT_FILENO, "\x1b[H", 3);
-      if (B.recovery_path[0] != '\0') unlink(B.recovery_path);
-      exit(0);
-      break;
-
-    case CTRL_KEY('s'):
-      editor_save();
-      break;
-
-    case CTRL_KEY('o'): {
-      /* One buffer, one file: the open dialog replaces the buffer, so it
-       * is refused while there is unsaved work rather than silently
-       * discarding it. */
-      if (B.dirty) {
-        editor_set_status_message(
-            "Open aborted: file has unsaved changes (Ctrl-S first)");
-        break;
-      }
-      char *path = editor_open_dialog();
-      screen_force_repaint();
-      if (path != NULL) editor_switch_file(path);
-      break;
-    }
-
-    case CTRL_KEY('z'):
-      editor_undo();
-      break;
-
-    case CTRL_KEY('y'):
-      editor_redo();
-      break;
-
-    case CTRL_KEY('c'): {
-      /* Copy: selection to clipboard, selection kept (see the clear guard
-       * below). Ctrl-C only reaches here because raw mode clears ISIG. */
-      if (CUR.sel_active) {
-        int n = 0;
-        char *s = selection_dup(&n);
-        clipboard_set(s, n);
-        free(s);
-        clipboard_sync_system();
-        editor_set_status_message("Copied %d bytes", n);
-      }
-      break;
-    }
-
-    case CTRL_KEY('x'):
-      /* Cut: copy then delete the selection (one undo step). */
-      if (CUR.sel_active) {
-        int n = 0;
-        char *s = selection_dup(&n);
-        clipboard_set(s, n);
-        free(s);
-        clipboard_sync_system();
-        selection_delete();
-        editor_set_status_message("Cut %d bytes", n);
-      }
-      break;
-
-    case CTRL_KEY('v'):
-      editor_paste();
-      break;
-
-    case CTRL_KEY('f'):
-      editor_find();
-      break;
-
-    case CTRL_KEY('n'):
-      editor_find_next();
-      break;
-
-    case CTRL_KEY('p'):
-      editor_find_prev();
-      break;
-
-    case CTRL_KEY('t'):
-      editor_toggle_case_sensitive();
-      break;
-
-    case CTRL_KEY('r'):
-      editor_replace();
-      break;
-
-    case CTRL_KEY('g'):
-      editor_goto_line();
-      break;
-
-    case CTRL_KEY('?'):
-      editor_help();
-      break;
-
-    case HOME_KEY:
-      CUR.cx = 0;
-      break;
-
-    case END_KEY:
-      if (CUR.cy < row_count()) CUR.cx = (*row_at(CUR.cy)).size;
-      break;
-
-    case BACKSPACE:
-    case CTRL_KEY('h'):
-    case DEL_KEY:
-      if (CUR.sel_active) {
-        selection_delete();
-      } else if (c == DEL_KEY) {
-        editor_del_char();
-      } else {
-        editor_delete_char();
-      }
-      break;
-
-    case PAGE_UP:
-    case PAGE_DOWN:
-      {
-        int times = V.screenrows;
-        while (times--)
-          editor_move_cursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
-      }
-      break;
-
-    case ARROW_UP:
-    case ARROW_DOWN:
-    case ARROW_LEFT:
-    case ARROW_RIGHT:
-      editor_move_cursor(c);
-      break;
-
-    case CTRL_KEY('l'):
-      screen_force_repaint();
-      break;
-
-    case CTRL_KEY('u'):
-      V.linenum = !V.linenum;
-      /* The gutter widens or shrinks the text area, shifting every column, so
-       * repaint the whole screen rather than trust per-row diffing. */
-      screen_force_repaint();
-      editor_set_status_message("Line numbers: %s", V.linenum ? "on" : "off");
-      break;
-
-    case WINCH_KEY:
-      /* Not a keystroke -- just loop back so the next editor_refresh_screen
-       * picks up the new terminal size. Return rather than break, so this
-       * doesn't reset the Ctrl-Q quit-confirmation countdown. */
-      return;
-
-    case '\x1b':
-      break;
-
-    default:
-      /* Tab is a control character, so testing iscntrl() alone threw it
-       * away and a tab could not be typed at all. Key codes of 1000 and up
-       * are outside iscntrl()'s domain and must not reach it. */
-      if (c == '\t' || (c < 256 && !iscntrl(c))) {
-        if (CUR.sel_active) selection_delete();
-        editor_insert_char(c);
-      }
-      break;
-  }
-
-  /* A shifted movement extends the selection (seeding the anchor on the first
-   * one from a resting cursor). Copying keeps the selection; every other
-   * plain move, edit, or command drops it. Edits that need the selected text
-   * first consume it via selection_delete() above. */
-  if (sel_move && shift) {
-    if (!CUR.sel_active) {
-      CUR.sx = pre_cx;
-      CUR.sy = pre_cy;
-      CUR.sel_active = 1;
-    }
-  } else if (c != CTRL_KEY('c')) {
-    selection_clear();
-  }
-
-  quit_times = KILO_QUIT_TIMES;
-}
 
 void editor_cleanup(void) {
   int i;
@@ -229,6 +29,7 @@ void init_editor(void) {
   /* One view onto one buffer. Everything that reads rows goes through the view
    * from here on, so a second buffer is a matter of pointing V.buf elsewhere. */
   V.buf = &B;
+  keymap_init();
   cursors_init();
   V.drowoff = 0;
   V.coloff = 0;
@@ -301,6 +102,14 @@ int main(int argc, char *argv[]) {
     }
     if (first_extra == NULL) first_extra = (char *)a;
     num_extra++;
+  }
+
+  /* Test hook (documented in MANUAL.md): print the parsed keymap and exit,
+   * before the terminal is touched. */
+  if (getenv("MOLLY_DUMP_KEYMAP") != NULL) {
+    keymap_init();
+    keymap_dump(stdout);
+    return 0;
   }
 
   enable_raw_mode();

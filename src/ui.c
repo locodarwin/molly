@@ -49,72 +49,35 @@ char *editor_prompt(char *prompt, void (*callback)(char *, int)) {
  * Every keybinding lives here, grouped by function. The renderer drops to a
  * single column when the terminal is narrow and scrolls when the content is
  * taller than the screen, so nothing is ever clipped. */
-struct help_item { const char *key; const char *desc; };
-struct help_group { const char *title; const struct help_item *items; };
+/* The help screen's text comes from the command table (cmd.c): a rebinding or a
+ * new command updates it with nothing to keep in step here. What remains is the
+ * layout -- two columns when there is room -- and an index of where each group
+ * starts in the flat entry list, since the column split is by group. */
 
-static const struct help_item help_items_files[] = {
-  {"Ctrl-S",   "Save file"},
-  {"Ctrl-O",   "Open a file"},
-  {"Ctrl-Q",   "Quit"},
-  {"Ctrl-?",   "This help screen"},
-  {NULL, NULL}
-};
-static const struct help_item help_items_movement[] = {
-  {"Arrows",       "Move cursor"},
-  {"PgUp/PgDn",    "Page up / down"},
-  {"Home/End",     "Line start / end"},
-  {"Ctrl-G",       "Go to line"},
-  {NULL, NULL}
-};
-static const struct help_item help_items_selection[] = {
-  {"Shift+Arrows",   "Extend selection"},
-  {"Shift+Home/End", "To line edge"},
-  {"Shift+PgUp/Dn",  "Extend by page"},
-  {NULL, NULL}
-};
-static const struct help_item help_items_editing[] = {
-  {"Enter",      "Insert new line"},
-  {"Tab",        "Insert tab"},
-  {"Bksp/Ctrl-H","Delete before"},
-  {"Del",        "Delete at cursor"},
-  {NULL, NULL}
-};
-static const struct help_item help_items_find[] = {
-  {"Ctrl-F", "Find forward"},
-  {"Ctrl-N", "Find next"},
-  {"Ctrl-P", "Find previous"},
-  {"Ctrl-T", "Case sensitivity"},
-  {"Ctrl-R", "Find & replace"},
-  {NULL, NULL}
-};
-static const struct help_item help_items_clip[] = {
-  {"Ctrl-C", "Copy selection"},
-  {"Ctrl-X", "Cut selection"},
-  {"Ctrl-V", "Paste at cursor"},
-  {NULL, NULL}
-};
-static const struct help_item help_items_history[] = {
-  {"Ctrl-Z", "Undo"},
-  {"Ctrl-Y", "Redo"},
-  {NULL, NULL}
-};
-static const struct help_item help_items_view[] = {
-  {"Ctrl-L", "Redraw screen"},
-  {"Ctrl-U", "Line numbers"},
-  {NULL, NULL}
-};
+#define HELP_MAXGROUPS 16
+static const char *help_group_title[HELP_MAXGROUPS];
+static int help_group_start[HELP_MAXGROUPS];
+static int help_group_n;
 
-/* Order matters: the two-column split takes the first half vs the second. */
-static const struct help_group help_groups[] = {
-  {"FILES",          help_items_files},
-  {"MOVEMENT",       help_items_movement},
-  {"SELECTION",      help_items_selection},
-  {"EDITING",        help_items_editing},
-  {"FIND & REPLACE", help_items_find},
-  {"CLIPBOARD",      help_items_clip},
-  {"HISTORY",        help_items_history},
-  {"VIEW",           help_items_view},
-};
+static void help_index_groups(void) {
+  int i, n = help_entry_count();
+  char key[64];
+  const char *group, *desc;
+  help_group_n = 0;
+  for (i = 0; i < n; i++) {
+    help_entry_at(i, &group, key, sizeof(key), &desc);
+    if (group != NULL && help_group_n < HELP_MAXGROUPS) {
+      help_group_title[help_group_n] = group;
+      help_group_start[help_group_n] = i;
+      help_group_n++;
+    }
+  }
+}
+
+/* Where group g's entries end (exclusive). */
+static int help_group_end(int g) {
+  return (g + 1 < help_group_n) ? help_group_start[g + 1] : help_entry_count();
+}
 
 #define HELP_WIDE 80      /* two columns at or above this width */
 #define HELP_GAP 4        /* blank columns between the two columns */
@@ -131,12 +94,15 @@ static void help_build_col(char col[HELP_MAXROWS][HELP_MAXW], int *rn,
   int r = 0, g;
   for (g = g0; g <= g1 && r < HELP_MAXROWS - 1; g++) {
     if (g > g0) { col[r][0] = '\0'; r++; }
-    snprintf(col[r], HELP_MAXW, "%s", help_groups[g].title);
+    snprintf(col[r], HELP_MAXW, "%s", help_group_title[g]);
     r++;
-    const struct help_item *it;
-    for (it = help_groups[g].items; it->key && r < HELP_MAXROWS - 1; it++) {
+    int i, end = help_group_end(g);
+    for (i = help_group_start[g]; i < end && r < HELP_MAXROWS - 1; i++) {
+      const char *group, *desc;
+      char key[64];
+      help_entry_at(i, &group, key, sizeof(key), &desc);
       snprintf(col[r], HELP_MAXW, "  %-*.*s %.*s",
-               keyw, keyw, it->key, descw, it->desc);
+               keyw, keyw, key, descw, desc);
       r++;
     }
   }
@@ -179,6 +145,7 @@ static void help_refresh_size(void) {
 
 void editor_help(void) {
   int scroll = 0;
+  help_index_groups();
   for (;;) {
     /* Recompute the whole layout from the live terminal size on every pass, so
      * a resize (surfaced as WINCH_KEY) reflows one-column vs two-column, recent
@@ -194,7 +161,7 @@ void editor_help(void) {
     int descw = colw - 3 - keyw;
     if (descw < 1) descw = 1;
 
-    int ngroups = (int)(sizeof(help_groups) / sizeof(help_groups[0]));
+    int ngroups = help_group_n;
     int nl, nr;
     if (wide) {
       int mid = ngroups / 2;

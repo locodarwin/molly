@@ -24,6 +24,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pty_harness import run, run_until_signal, status_lines, cursor_col
+from screen import Screen
 
 MOLLY = None
 SAVE = "\x13"
@@ -1355,6 +1356,54 @@ def test_input_decoding(tmpdir):
           edit(tmpdir, "ab\n", ["\x1b[", 0.6, "X", SAVE]), "Xab\n")
 
 
+def test_command_table(tmpdir):
+    print("\ncommands: the keymap is parsed from chord text")
+
+    env = dict(os.environ, MOLLY_DUMP_KEYMAP="1")
+    out = subprocess.run([MOLLY], capture_output=True, text=True, env=env)
+    check("the dump exits cleanly", out.returncode, 0)
+    lines = [l for l in out.stdout.split("\n") if l.strip()]
+    pairs = [tuple(l.split("\t")) for l in lines]
+    bound = dict(pairs)
+
+    # Every binding has been through chord_parse on the way in and chord_name on
+    # the way out, so what comes back proves the round trip. Spot-check each
+    # chord shape the parser accepts: a control key, the one named with a
+    # punctuation character, named keys, and the editing keys.
+    for chord, cmd in [("Ctrl-S", "file.save"),
+                       ("Ctrl-Q", "file.quit"),
+                       ("Ctrl-?", "view.help"),
+                       ("Ctrl-G", "goto.line"),
+                       ("Enter", "edit.newline"),
+                       ("Backspace", "edit.delete-back"),
+                       ("Ctrl-H", "edit.delete-back"),
+                       ("Del", "edit.delete-forward"),
+                       ("Left", "move.left"),
+                       ("PgUp", "move.page-up"),
+                       ("PgDn", "move.page-down"),
+                       ("Home", "move.line-start"),
+                       ("End", "move.line-end"),
+                       ("Ctrl-U", "view.line-numbers")]:
+        check("%s is bound to %s" % (chord, cmd), bound.get(chord), cmd)
+
+    # Two chords may share one command, so the list is longer than the set of
+    # commands it names; and no chord may be bound twice.
+    chords = [c for c, _ in pairs]
+    check("no chord is bound twice", len(chords), len(set(chords)))
+    check("every binding names a command",
+          all(name and "." in name for _, name in pairs), True)
+
+    # The help screen takes its key column from this same keymap, so what it
+    # shows for a command has to be the chord that actually runs it.
+    out2 = run([MOLLY, os.path.join(tmpdir, "h.txt")], ["\x1f"])
+    scr = Screen(24, 80)
+    scr.feed(out2)
+    shown = "\n".join(scr.text())
+    check("help shows the bound chord for save", "Ctrl-S" in shown, True)
+    check("help shows the bound chord for help", "Ctrl-?" in shown, True)
+    check("help shows the bound chord for go to line", "Ctrl-G" in shown, True)
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -1365,6 +1414,7 @@ def main():
     try:
         test_keys(tmpdir)
         test_input_decoding(tmpdir)
+        test_command_table(tmpdir)
         test_tab(tmpdir)
         test_utf8(tmpdir)
         test_wide(tmpdir)

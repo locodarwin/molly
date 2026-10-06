@@ -35,15 +35,20 @@ def char_width(ch):
     return 1
 
 
-# A cell's attributes, as a single character so a whole screen of them can be
-# compared and printed as text:
-#   '.' plain      'R' reverse      'g' gray      'G' gray + reverse
-def _attr_char(reverse, gray):
-    if reverse and gray:
+# A cell's attributes as a single character, so a whole screen of them compares
+# and prints as text:
+#   '.' plain   'R' reverse   'g' colored   'G' colored + reverse
+#
+# "colored" rather than "gray": molly's only color was the gray gutter when this
+# was written, and the letter is kept so the snapshots stay comparable. Which
+# color it actually is lives in the separate color map, where a wrong palette
+# index shows up as a wrong number instead of hiding inside a 'g'.
+def _attr_char(reverse, colored):
+    if reverse and colored:
         return "G"
     if reverse:
         return "R"
-    if gray:
+    if colored:
         return "g"
     return "."
 
@@ -60,7 +65,8 @@ class Screen:
         self.cy = 0
         self.cx = 0
         self.reverse = False
-        self.gray = False
+        self.fg = None          # palette index, or None for the terminal default
+        self.bg = None
         self.cursor_visible = True
         self.unhandled = []
         self._clear_all()
@@ -79,9 +85,13 @@ class Screen:
     def _blank_attrs(self):
         return ["."] * self.cols
 
+    def _blank_colors(self):
+        return [(None, None)] * self.cols
+
     def _clear_all(self):
         self.grid = [self._blank_row() for _ in range(self.rows)]
         self.attrs = [self._blank_attrs() for _ in range(self.rows)]
+        self.colors = [self._blank_colors() for _ in range(self.rows)]
 
     def resize(self, rows, cols):
         """Follow a pty resize. Content is dropped; molly repaints in full."""
@@ -96,7 +106,7 @@ class Screen:
             return  # molly never draws past the edge; drop rather than wrap
         if self.cy >= self.rows:
             return
-        a = _attr_char(self.reverse, self.gray)
+        a = _attr_char(self.reverse, self.fg is not None or self.bg is not None)
         if w == 0:
             # Combining mark: attach to the cell to the left, as a terminal does.
             x = self.cx - 1
@@ -107,10 +117,12 @@ class Screen:
             return
         self.grid[self.cy][self.cx] = ch
         self.attrs[self.cy][self.cx] = a
+        self.colors[self.cy][self.cx] = (self.fg, self.bg)
         self.cx += 1
         if w == 2 and self.cx < self.cols:
             self.grid[self.cy][self.cx] = self.WIDE_TAIL
             self.attrs[self.cy][self.cx] = a
+            self.colors[self.cy][self.cx] = (self.fg, self.bg)
             self.cx += 1
 
     # -- the parser ----------------------------------------------------------
@@ -188,7 +200,7 @@ class Screen:
             self.cx = max(0, min(col, self.cols - 1))
         elif final == "K":
             mode = nums[0] if nums else 0
-            a = _attr_char(self.reverse, self.gray)
+            a = _attr_char(self.reverse, self.fg is not None or self.bg is not None)
             if mode == 0:
                 rng = range(self.cx, self.cols)
             elif mode == 1:
@@ -198,6 +210,7 @@ class Screen:
             for x in rng:
                 self.grid[self.cy][x] = " "
                 self.attrs[self.cy][x] = a
+                self.colors[self.cy][x] = (self.fg, self.bg)
         elif final == "J":
             mode = nums[0] if nums else 0
             if mode == 2:
@@ -206,24 +219,48 @@ class Screen:
                 for x in range(self.cx, self.cols):
                     self.grid[self.cy][x] = " "
                     self.attrs[self.cy][x] = "."
+                    self.colors[self.cy][x] = (None, None)
                 for y in range(self.cy + 1, self.rows):
                     self.grid[y] = self._blank_row()
                     self.attrs[y] = self._blank_attrs()
+                    self.colors[y] = self._blank_colors()
         elif final == "m":
+            # Parsed sequentially rather than per-parameter, because 38;5;N and
+            # 48;5;N are one instruction spread over three parameters.
             if not nums:
                 nums = [0]
-            for v in nums:
+            i = 0
+            while i < len(nums):
+                v = nums[i]
                 if v == 0:
                     self.reverse = False
-                    self.gray = False
+                    self.fg = None
+                    self.bg = None
                 elif v == 7:
                     self.reverse = True
                 elif v == 27:
                     self.reverse = False
-                elif v == 90:
-                    self.gray = True
+                elif 30 <= v <= 37:
+                    self.fg = v - 30
+                elif 90 <= v <= 97:
+                    self.fg = v - 90 + 8
                 elif v == 39:
-                    self.gray = False
+                    self.fg = None
+                elif 40 <= v <= 47:
+                    self.bg = v - 40
+                elif 100 <= v <= 107:
+                    self.bg = v - 100 + 8
+                elif v == 49:
+                    self.bg = None
+                elif v in (38, 48) and i + 2 < len(nums) and nums[i + 1] == 5:
+                    if v == 38:
+                        self.fg = nums[i + 2]
+                    else:
+                        self.bg = nums[i + 2]
+                    i += 2
+                else:
+                    self.unhandled.append("SGR %d" % v)
+                i += 1
         elif final == "C":
             self.cx = min(self.cx + max(1, nums[0] if nums else 1), self.cols - 1)
         elif final == "D":
@@ -255,12 +292,41 @@ class Screen:
         """Per-cell attributes as row strings, trailing plain cells removed."""
         return ["".join(a).rstrip(".") for a in self.attrs]
 
+    def color_rows(self):
+        """Non-default colors, as "row: startcol-endcol fg/bg" runs.
+
+        Only cells that are actually colored appear, so this stays short while
+        molly's only color is the gutter, and becomes the real check on menus and
+        dialogs without the format changing. A palette index that drifts shows up
+        here as a wrong number rather than hiding inside the attribute map's 'g'.
+        """
+        out = []
+        for y, row in enumerate(self.colors):
+            runs = []
+            x = 0
+            while x < self.cols:
+                fg, bg = row[x]
+                if fg is None and bg is None:
+                    x += 1
+                    continue
+                start = x
+                while x < self.cols and row[x] == (fg, bg):
+                    x += 1
+                runs.append("%d-%d %s/%s" % (start, x - 1,
+                                             "-" if fg is None else fg,
+                                             "-" if bg is None else bg))
+            if runs:
+                out.append("%d: %s" % (y + 1, "  ".join(runs)))
+        return out
+
     def snapshot(self):
         """Screen plus attributes, in the form the golden files store."""
         lines = ["--- screen ---"]
         lines += self.text()
         lines.append("--- attrs ---")
         lines += self.attr_rows()
+        lines.append("--- colors ---")
+        lines += self.color_rows()
         lines.append("--- cursor ---")
         lines.append("row %d col %d visible %d"
                      % (self.cy + 1, self.cx + 1, int(self.cursor_visible)))

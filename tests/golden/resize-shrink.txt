@@ -24,5 +24,13 @@ g
 g
 RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 
+--- colors ---
+4: 0-0 8/-
+5: 0-0 8/-
+6: 0-0 8/-
+7: 0-0 8/-
+8: 0-0 8/-
+9: 0-0 8/-
+10: 0-0 8/-
 --- cursor ---
 row 1 col 1 visible 1

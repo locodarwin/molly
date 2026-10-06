@@ -6,4 +6,4 @@ molly_vuln
 molly-recover.*
 __pycache__/
 .claude/
-tests/loop_test
+tests/units_test

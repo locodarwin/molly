@@ -46,7 +46,7 @@ static int gutter_width(void) {
   return w;
 }
 
-/* The gutter is drawn gray (SGR 90 via ATTR_GRAY) so the numbers and the U+2502
+/* The gutter takes ROLE_GUTTER so the numbers and the U+2502
  * bar stay quieter than the text. On the grid these are plain column writes; the
  * byte-counting the old builders had to do -- escape sequences and the three-byte
  * separator occupy no columns -- is gone with the byte strings. */
@@ -59,16 +59,16 @@ static void gutter_draw_number(int y, int filerow, int gutter_w) {
   int n;
   if (gutter_w <= 0) return;
   n = snprintf(num, sizeof(num), "%*d ", gutter_w - 3, filerow + 1);
-  grid_pen(ATTR_GRAY);
+  grid_role(ROLE_GUTTER);
   grid_puts(y, 0, num, n);
   grid_puts(y, gutter_w - 2, GUTTER_SEP " ", 4);
-  grid_pen(0);
+  grid_role(ROLE_TEXT);
 }
 
 /* Below-EOF row: a blank number field, the separator, then the gray tilde:
  * "    | ~", occupying gutter_w + 1 columns. */
 static void gutter_draw_tilde(int y, int gutter_w) {
-  grid_pen(ATTR_GRAY);
+  grid_role(ROLE_GUTTER);
   if (gutter_w <= 0) {
     grid_puts(y, 0, "~", 1);
   } else {
@@ -77,7 +77,7 @@ static void gutter_draw_tilde(int y, int gutter_w) {
     grid_puts(y, 0, blank, n);
     grid_puts(y, gutter_w - 2, GUTTER_SEP " ~", 5);
   }
-  grid_pen(0);
+  grid_role(ROLE_TEXT);
 }
 
 /* Draw one text row into the grid, honoring display width: horizontal scroll
@@ -85,7 +85,7 @@ static void gutter_draw_tilde(int y, int gutter_w) {
  * ends on character boundaries. A wide glyph split by either edge is dropped and
  * its columns left blank, keeping every following column aligned.
  *
- * Characters whose display-column range overlaps [sel0, sel1) get ATTR_REVERSE.
+ * Characters whose display-column range overlaps [sel0, sel1) take ROLE_SELECTION.
  * On the grid that is a property of the cell rather than an escape sequence spliced
  * into the row's bytes, so the renderer no longer has to reason about sequences
  * that occupy no columns. */
@@ -132,14 +132,14 @@ void editor_draw_text_row(int y, erow *row, const struct drow *d,
   while (i < rs && vis < text_cols) {
     int nb, w = utf8_char_cols(r, rs, i, &nb);
     if (vis + w > text_cols) break;  /* would overflow the right edge */
-    grid_pen((has_sel && dcol >= sel0 && dcol < sel1) ? ATTR_REVERSE : 0);
+    grid_role((has_sel && dcol >= sel0 && dcol < sel1) ? ROLE_SELECTION : ROLE_TEXT);
     grid_put_char(y, x, r + i, nb, w);
     x += w;    /* a combining mark has w == 0 and joins the cell to its left */
     vis += w;
     dcol += w;
     i += nb;
   }
-  grid_pen(0);
+  grid_role(ROLE_TEXT);
 }
 
 void editor_draw_rows(void) {
@@ -202,13 +202,13 @@ void editor_draw_status_bar(void) {
    * Olly got the same effect by erasing to end of line with reverse video
    * active, which worked but meant the bar's extent was implied by a terminal
    * side effect rather than stated. */
-  grid_pen(ATTR_REVERSE);
+  grid_role(ROLE_STATUS);
   grid_fill(y, 0, V.screencols, ' ');
   grid_puts(y, 0, status, len);
   /* Right-align the cursor position when it fits; otherwise leave it off. */
   if (V.screencols - len >= rlen)
     grid_puts(y, V.screencols - rlen, rstatus, rlen);
-  grid_pen(0);
+  grid_role(ROLE_TEXT);
 }
 
 void editor_draw_message_bar(void) {

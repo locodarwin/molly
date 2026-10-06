@@ -292,7 +292,7 @@ Nearly free once the table and the list box exist, and the answer to reaching th
 long tail without memorizing it: one key, fuzzy-match command labels, show the
 bound chord beside each.
 
-### Decisions needed before step 3
+### Decisions, settled
 
 **A. Modal loops that pump the event loop, or a focus stack?** The one that
 changes the most code.
@@ -310,7 +310,7 @@ keys. Nothing nests, and non-modal UI becomes possible. The cost is that every
 feeds the prompt a callback per keystroke — is the awkward one. That is a rewrite
 of most of search.c, replace, and the save flow.
 
-**Recommendation: modal loops that pump the event loop.** It gets the property
+**Decided: modal loops that pump the event loop.** It gets the property
 that actually matters, which is that a language server or a terminal keeps running
 while a dialog is open, for a fraction of the churn. The one thing it cannot do is
 a *non-modal* overlay, and LSP completion is exactly that — a popup while you keep
@@ -319,11 +319,27 @@ draws without taking input, which the view stack already provides; it is only a
 dialog that needs to own the keys. If a later feature genuinely needs a
 backgroundable dialog, that is the point to reconsider.
 
-**B. Is the menu bar always visible?** Fresh's is, and a menu you have to know to
-summon is not much of a discoverability win. It costs one text row permanently —
-`screenrows` goes from `wsrows - 2` to `wsrows - 3`. The alternative is hidden
-until `F10` or Alt, which keeps the row and loses most of the point.
-**Recommendation: always visible**, with the row cost accepted.
+**B. Is the menu bar always visible? Decided: it is an option, visible by
+default.** Visible by default because the menu bar is molly's main
+discoverability affordance and hiding it by default would waste it; optional
+because it costs a text row permanently (`screenrows` goes from `wsrows - 2` to
+`wsrows - 3`) and on a 24-row terminal that row is worth something.
+
+Two consequences, neither a problem:
+
+- **When hidden, an activated menu bar draws *over* the top text row rather than
+  reserving one.** Reflowing the text area every time a menu opens would jump the
+  whole screen by a row, and the view stack makes an overlay the easier of the two
+  anyway. So hidden mode is genuinely zero-cost until a menu is open.
+- **The toggle ships as a command before it is a setting.** Configuration is a
+  Phase 2 item, so `view.menu-bar` lands as a command in the View menu with the
+  rest of Phase 1 — exactly as `Ctrl-U` already toggles the line-number gutter —
+  and reads its default from the config file once that exists. Nothing about the
+  option has to wait for the settings file.
+
+Changing the row count at runtime is already a supported path: the grid is
+reallocated and fully repainted on every terminal resize, and a menu bar appearing
+is the same event with a different cause.
 
 **C. Do the ported UIs get reframed, or keep their current look?** The open-file
 dialog is full-screen today; as a toolkit dialog it would be a centered framed box
@@ -331,22 +347,24 @@ with a shadow. Reframing is the visible half of looking like Fresh, and it means
 the golden snapshots for those screens change — deliberately, with the diff read
 rather than waved through. Keeping the current look makes step 6 a pure
 refactor with the snapshots unchanged, and defers the appearance change.
-**Recommendation: keep the look for the port, reframe immediately after**, in its
-own commit. That way "the toolkit produces the same screen" and "the screen
-changes on purpose" are two reviewable facts rather than one tangled one.
+**Decided: reframe.** Done as two commits — the port keeping the current look,
+then the reframe — so that "the toolkit produces the identical screen" and "the
+screen changes on purpose" stay two reviewable facts rather than one tangled one.
+The second commit is where the golden snapshots for those screens change, with the
+diff read rather than waved through.
 
 **D. How many colors?** Sixteen ANSI colors work on anything, including whatever
 is on the far end of an SSH session into a switch. 256 gives dialogs that look
 like Fresh's rather than like 1993. Because the palette is semantic, the depth is
 a property of the theme and not of the drawing code, so this is reversible — but
-the first theme has to pick one. **Recommendation: author the palette at 256
+the first theme has to pick one. **Decided: author the palette at 256
 colors with a 16-color fallback chosen from `$COLORTERM`/`$TERM`**, and keep a
 golden screen at each depth so neither rots.
 
 **E. Is the mouse on by default?** Turning on SGR 1006 tracking takes drag-select
 away from the terminal: the user's reflex of swiping text and middle-clicking it
 elsewhere stops working, because molly receives those events instead. Most
-terminals still bypass with Shift held, but not all. **Recommendation: on by
+terminals still bypass with Shift held, but not all. **Decided: on by
 default**, since a menu bar you cannot click is the thing we are trying not to
 build, with a config key to turn it off once configuration exists in Phase 2 — and
 the Shift bypass mentioned in the help screen.

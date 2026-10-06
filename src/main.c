@@ -35,6 +35,7 @@ void init_editor(void) {
   /* One view onto one buffer. Everything that reads rows goes through the view
    * from here on, so a second buffer is a matter of pointing V.buf elsewhere. */
   V.buf = &B;
+  theme_init();
   keymap_init();
   cursors_init();
   V.drowoff = 0;

@@ -273,10 +273,30 @@ struct help_entry {
   const char *cmd;
 };
 
-/* Cell attributes on the grid. Gray is the gutter's dimming; reverse is the
- * selection and the status bar. Syntax highlighting adds colors here. */
-#define ATTR_REVERSE 0x01
-#define ATTR_GRAY    0x02
+/* --- the palette -------------------------------------------------------------
+ *
+ * A cell records what it is *for*, not what color it is. The theme turns a role
+ * into a style; drawing code never names a color. See theme.c.
+ *
+ * Only roles something actually draws are defined: menus, dialogs and syntax
+ * highlighting add theirs when they arrive, because a role nothing uses is a
+ * theme entry nothing tests. */
+enum cell_role {
+  ROLE_TEXT = 0,   /* buffer text, and anything else unremarkable */
+  ROLE_GUTTER,     /* line numbers and the separator bar */
+  ROLE_SELECTION,  /* selected buffer text */
+  ROLE_STATUS,     /* the status bar */
+  ROLE_MESSAGE,    /* the message bar */
+  ROLE_COUNT
+};
+
+/* A resolved style: palette indices, or -1 for the terminal's own default, which
+ * is not the same as black -- a light-background user wants their background. */
+struct style {
+  short fg;
+  short bg;
+  unsigned char reverse;
+};
 
 struct abuf {
   char *b;
@@ -338,8 +358,8 @@ void grid_cursor_to(int y, int x);
 void grid_fill(int y, int x, int n, char c);
 void grid_flush(void);
 void grid_invalidate(void);
-void grid_pen(unsigned char attr);
 void grid_resize(int rows, int cols);
+void grid_role(unsigned char role);
 
 /* input.c */
 int editor_read_key(void);
@@ -404,6 +424,16 @@ int read_byte(unsigned char *c);
 int term_take_winch(void);
 void disable_raw_mode(void);
 void enable_raw_mode(void);
+
+/* theme.c */
+int style_eq(const struct style *a, const struct style *b);
+int style_is_default(const struct style *s);
+int theme_depth(void);
+int theme_detect_depth(const char *term, const char *colorterm);
+void style_default(struct style *out);
+void style_emit_color(struct abuf *ab, int color, int is_bg);
+void theme_init(void);
+void theme_style(unsigned char role, struct style *out);
 
 /* ui.c */
 char *editor_open_dialog(void);

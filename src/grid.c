@@ -40,7 +40,7 @@ struct cell {
   char ch[CELL_BYTES];
   unsigned char len;    /* bytes used; 0 means a blank */
   unsigned char width;  /* columns: 1, 2, or 0 for the tail of a wide glyph */
-  unsigned char attr;   /* ATTR_* */
+  unsigned char role;   /* enum cell_role; the theme turns it into a style */
 };
 
 static struct cell *cur;
@@ -48,7 +48,7 @@ static struct cell *prev;
 static int g_rows, g_cols;
 static int g_alloc;        /* cells allocated per plane */
 static int prev_valid;     /* 0 = the terminal's contents are unknown */
-static unsigned char pen;  /* attributes new cells are written with */
+static unsigned char pen;  /* the role new cells are written with */
 static int want_cy, want_cx;
 
 static struct cell *at(struct cell *plane, int y, int x) {
@@ -56,13 +56,14 @@ static struct cell *at(struct cell *plane, int y, int x) {
 }
 
 static int cell_eq(const struct cell *a, const struct cell *b) {
-  if (a->attr != b->attr || a->width != b->width || a->len != b->len) return 0;
+  if (a->role != b->role || a->width != b->width || a->len != b->len) return 0;
   return a->len == 0 || memcmp(a->ch, b->ch, a->len) == 0;
 }
 
-/* A cell that would draw as an unstyled space. */
+/* A cell that would draw as an unstyled space, and so can be produced by
+ * erasing rather than by writing. */
 static int cell_blank(const struct cell *c) {
-  return c->len == 0 && c->attr == 0 && c->width == 1;
+  return c->len == 0 && c->role == ROLE_TEXT && c->width == 1;
 }
 
 /* Match the grid to the terminal size. The contents are dropped and the next
@@ -94,15 +95,16 @@ void grid_begin(void) {
   for (i = 0; i < n; i++) {
     cur[i].len = 0;
     cur[i].width = 1;
-    cur[i].attr = 0;
+    cur[i].role = ROLE_TEXT;
   }
-  pen = 0;
+  pen = ROLE_TEXT;
   want_cy = 0;
   want_cx = 0;
 }
 
-void grid_pen(unsigned char attr) {
-  pen = attr;
+/* The role that subsequent writes are tagged with. */
+void grid_role(unsigned char role) {
+  pen = role;
 }
 
 void grid_cursor_to(int y, int x) {
@@ -140,7 +142,7 @@ int grid_put_char(int y, int x, const char *s, int nbytes, int w) {
     struct cell *c = at(cur, y, x);
     c->len = 0;
     c->width = 1;
-    c->attr = pen;
+    c->role = pen;
     return 1;
   }
 
@@ -149,12 +151,12 @@ int grid_put_char(int y, int x, const char *s, int nbytes, int w) {
   memcpy(c->ch, s, (size_t)n);
   c->len = (unsigned char)n;
   c->width = (unsigned char)w;
-  c->attr = pen;
+  c->role = pen;
   if (w == 2) {
     struct cell *t = at(cur, y, x + 1);
     t->len = 0;
     t->width = 0;
-    t->attr = pen;
+    t->role = pen;
   }
   return w;
 }
@@ -179,29 +181,41 @@ void grid_fill(int y, int x, int n, char c) {
 
 /* --- emitting the difference ---------------------------------------------- */
 
-/* Move the terminal's attributes from `have` to `want` in as few bytes as the
- * old byte-building code used, so output stays minimal and recognizable:
- * reverse video has a dedicated off code, gray does not and needs a full reset,
- * after which anything still wanted is re-applied. */
-static unsigned char emit_attr(struct abuf *ab, unsigned char have,
-                               unsigned char want) {
-  if (have == want) return have;
-  if ((have & ATTR_GRAY) && !(want & ATTR_GRAY)) {
+/* Move the terminal from the style it is in to the one the next cell wants, in as
+ * few bytes as will do it.
+ *
+ * Reverse video has a dedicated off code. A color does not -- "no color" means the
+ * terminal's own default, and the portable way back to it is a full reset, after
+ * which anything still wanted is re-applied. That is what olly did for the gray
+ * gutter, and keeping it means the bytes for everything molly already drew are
+ * unchanged: reverse on and off are still ESC[7m and ESC[27m, and the gutter is
+ * still ESC[90m followed by ESC[m. */
+static void emit_style(struct abuf *ab, struct style *have,
+                       const struct style *want) {
+  if (style_eq(have, want)) return;
+
+  /* Returning to a default color needs the reset first; there is no "unset the
+   * foreground" that is safe everywhere. */
+  if ((have->fg != want->fg && want->fg < 0) ||
+      (have->bg != want->bg && want->bg < 0)) {
     ab_append(ab, "\x1b[m", 3);
-    have = 0;
+    style_default(have);
   }
-  if ((want & ATTR_GRAY) && !(have & ATTR_GRAY)) {
-    ab_append(ab, "\x1b[90m", 5);
-    have |= ATTR_GRAY;
+  if (have->fg != want->fg) {
+    style_emit_color(ab, want->fg, 0);
+    have->fg = want->fg;
   }
-  if ((want & ATTR_REVERSE) && !(have & ATTR_REVERSE)) {
+  if (have->bg != want->bg) {
+    style_emit_color(ab, want->bg, 1);
+    have->bg = want->bg;
+  }
+  if (want->reverse && !have->reverse) {
     ab_append(ab, "\x1b[7m", 4);
-    have |= ATTR_REVERSE;
-  } else if (!(want & ATTR_REVERSE) && (have & ATTR_REVERSE)) {
+    have->reverse = 1;
+  } else if (!want->reverse && have->reverse) {
     ab_append(ab, "\x1b[27m", 5);
-    have &= (unsigned char)~ATTR_REVERSE;
+    have->reverse = 0;
   }
-  return have;
 }
 
 /* Emit one row, if anything in it changed.
@@ -232,21 +246,26 @@ static void flush_row(struct abuf *ab, int y) {
   int plen = snprintf(pos, sizeof(pos), "\x1b[%d;1H", y + 1);
   ab_append(ab, pos, plen);
 
-  /* Every row leaves the terminal with default attributes, so a row may assume
-   * them on entry; nothing needs to be reset here. */
-  unsigned char have = 0;
+  /* Every row leaves the terminal in the default style, so a row may assume it on
+   * entry; nothing needs to be reset here. */
+  struct style have, want;
+  style_default(&have);
   for (x = 0; x <= last; x++) {
     struct cell *c = at(cur, y, x);
     if (c->width == 0) continue;  /* tail of a wide glyph, emitted with its head */
-    have = emit_attr(ab, have, c->attr);
+    theme_style(c->role, &want);
+    emit_style(ab, &have, &want);
     if (c->len == 0) ab_append(ab, " ", 1);
     else ab_append(ab, c->ch, c->len);
   }
 
   if (last + 1 < g_cols) {
-    if (have != 0) have = emit_attr(ab, have, 0);
+    if (!style_is_default(&have)) {
+      style_default(&want);
+      emit_style(ab, &have, &want);
+    }
     ab_append(ab, "\x1b[K", 3);
-  } else if (have != 0) {
+  } else if (!style_is_default(&have)) {
     ab_append(ab, "\x1b[m", 3);
   }
 }

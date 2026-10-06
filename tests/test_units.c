@@ -1,4 +1,4 @@
-/* test_loop.c -- unit tests for the event loop.
+/* test_units.c -- unit tests for the parts that are testable without a terminal.
  *
  * The editor registers exactly one source today, the keyboard, so nothing in the
  * pty tests would notice if waiting on a second one were broken. The language
@@ -39,7 +39,7 @@ static void drain_handler(void *user) {
   if (n > 0) bytes_read[which] += (int)n;
 }
 
-int main(void) {
+static void test_loop_sources(void) {
   int idx[4] = {0, 1, 2, 3};
   int a[2], b[2], kb[2];
   int ida, idb, r;
@@ -52,18 +52,18 @@ int main(void) {
    * A pipe nobody writes to is quiet until this test writes to it. */
   if (pipe(kb) != 0) {
     fprintf(stderr, "pipe failed\n");
-    return 2;
+    { perror("test setup"); failures++; return; }
   }
   if (dup2(kb[0], STDIN_FILENO) < 0) {
     fprintf(stderr, "dup2 failed\n");
-    return 2;
+    { perror("test setup"); failures++; return; }
   }
 
   check("no sources to begin with", loop_source_count(), 0);
 
   if (pipe(a) != 0 || pipe(b) != 0) {
     fprintf(stderr, "pipe failed\n");
-    return 2;
+    { perror("test setup"); failures++; return; }
   }
   handler_fd[0] = a[0];
   handler_fd[1] = b[0];
@@ -79,7 +79,7 @@ int main(void) {
   check("an idle wait calls no handler", fired[0] + fired[1], 0);
 
   /* One source ready. */
-  if (write(a[1], "xyz", 3) != 3) return 2;
+  if (write(a[1], "xyz", 3) != 3) { perror("test setup"); failures++; return; }
   r = loop_wait(500);
   check("one ready source is dispatched", fired[0], 1);
   check("the other source is left alone", fired[1], 0);
@@ -90,7 +90,7 @@ int main(void) {
    * which is the property an editor with a language server and a terminal
    * depends on. */
   fired[0] = fired[1] = 0;
-  if (write(a[1], "1", 1) != 1 || write(b[1], "22", 2) != 2) return 2;
+  if (write(a[1], "1", 1) != 1 || write(b[1], "22", 2) != 2) { perror("test setup"); failures++; return; }
   r = loop_wait(500);
   check("both ready sources are dispatched in one wait",
         fired[0] + fired[1], 2);
@@ -100,7 +100,7 @@ int main(void) {
   fired[0] = fired[1] = 0;
   loop_remove(idb);
   check("removing drops the count", loop_source_count(), 1);
-  if (write(b[1], "ignored", 7) != 7) return 2;
+  if (write(b[1], "ignored", 7) != 7) { perror("test setup"); failures++; return; }
   r = loop_wait(50);
   check("a removed source is not dispatched", fired[1], 0);
 
@@ -134,7 +134,7 @@ int main(void) {
     fired[0] = fired[1] = 0;  /* earlier cases left these set */
     r = loop_wait(10);
     check("no keyboard input reports nothing", r & LOOP_STDIN, 0);
-    if (write(kb[1], "k", 1) != 1) return 2;
+    if (write(kb[1], "k", 1) != 1) { perror("test setup"); failures++; return; }
     r = loop_wait(500);
     check("keyboard input is reported", (r & LOOP_STDIN) != 0, 1);
     check("keyboard input is not dispatched to a handler", fired[0], 0);
@@ -143,6 +143,100 @@ int main(void) {
   close(b[0]);
   close(b[1]);
   close(a[0]);
+}
+
+/* ---- the theme ----------------------------------------------------------- */
+
+static void test_theme_depth(void) {
+  printf("\ntheme: how many colors the terminal admits to\n");
+
+  check("a 256 in the name is enough",
+        theme_detect_depth("xterm-256color", NULL), 256);
+  check("so is screen-256color",
+        theme_detect_depth("screen-256color", NULL), 256);
+  check("and a direct-color name",
+        theme_detect_depth("xterm-direct", NULL), 256);
+  check("plain xterm is sixteen", theme_detect_depth("xterm", NULL), 16);
+  check("vt100 is sixteen", theme_detect_depth("vt100", NULL), 16);
+  check("so is a terminal that will not say",
+        theme_detect_depth(NULL, NULL), 16);
+  check("an empty name is sixteen", theme_detect_depth("", ""), 16);
+
+  /* COLORTERM is the stronger signal: a terminal may support direct color while
+   * its TERM says otherwise, which is the usual state of affairs inside tmux. */
+  check("COLORTERM=truecolor overrides the name",
+        theme_detect_depth("xterm", "truecolor"), 256);
+  check("COLORTERM=24bit does too",
+        theme_detect_depth("xterm", "24bit"), 256);
+
+  /* A few terminals do 256 colors without advertising it in TERM. */
+  check("kitty is known", theme_detect_depth("xterm-kitty", NULL), 256);
+  check("alacritty is known", theme_detect_depth("alacritty", NULL), 256);
+  check("foot is known", theme_detect_depth("foot", NULL), 256);
+}
+
+static void test_theme_styles(void) {
+  struct style st;
+
+  printf("\ntheme: roles resolve to styles\n");
+
+  /* Both tables resolve to what olly drew, so these hold at either depth. */
+  theme_style(ROLE_TEXT, &st);
+  check("text is unstyled", style_is_default(&st), 1);
+
+  theme_style(ROLE_GUTTER, &st);
+  check("the gutter is palette 8", st.fg, 8);
+  check("the gutter leaves the background alone", st.bg, -1);
+  check("the gutter is not reverse", st.reverse, 0);
+
+  theme_style(ROLE_SELECTION, &st);
+  check("selection is reverse video", st.reverse, 1);
+  check("selection takes no color", st.fg, -1);
+
+  theme_style(ROLE_STATUS, &st);
+  check("the status bar is reverse video", st.reverse, 1);
+
+  theme_style(ROLE_COUNT + 7, &st);
+  check("a role out of range falls back to text", style_is_default(&st), 1);
+}
+
+/* The byte forms matter: keeping 0-15 on the short SGR codes is what makes a gray
+ * gutter "ESC[90m" whichever theme is loaded, and so what kept every byte molly
+ * emitted before it had colors. */
+static void emitted(const char *label, int color, int is_bg, const char *want) {
+  struct abuf ab = ABUF_INIT;
+  char got[64];
+  style_emit_color(&ab, color, is_bg);
+  snprintf(got, sizeof(got), "%.*s", ab.len, ab.b ? ab.b : "");
+  if (strcmp(got, want) == 0) {
+    printf("  pass  %s\n", label);
+  } else {
+    printf("  FAIL  %s\n          want: %s\n          got:  %s\n",
+           label, want, got);
+    failures++;
+  }
+  free(ab.b);
+}
+
+static void test_theme_color_bytes(void) {
+  printf("\ntheme: colors emit the shortest form a terminal understands\n");
+
+  emitted("palette 1 is a plain foreground", 1, 0, "\x1b[31m");
+  emitted("palette 8 is a bright foreground", 8, 0, "\x1b[90m");
+  emitted("palette 15 is the last bright one", 15, 0, "\x1b[97m");
+  emitted("palette 16 needs the cube", 16, 0, "\x1b[38;5;16m");
+  emitted("palette 244 needs the cube", 244, 0, "\x1b[38;5;244m");
+  emitted("palette 2 as a background", 2, 1, "\x1b[42m");
+  emitted("palette 9 as a bright background", 9, 1, "\x1b[101m");
+  emitted("palette 200 as a cube background", 200, 1, "\x1b[48;5;200m");
+  emitted("the default color emits nothing", -1, 0, "");
+}
+
+int main(void) {
+  test_loop_sources();
+  test_theme_depth();
+  test_theme_styles();
+  test_theme_color_bytes();
 
   printf("\n%s\n", failures ? "FAILED" : "ok");
   return failures ? 1 : 0;

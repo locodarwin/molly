@@ -12,5 +12,7 @@ HELP: Ctrl-S = save | Ct
 g
 RRRRRRRRRRRRRRRRRRRRRRRR
 
+--- colors ---
+4: 0-0 8/-
 --- cursor ---
 row 1 col 1 visible 1

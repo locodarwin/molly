@@ -192,7 +192,7 @@ it by deleting the three hand-rolled full-screen UIs olly left behind.
 Ordered so that each step stands on a finished one, and so the port that proves
 the toolkit happens before the menu bar that depends on it.
 
-### 1. Color in the grid
+### 1. Color in the grid — **done**
 
 A cell's attributes are two bits today, reverse and gray, which is all olly ever
 needed. Menus, dialogs and syntax highlighting all need color, and that is a
@@ -211,7 +211,7 @@ change to the grid's cell and to the SGR encoder, so it comes first.
   golden snapshots gain a color map. Without this the rest of the phase is
   untestable, which is the same reason the golden harness came first in Phase 0.
 
-### 2. A view stack
+### 2. A layer stack — **done**
 
 Olly's three UIs each cleared the screen, drew, and asked for a full repaint on the
 way out. With a grid that is rebuilt every frame there is nothing to save and
@@ -225,7 +225,7 @@ things to draw.
 - The text area becomes the bottom view rather than a special case, which is the
   groundwork splits need in Phase 2.
 
-### 3. One key wait, through the event loop
+### 3. One key wait, through the event loop — **done**
 
 `editor_prompt`, `editor_help` and `editor_open_dialog` each run `while (1) { draw;
 editor_read_key(); }`. That read blocks, so while any of them is open the event
@@ -236,6 +236,16 @@ terminal that freezes mid-build, is not.
 - One `ui_wait_key()` that waits through `loop_wait`, so registered sources are
   serviced whatever is on screen, and every modal loop uses it.
 - See **Decisions, A** for whether this stays a modal loop at all.
+
+**What landed, and where it differs from the plan above.** Cells carry a *role*,
+and `theme.c` turns a role into a style, so nothing outside the theme names a
+color; depth comes from `COLORTERM` then `TERM`, and palette indices 0-15 keep the
+short SGR forms, which is what kept every byte molly already emitted identical. The
+stack is called a *layer* stack rather than a view stack, because `struct view` was
+already taken by a window onto a buffer: buffer → view → layer → widget. And
+`ui_wait_key` is now the single place molly waits for input, with
+`editor_read_key` made static so the compiler enforces that nothing bypasses the
+loop.
 
 ### 4. The widget toolkit
 

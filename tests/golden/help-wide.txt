@@ -1,54 +1,76 @@
 --- screen ---
-                           Molly - Keyboard Reference
-
-FILES                                     FIND & REPLACE
-  Ctrl-S         Save file                  Ctrl-F         Find forward
-  Ctrl-O         Open a file                Ctrl-N         Find next
-  Ctrl-Q         Quit                       Ctrl-P         Find previous
-  Ctrl-?         This help screen           Ctrl-T         Case sensitivity
-                                            Ctrl-R         Find & replace
-MOVEMENT
-  Arrows         Move cursor              CLIPBOARD
-  PgUp/PgDn      Page up / down             Ctrl-C         Copy selection
-  Home/End       Line start / end           Ctrl-X         Cut selection
-  Ctrl-G         Go to line                 Ctrl-V         Paste at cursor
-
-SELECTION                                 HISTORY
-  Shift+Arrows   Extend selection           Ctrl-Z         Undo
-  Shift+Home/End To line edge               Ctrl-Y         Redo
-  Shift+PgUp/Dn  Extend by page
-                                          VIEW
-EDITING                                     Ctrl-L         Redraw screen
-                    In prompts: Enter accepts   Esc cancels
-                    PgUp/PgDn scroll   any other key returns
-
-
+alpha
+beta
+ga╔═══════════════════════════ Keyboard Reference ═══════════════════════════╗
+~ ║ FILES                                 FIND & REPLACE                     ║
+~ ║   Ctrl-S         Save file              Ctrl-F         Find forward      ║
+~ ║   Ctrl-O         Open a file            Ctrl-N         Find next         ║
+~ ║   Ctrl-Q         Quit                   Ctrl-P         Find previous     ║
+~ ║   Ctrl-?         This help screen       Ctrl-T         Case sensitivity  ║
+~ ║                                         Ctrl-R         Find & replace    ║
+~ ║ MOVEMENT                                                                 ║
+~ ║   Arrows         Move cursor          CLIPBOARD                          ║
+~ ║   PgUp/PgDn      Page up / down         Ctrl-C         Copy selection    ║
+~ ║   Home/End       Line start / end       Ctrl-X         Cut selection     ║
+~ ║   Ctrl-G         Go to line             Ctrl-V         Paste at cursor   ║
+~ ║                                                                          ║
+~ ║ SELECTION                             HISTORY                            ║
+~ ║   Shift+Arrows   Extend selection       Ctrl-Z         Undo              ║
+~ ║   Shift+Home/End To line edge           Ctrl-Y         Redo              ║
+~ ║   Shift+PgUp/Dn  Extend by page                                          ║
+~ ║ In prompts: Enter accepts   Esc cancels                                  ║
+~ ║ PgUp/PgDn scroll   any other key returns                                 ║
+~ ╚══════════════════════════════════════════════════════════════════════════╝
+sample.txt - 3 lines                                                 Ln 1, Col 1
+HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | Ctrl-N = next | Ctrl-? = h
 --- attrs ---
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+..gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+RRRRgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 
 --- colors ---
+3: 2-30 7/8  31-48 15/8  49-77 7/8
+4: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+5: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+6: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+7: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+8: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+9: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+10: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+11: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+12: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+13: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+14: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+15: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+16: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+17: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+18: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+19: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+20: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+21: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+22: 0-0 8/-  2-77 7/8  78-79 8/0
+23: 4-79 8/0
 --- modifiers ---
+3: 31-48 b
 --- cursor ---
-row 22 col 61 visible 0
+row 1 col 1 visible 0

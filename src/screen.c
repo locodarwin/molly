@@ -310,14 +310,26 @@ static void screen_layout(void) {
   layer_set_bounds(layer_message, 0, top + text_h + 1, V.screencols, 1);
 }
 
-void editor_refresh_screen(void) {
+/* Bring the view and the grid in step with the terminal, without drawing anything.
+ *
+ * A modal loop that sizes itself from the screen has to call this before it does:
+ * the grid only learns about a resize when a refresh begins, so laying out first
+ * means laying out against the size from before the resize. That is not a cosmetic
+ * slip -- the help dialog was centred for a 100-column terminal and drawn into a
+ * 40-column one, which put its title off the right-hand edge and left it there,
+ * because nothing repaints again until the next keystroke. */
+void screen_sync_size(void) {
   if (screen_poll_size()) force_full = 1;
   V.gutter_w = gutter_width();
-  editor_scroll();
-
   /* A size change drops the grid's contents, so it repaints in full by itself. */
   grid_resize(chrome_rows_above() + V.screenrows + chrome_rows_below(),
               V.screencols);
+}
+
+void editor_refresh_screen(void) {
+  screen_sync_size();
+  editor_scroll();
+
   if (force_full) {
     grid_invalidate();
     force_full = 0;

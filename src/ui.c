@@ -79,7 +79,10 @@ static int help_group_end(int g) {
   return (g + 1 < help_group_n) ? help_group_start[g + 1] : help_entry_count();
 }
 
-#define HELP_WIDE 80      /* two columns at or above this width */
+/* Two columns at or above this pane width. Lower than the 80 it was, because the
+ * pane now sits inside a frame with padding and so is six columns narrower than the
+ * terminal: a standard 80-column terminal should still get two columns. */
+#define HELP_WIDE 72
 #define HELP_GAP 4        /* blank columns between the two columns */
 #define HELP_KEYW 14      /* width reserved for the key name */
 #define HELP_MAXROWS 48
@@ -87,7 +90,6 @@ static int help_group_end(int g) {
 
 static char help_lcol[HELP_MAXROWS][HELP_MAXW];
 static char help_rcol[HELP_MAXROWS][HELP_MAXW];
-static char help_line[HELP_MAXW];
 
 static void help_build_col(char col[HELP_MAXROWS][HELP_MAXW], int *rn,
                            int g0, int g1, int keyw, int descw) {
@@ -120,115 +122,117 @@ static void help_row(char *dst, int dstsz, const char *left, const char *right,
            colw, colw, left, gap, "", rightw, right);
 }
 
-static void help_centered(struct abuf *ab, const char *text, int row) {
-  char pos[32];
-  int pad = (V.screencols - (int)strlen(text)) / 2;
-  if (pad < 0) pad = 0;
-  snprintf(pos, sizeof(pos), "\x1b[%d;%dH", row, pad + 1);
-  ab_append(ab, pos, strlen(pos));
-  int len = strlen(text);
-  if (len > V.screencols) len = V.screencols;
-  ab_append(ab, text, len);
-  ab_append(ab, "\x1b[K", 3);
+/* What a pane row says: the left column padded, the gap, then the right column.
+ * Composed on demand rather than stored, so the pane holds no copy of the text. */
+struct help_pane {
+  int nl, nr;      /* lines built in each column */
+  int colw, gap;   /* column width and the space between */
+  int total;       /* the pane's width */
+};
+
+static void help_pane_row(void *user, int i, char *dst, size_t dsz) {
+  struct help_pane *hp = user;
+  const char *L = (i < hp->nl) ? help_lcol[i] : "";
+  const char *R = (i < hp->nr) ? help_rcol[i] : "";
+  help_row(dst, dsz, L, R, hp->colw, hp->gap, hp->total);
 }
 
-/* Re-read the terminal size into V.screenrows/V.screencols while help is shown.
- * The editor's own refresh does this between keypresses, but help runs its own
- * loop, so without this it would keep drawing at whatever size was current when
- * it opened. Mirrors editor_refresh_screen's fallback to the last known size. */
-static void help_refresh_size(void) {
-  /* The return value -- whether the size changed -- does not matter here: help
-   * repaints itself every pass, and sets a full repaint for the editor
-   * underneath when it exits. */
-  (void)screen_poll_size();
-}
-
+/* The keyboard reference: a scrollable pane in a framed dialog.
+ *
+ * Like the open dialog it is a layer now, so it draws cells rather than escape
+ * sequences and needs no full repaint when it closes. It takes nearly the whole
+ * screen, because a key reference wants the room, and reflows between one and two
+ * columns on the pane's width. */
 void editor_help(void) {
-  int scroll = 0;
-  help_index_groups();
-  for (;;) {
-    /* Recompute the whole layout from the live terminal size on every pass, so
-     * a resize (surfaced as WINCH_KEY) reflows one-column vs two-column, recent
-     * the title, and recomputes the scroll extent to match the new window. */
-    help_refresh_size();
+  struct help_pane hp;
+  struct widget widgets[3];
+  struct dialog d;
+  struct layer l;
+  int depth, li;
 
-    int wide = (V.screencols >= HELP_WIDE);
-    int gap = wide ? HELP_GAP : 0;
-    int colw = wide ? (V.screencols - gap) / 2 : V.screencols;
-    if (colw < 1) colw = 1;
-    int keyw = HELP_KEYW;
-    if (keyw > colw - 3) keyw = (colw > 3) ? colw - 3 : 1;
-    int descw = colw - 3 - keyw;
+  help_index_groups();
+
+  widget_text(&widgets[0], 0, 0, 1, 1, 0, help_pane_row, &hp);
+  widget_label(&widgets[1], 0, 1, 1, "In prompts: Enter accepts   Esc cancels");
+  widget_label(&widgets[2], 0, 2, 1, "");
+
+  depth = layer_count();
+  memset(&l, 0, sizeof(l));
+  li = layer_push(&l);
+  if (li < 0) return;
+
+  for (;;) {
+    struct layer *lp;
+    int cols, rows, pane_w, pane_h, wide, keyw, descw, ngroups, c, max;
+
+    /* Before measuring anything: see above screen_sync_size. */
+    screen_sync_size();
+
+    /* Nearly the whole screen -- a key reference is long -- but not quite: leaving
+     * the status and message bars uncovered stops their ends peeking out past the
+     * dialog's edges, and gives the shadow somewhere to fall. At 80 columns this
+     * leaves the pane exactly wide enough for two columns. */
+    cols = grid_cols() - 4;
+    rows = grid_rows() - 4;
+    if (cols < 16) cols = 16;
+    if (rows < 6) rows = 6;
+    pane_w = cols - 2 - 2 * 1;   /* frame, then a column of padding each side */
+    if (pane_w < 1) pane_w = 1;
+    pane_h = rows - 2 - 2;       /* frame, then the two footer rows */
+    if (pane_h < 1) pane_h = 1;
+
+    /* Rebuilt every pass, so a resize reflows the columns and the scroll extent. */
+    wide = (pane_w >= HELP_WIDE);
+    hp.gap = wide ? HELP_GAP : 0;
+    hp.colw = wide ? (pane_w - hp.gap) / 2 : pane_w;
+    if (hp.colw < 1) hp.colw = 1;
+    hp.total = pane_w;
+    keyw = HELP_KEYW;
+    if (keyw > hp.colw - 3) keyw = (hp.colw > 3) ? hp.colw - 3 : 1;
+    descw = hp.colw - 3 - keyw;
     if (descw < 1) descw = 1;
 
-    int ngroups = help_group_n;
-    int nl, nr;
+    ngroups = help_group_n;
     if (wide) {
       int mid = ngroups / 2;
-      help_build_col(help_lcol, &nl, 0, mid - 1, keyw, descw);
-      help_build_col(help_rcol, &nr, mid, ngroups - 1, keyw, descw);
+      help_build_col(help_lcol, &hp.nl, 0, mid - 1, keyw, descw);
+      help_build_col(help_rcol, &hp.nr, mid, ngroups - 1, keyw, descw);
     } else {
-      help_build_col(help_lcol, &nl, 0, ngroups - 1, keyw, descw);
-      nr = 0;
-    }
-    int content = (nl > nr) ? nl : nr;
-
-    int content_top = 3;                 /* row 1 title, row 2 blank */
-    int view_h = V.screenrows - (content_top - 1) - 2; /* 2 footer rows */
-    if (view_h < 1) view_h = 1;
-    int maxscroll = content - view_h;
-    if (maxscroll < 0) maxscroll = 0;
-    if (scroll > maxscroll) scroll = maxscroll;
-    if (scroll < 0) scroll = 0;
-
-    struct abuf ab = ABUF_INIT;
-    ab_append(&ab, "\x1b[2J", 4);
-    ab_append(&ab, "\x1b[?25l", 6);
-    char pos[32];
-
-    help_centered(&ab, "Molly - Keyboard Reference", 1);
-
-    int k;
-    for (k = 0; k < view_h; k++) {
-      int idx = scroll + k;
-      if (idx >= nl && idx >= nr) break;
-      const char *L = (idx < nl) ? help_lcol[idx] : "";
-      const char *R = (idx < nr) ? help_rcol[idx] : "";
-      help_row(help_line, sizeof(help_line), L, R, colw, gap, V.screencols);
-      snprintf(pos, sizeof(pos), "\x1b[%d;1H", content_top + k);
-      ab_append(&ab, pos, strlen(pos));
-      ab_append(&ab, help_line, strlen(help_line));
-      ab_append(&ab, "\x1b[K", 3);
+      help_build_col(help_lcol, &hp.nl, 0, ngroups - 1, keyw, descw);
+      hp.nr = 0;
     }
 
-    help_centered(&ab, "In prompts: Enter accepts   Esc cancels",
-                  V.screenrows - 1);
-    help_centered(&ab,
-        maxscroll > 0 ? "PgUp/PgDn scroll   any other key returns"
-                      : "Press any key to return to the editor",
-        V.screenrows);
+    widgets[0].w = pane_w;
+    widgets[0].h = pane_h;
+    widgets[0].count = (hp.nl > hp.nr) ? hp.nl : hp.nr;
+    widget_text_scroll(&widgets[0], 0);   /* clamp after a reflow */
+    max = widget_text_maxtop(&widgets[0]);
+    widgets[1].y = pane_h;
+    widgets[1].w = pane_w;
+    widgets[2].y = pane_h + 1;
+    widgets[2].w = pane_w;
+    widgets[2].text = max > 0 ? "PgUp/PgDn scroll   any other key returns"
+                              : "Press any key to return to the editor";
 
-    write_all(STDOUT_FILENO, ab.b, (size_t)ab.len);
-    free(ab.b);
+    dialog_init(&d, "Keyboard Reference", widgets, 3, cols - 2, rows - 2);
+    lp = layer_get(li);
+    dialog_layout(&d, lp);
+    editor_refresh_screen();
 
-    int c = ui_wait_key();
-    /* A resize is not a dismiss: fall through to the top of the loop, which
-     * re-reads the size and re-lays the screen out at the new dimensions. */
+    c = ui_wait_key();
+    /* A resize is not a dismiss: go round again at the new size. */
     if (c == WINCH_KEY) continue;
-    if (maxscroll == 0) break;
-    int ns = scroll;
-    if (c == ARROW_DOWN) ns = scroll + 1;
-    else if (c == ARROW_UP) ns = scroll - 1;
-    else if (c == PAGE_DOWN) ns = scroll + view_h;
-    else if (c == PAGE_UP) ns = scroll - view_h;
-    else if (c == HOME_KEY) ns = 0;
-    else if (c == END_KEY) ns = maxscroll;
+    if (max == 0) break;
+    if (c == ARROW_DOWN) widget_text_scroll(&widgets[0], 1);
+    else if (c == ARROW_UP) widget_text_scroll(&widgets[0], -1);
+    else if (c == PAGE_DOWN) widget_text_scroll(&widgets[0], pane_h);
+    else if (c == PAGE_UP) widget_text_scroll(&widgets[0], -pane_h);
+    else if (c == HOME_KEY) widget_text_scroll(&widgets[0], -widgets[0].count);
+    else if (c == END_KEY) widget_text_scroll(&widgets[0], widgets[0].count);
     else break;
-    if (ns < 0) ns = 0;
-    if (ns > maxscroll) ns = maxscroll;
-    scroll = ns;
   }
-  screen_force_repaint();
+
+  layer_pop_to(depth);
 }
 
 /* ---- open-file dialog -------------------------------------------------- *
@@ -362,6 +366,9 @@ char *editor_open_dialog(void) {
   for (;;) {
     struct layer *lp;
     int cols, rows, list_h, c, ns;
+
+    /* Before measuring anything: see above screen_sync_size. */
+    screen_sync_size();
 
     /* Sized to the terminal, with a ceiling so it stays a dialog on a large
      * screen rather than growing into one. */

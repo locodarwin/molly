@@ -966,8 +966,13 @@ def test_help(tmpdir):
     # Wide screens use the two-column layout; narrow ones fall back to one.
     check("wide uses two columns", "FILES" in wide and "CLIPBOARD" in wide, True)
     narrow = out(cols=48)
-    check("narrow still shows everything",
-          "FILES" in narrow and "Ctrl-V" in narrow, True)
+    check("narrow starts at the top", "FILES" in narrow, True)
+    # One column means more lines than fit, so the tail is scrolled to rather than
+    # shown. What matters is that nothing is dropped: End reaches the last group.
+    # (This used to fit without scrolling, before help gained a frame.)
+    narrow_end = out(cols=48, keys=(HELP, END))
+    check("narrow drops nothing -- the end is reachable",
+          "Ctrl-V" in narrow_end and "CLIPBOARD" in narrow_end, True)
 
     # A short screen gains a scroll hint (content taller than the screen).
     short = out(cols=80, rows=8)

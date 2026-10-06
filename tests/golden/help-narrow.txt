@@ -1,54 +1,76 @@
 --- screen ---
-            Molly - Keyboard Reference
-
-FILES
-  Ctrl-S         Save file
-  Ctrl-O         Open a file
-  Ctrl-Q         Quit
-  Ctrl-?         This help screen
-
-MOVEMENT
-  Arrows         Move cursor
-  PgUp/PgDn      Page up / down
-  Home/End       Line start / end
-  Ctrl-G         Go to line
-
-SELECTION
-  Shift+Arrows   Extend selection
-  Shift+Home/End To line edge
-  Shift+PgUp/Dn  Extend by page
-
-EDITING
-     In prompts: Enter accepts   Esc cancels
-     PgUp/PgDn scroll   any other key returns
-
-
+alpha
+beta
+ga╔════════════ Keyboard Reference ════════════╗
+~ ║ FILES                                      ║
+~ ║   Ctrl-S         Save file                 ║
+~ ║   Ctrl-O         Open a file               ║
+~ ║   Ctrl-Q         Quit                      ║
+~ ║   Ctrl-?         This help screen          ║
+~ ║                                            ║
+~ ║ MOVEMENT                                   ║
+~ ║   Arrows         Move cursor               ║
+~ ║   PgUp/PgDn      Page up / down            ║
+~ ║   Home/End       Line start / end          ║
+~ ║   Ctrl-G         Go to line                ║
+~ ║                                            ║
+~ ║ SELECTION                                  ║
+~ ║   Shift+Arrows   Extend selection          ║
+~ ║   Shift+Home/End To line edge              ║
+~ ║   Shift+PgUp/Dn  Extend by page            ║
+~ ║ In prompts: Enter accepts   Esc cancels    ║
+~ ║ PgUp/PgDn scroll   any other key returns   ║
+~ ╚════════════════════════════════════════════╝
+sample.txt - 3 lines                   Ln 1, Col 1
+HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = fin
 --- attrs ---
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+..gggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggg
+RRRRgggggggggggggggggggggggggggggggggggggggggggggg
 
 --- colors ---
+3: 2-15 7/8  16-33 15/8  34-47 7/8
+4: 0-0 8/-  2-2 7/8  3-46 15/8  47-47 7/8  48-49 8/0
+5: 0-0 8/-  2-2 7/8  3-46 15/8  47-47 7/8  48-49 8/0
+6: 0-0 8/-  2-2 7/8  3-46 15/8  47-47 7/8  48-49 8/0
+7: 0-0 8/-  2-2 7/8  3-46 15/8  47-47 7/8  48-49 8/0
+8: 0-0 8/-  2-2 7/8  3-46 15/8  47-47 7/8  48-49 8/0
+9: 0-0 8/-  2-2 7/8  3-46 15/8  47-47 7/8  48-49 8/0
+10: 0-0 8/-  2-2 7/8  3-46 15/8  47-47 7/8  48-49 8/0
+11: 0-0 8/-  2-2 7/8  3-46 15/8  47-47 7/8  48-49 8/0
+12: 0-0 8/-  2-2 7/8  3-46 15/8  47-47 7/8  48-49 8/0
+13: 0-0 8/-  2-2 7/8  3-46 15/8  47-47 7/8  48-49 8/0
+14: 0-0 8/-  2-2 7/8  3-46 15/8  47-47 7/8  48-49 8/0
+15: 0-0 8/-  2-2 7/8  3-46 15/8  47-47 7/8  48-49 8/0
+16: 0-0 8/-  2-2 7/8  3-46 15/8  47-47 7/8  48-49 8/0
+17: 0-0 8/-  2-2 7/8  3-46 15/8  47-47 7/8  48-49 8/0
+18: 0-0 8/-  2-2 7/8  3-46 15/8  47-47 7/8  48-49 8/0
+19: 0-0 8/-  2-2 7/8  3-46 15/8  47-47 7/8  48-49 8/0
+20: 0-0 8/-  2-2 7/8  3-46 15/8  47-47 7/8  48-49 8/0
+21: 0-0 8/-  2-2 7/8  3-46 15/8  47-47 7/8  48-49 8/0
+22: 0-0 8/-  2-47 7/8  48-49 8/0
+23: 4-49 8/0
 --- modifiers ---
+3: 16-33 b
 --- cursor ---
-row 22 col 46 visible 0
+row 1 col 1 visible 0

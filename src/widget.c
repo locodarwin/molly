@@ -91,6 +91,34 @@ void widget_list_move(struct widget *w, int delta) {
   widget_list_clamp(w);
 }
 
+/* A text pane: a list with nothing selected. Scrolled rather than navigated, so it
+ * keeps `top` and ignores `sel`. */
+void widget_text(struct widget *w, int x, int y, int cols, int rows,
+                 int count, widget_row_fn row, void *user) {
+  memset(w, 0, sizeof(*w));
+  w->kind = W_TEXT;
+  w->x = x;
+  w->y = y;
+  w->w = cols;
+  w->h = rows;
+  w->count = count;
+  w->row = row;
+  w->user = user;
+}
+
+/* How far a pane can scroll before its last line is at the bottom. */
+int widget_text_maxtop(const struct widget *w) {
+  int m = w->count - w->h;
+  return m > 0 ? m : 0;
+}
+
+void widget_text_scroll(struct widget *w, int delta) {
+  int max = widget_text_maxtop(w);
+  w->top += delta;
+  if (w->top > max) w->top = max;
+  if (w->top < 0) w->top = 0;
+}
+
 /* Truncate to fit `cols` columns without splitting a character. Names are
  * arbitrary bytes and the box has fixed columns; display width is honored so a
  * CJK name cannot overflow by a column. */
@@ -122,6 +150,22 @@ static void draw_label(const struct widget *w, int ox, int oy) {
   fit_cols(w->text, w->w, buf, sizeof(buf));
   grid_role(ROLE_DIALOG);
   grid_puts(oy + w->y, ox + w->x, buf, (int)strlen(buf));
+}
+
+static void draw_text(const struct widget *w, int ox, int oy) {
+  int k;
+  char buf[1024], fitted[1024];
+  grid_role(ROLE_DIALOG);
+  for (k = 0; k < w->h; k++) {
+    int i = w->top + k;
+    int y = oy + w->y + k;
+    grid_fill(y, ox + w->x, w->w, ' ');
+    if (i >= w->count) continue;
+    buf[0] = '\0';
+    w->row(w->user, i, buf, sizeof(buf));
+    fit_cols(buf, w->w, fitted, sizeof(fitted));
+    grid_puts(y, ox + w->x, fitted, (int)strlen(fitted));
+  }
 }
 
 static void draw_list(const struct widget *w, int ox, int oy) {
@@ -235,6 +279,9 @@ void dialog_draw(const struct layer *self) {
         break;
       case W_LIST:
         draw_list(wd, x + FRAME_PAD + CONTENT_PAD, y + FRAME_PAD);
+        break;
+      case W_TEXT:
+        draw_text(wd, x + FRAME_PAD + CONTENT_PAD, y + FRAME_PAD);
         break;
       default: break;
     }

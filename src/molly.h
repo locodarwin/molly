@@ -253,7 +253,8 @@ struct layer {
 
 enum widget_kind {
   W_LABEL = 0,
-  W_LIST
+  W_LIST,
+  W_TEXT   /* a list with nothing selected: scrolled, not navigated */
 };
 
 /* A list asks its owner for a row's text rather than owning the data, so nothing
@@ -469,6 +470,7 @@ void screen_cleanup(void);
 void screen_force_repaint(void);
 void screen_init_layers(void);
 void screen_init_size(void);
+void screen_sync_size(void);
 
 /* search.c */
 void editor_find(void);
@@ -561,6 +563,7 @@ void editor_move_cursor(int key);
 void editor_scroll(void);
 
 /* widget.c */
+int widget_text_maxtop(const struct widget *w);
 void dialog_draw(const struct layer *self);
 void dialog_init(struct dialog *d, const char *title, struct widget *widgets, int nwidgets, int cols, int rows);
 void dialog_layout(struct dialog *d, struct layer *l);
@@ -568,5 +571,7 @@ void widget_label(struct widget *w, int x, int y, int cols, const char *text);
 void widget_list(struct widget *w, int x, int y, int cols, int rows, int count, widget_row_fn row, void *user);
 void widget_list_clamp(struct widget *w);
 void widget_list_move(struct widget *w, int delta);
+void widget_text(struct widget *w, int x, int y, int cols, int rows, int count, widget_row_fn row, void *user);
+void widget_text_scroll(struct widget *w, int delta);
 
 #endif /* MOLLY_H */

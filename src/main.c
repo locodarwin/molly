@@ -1,4 +1,10 @@
-/* main.c -- Startup, teardown and the main loop. Key dispatch lives in cmd.c. */
+/* main.c -- Startup, teardown and the main loop. Key dispatch lives in cmd.c,
+   and the wait the loop is built on in loop.c. */
+
+/* How long the editor waits before looking around again. A resize interrupts the
+   wait, so this is not how quickly one is noticed; it is the ceiling on how long
+   molly can be unaware that anything has happened. */
+#define LOOP_TICK_MS 100
 
 #include "molly.h"
 
@@ -145,8 +151,24 @@ int main(int argc, char *argv[]) {
    * keystroke. */
   editor_refresh_screen();
 
+  /* Wait for something to happen, deal with it, repaint. The wait is the event
+   * loop's rather than a blocking read's, so a language server or an integrated
+   * terminal becomes a registered source instead of a reason to restructure this.
+   *
+   * Only repaint once there is something to repaint: an idle tick leaves the
+   * screen alone, which matters over a slow link, where a frame emitted every
+   * hundred milliseconds for no reason is a frame too many. */
   while (1) {
-    editor_process_keypress();
+    int ready = loop_wait(LOOP_TICK_MS);
+
+    if (ready & LOOP_STDIN) {
+      editor_process_keypress();
+    } else if (term_take_winch()) {
+      /* A resize is not a keystroke; the repaint below picks up the new size. */
+    } else {
+      continue;  /* nothing happened, and nothing to draw */
+    }
+
     editor_refresh_screen();
   }
 

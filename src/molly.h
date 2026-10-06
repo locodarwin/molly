@@ -232,6 +232,15 @@ struct drow {
 
 #define TEXT_COLS() (V.screencols - V.gutter_w)
 
+/* --- the event loop --------------------------------------------------------
+ *
+ * What loop_wait returns. The keyboard is reported; every other source is
+ * dispatched through its handler before loop_wait returns. */
+#define LOOP_STDIN       0x01  /* keyboard input is waiting */
+#define LOOP_INTERRUPTED 0x02  /* a signal cut the wait short (a resize, say) */
+
+typedef void (*loop_handler)(void *user);
+
 /* --- commands ---------------------------------------------------------------
  *
  * Every action the editor can perform is one of these, reached by name. The
@@ -335,6 +344,13 @@ void grid_resize(int rows, int cols);
 /* input.c */
 int editor_read_key(void);
 int input_last_key_had_shift(void);
+
+/* loop.c */
+int loop_add(int fd, loop_handler on_ready, void *user);
+int loop_source_count(void);
+int loop_wait(int timeout_ms);
+void loop_cleanup(void);
+void loop_remove(int id);
 
 /* main.c */
 void editor_cleanup(void);

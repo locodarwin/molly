@@ -142,17 +142,19 @@ void editor_draw_text_row(int y, erow *row, const struct drow *d,
   grid_role(ROLE_TEXT);
 }
 
-void editor_draw_rows(void) {
+/* The text area. Rows are drawn relative to the layer, so the menu bar appearing
+ * above it is a change to the layout and not to this function. */
+static void draw_text_area(const struct layer *self) {
   int y;
   int gw = V.gutter_w;
   int text_cols = TEXT_COLS();
-  for (y = 0; y < V.screenrows; y++) {
+  for (y = 0; y < self->h; y++) {
     struct drow d;
     int filerow;
     drow_at(y + V.drowoff, &d);
     filerow = d.filerow;
     if (filerow >= row_count()) {
-      if (row_count() == 0 && y == V.screenrows / 3) {
+      if (row_count() == 0 && y == self->h / 3) {
         char text[96];
         int welcomelen = snprintf(text, sizeof(text),
                                   "Molly editor -- version %s", MOLLY_VERSION);
@@ -161,25 +163,25 @@ void editor_draw_rows(void) {
         if (pad > 0) {
           /* The tilde keeps its column and the greeting is centered in what is
            * left, which is why the text starts one column past the prefix. */
-          gutter_draw_tilde(y, gw);
-          grid_puts(y, (gw ? gw + 1 : 1) + pad, text, welcomelen);
+          gutter_draw_tilde(self->y + y, gw);
+          grid_puts(self->y + y, (gw ? gw + 1 : 1) + pad, text, welcomelen);
         } else {
           /* Too narrow to center: the greeting takes the row. */
-          grid_puts(y, 0, text, welcomelen);
+          grid_puts(self->y + y, 0, text, welcomelen);
         }
       } else {
-        gutter_draw_tilde(y, gw);
+        gutter_draw_tilde(self->y + y, gw);
       }
     } else {
       int s0, s1;
       selection_row_rx(filerow, &s0, &s1);
-      editor_draw_text_row(y, row_at(filerow), &d, s0, s1);
+      editor_draw_text_row(self->y + y, row_at(filerow), &d, s0, s1);
     }
   }
 }
 
-void editor_draw_status_bar(void) {
-  int y = V.screenrows;
+static void draw_status_bar(const struct layer *self) {
+  int y = self->y;
   char status[80], rstatus[80];
   int len = snprintf(status, sizeof(status), "%.20s - %d lines %s",
       B.filename ? B.filename : "[No Name]", row_count(),
@@ -196,27 +198,29 @@ void editor_draw_status_bar(void) {
           CUR.cy + 1, charcol + 1, selection_bytes())
       : snprintf(rstatus, sizeof(rstatus), "Ln %d, Col %d",
           CUR.cy + 1, charcol + 1);
-  if (len > V.screencols) len = V.screencols;
+  if (len > self->w) len = self->w;
 
   /* The whole bar is reverse video, so it is filled first and written over.
    * Olly got the same effect by erasing to end of line with reverse video
    * active, which worked but meant the bar's extent was implied by a terminal
    * side effect rather than stated. */
   grid_role(ROLE_STATUS);
-  grid_fill(y, 0, V.screencols, ' ');
-  grid_puts(y, 0, status, len);
+  grid_fill(y, self->x, self->w, ' ');
+  grid_puts(y, self->x, status, len);
   /* Right-align the cursor position when it fits; otherwise leave it off. */
-  if (V.screencols - len >= rlen)
-    grid_puts(y, V.screencols - rlen, rstatus, rlen);
+  if (self->w - len >= rlen)
+    grid_puts(y, self->x + self->w - rlen, rstatus, rlen);
   grid_role(ROLE_TEXT);
 }
 
-void editor_draw_message_bar(void) {
-  int y = V.screenrows + 1;
+static void draw_message_bar(const struct layer *self) {
+  int y = self->y;
   int msglen = strlen(E.statusmsg);
-  if (msglen > V.screencols) msglen = V.screencols;
+  if (msglen > self->w) msglen = self->w;
+  grid_role(ROLE_MESSAGE);
   if (msglen && time(NULL) - E.statusmsg_time < 5)
-    grid_puts(y, 0, E.statusmsg, msglen);
+    grid_puts(y, self->x, E.statusmsg, msglen);
+  grid_role(ROLE_TEXT);
 }
 
 /* Make the next frame repaint every row instead of only the rows the cache
@@ -265,24 +269,64 @@ void screen_cleanup(void) {
   grid_cleanup();
 }
 
+/* The chrome's layers, pushed once and then only resized. Their indices are kept
+ * so the layout pass can move them; everything above them on the stack is pushed
+ * by whatever is showing it. */
+static int layer_text = -1;
+static int layer_status = -1;
+static int layer_message = -1;
+
+/* Rows of chrome above and below the text area. The status and message bars are
+ * always there; the menu bar will add one above, which is the whole reason the
+ * text area's origin is a variable rather than zero. */
+static int chrome_rows_above(void) {
+  return 0;
+}
+
+static int chrome_rows_below(void) {
+  return 2;  /* status bar, message bar */
+}
+
+void screen_init_layers(void) {
+  struct layer l;
+  memset(&l, 0, sizeof(l));
+  l.draw = draw_text_area;
+  layer_text = layer_push(&l);
+  l.draw = draw_status_bar;
+  layer_status = layer_push(&l);
+  l.draw = draw_message_bar;
+  layer_message = layer_push(&l);
+  if (layer_text < 0 || layer_status < 0 || layer_message < 0)
+    die("screen_init_layers");
+}
+
+/* Give the chrome its bounds for this frame. One place does the row arithmetic
+ * that the three draw functions each used to do for themselves. */
+static void screen_layout(void) {
+  int top = chrome_rows_above();
+  int text_h = V.screenrows;
+  layer_set_bounds(layer_text, 0, top, V.screencols, text_h);
+  layer_set_bounds(layer_status, 0, top + text_h, V.screencols, 1);
+  layer_set_bounds(layer_message, 0, top + text_h + 1, V.screencols, 1);
+}
+
 void editor_refresh_screen(void) {
   if (screen_poll_size()) force_full = 1;
   V.gutter_w = gutter_width();
   editor_scroll();
 
-  /* Two rows past the text area for the status and message bars. A size change
-   * drops the grid's contents, so it repaints in full by itself. */
-  grid_resize(V.screenrows + 2, V.screencols);
+  /* A size change drops the grid's contents, so it repaints in full by itself. */
+  grid_resize(chrome_rows_above() + V.screenrows + chrome_rows_below(),
+              V.screencols);
   if (force_full) {
     grid_invalidate();
     force_full = 0;
   }
 
+  screen_layout();
   grid_begin();
-  editor_draw_rows();
-  editor_draw_status_bar();
-  editor_draw_message_bar();
-  grid_cursor_to(drow_of_cursor(&CUR) - V.drowoff,
+  layer_draw_all();
+  grid_cursor_to(chrome_rows_above() + drow_of_cursor(&CUR) - V.drowoff,
                  (CUR.rx - V.coloff) + V.gutter_w);
   grid_flush();
 }

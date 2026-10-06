@@ -41,7 +41,9 @@ static int read_byte_patient(unsigned char *c, int ticks) {
  * visibly hang the editor. */
 #define SEQ_TICKS 3
 
-int editor_read_key(void) {
+/* Static, so that nothing can bypass the event loop by reading the terminal
+ * directly: ui_wait_key below is the only caller, and the only way in. */
+static int editor_read_key(void) {
   int nread;
   unsigned char c;
   last_key_shift = 0;
@@ -156,4 +158,26 @@ int editor_read_key(void) {
   if (b >= 0x20 && b <= 0x7e) return ALT_KEY(b);
 
   return '\x1b';
+}
+
+/* Wait for a keystroke, servicing the event loop while we wait.
+ *
+ * This is what every loop in the editor should call, and the difference from
+ * editor_read_key is the whole point: read_key blocks on the terminal, so while a
+ * prompt, the help screen or the open dialog was up, nothing else in molly ran.
+ * That was harmless while the keyboard was the only thing that could happen. It
+ * stops being harmless the moment a language server is sending diagnostics or an
+ * integrated terminal is producing output, either of which would simply stall for
+ * as long as a dialog was open.
+ *
+ * A resize is reported as WINCH_KEY, exactly as read_key reports it, so callers
+ * that repaint on a resize keep working. It is checked first so a resize is not
+ * held up behind a keystroke; a key that arrives at the same moment stays in the
+ * terminal's buffer and is read on the next call. */
+int ui_wait_key(void) {
+  for (;;) {
+    int ready = loop_wait(LOOP_TICK_MS);
+    if (term_take_winch()) return WINCH_KEY;
+    if (ready & LOOP_STDIN) return editor_read_key();
+  }
 }

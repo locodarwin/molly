@@ -232,6 +232,18 @@ struct drow {
 
 #define TEXT_COLS() (V.screencols - V.gutter_w)
 
+/* --- layers -----------------------------------------------------------------
+ *
+ * A region of the screen that knows how to draw itself. The stack is drawn bottom
+ * to top, so a menu, a dialog or a popup is a layer pushed above the chrome and
+ * overlap is only draw order. See layer.c, which also explains how layer differs
+ * from view and widget. */
+struct layer {
+  int x, y, w, h;
+  void (*draw)(const struct layer *self);
+  void *user;
+};
+
 /* --- the event loop --------------------------------------------------------
  *
  * What loop_wait returns. The keyboard is reported; every other source is
@@ -240,6 +252,11 @@ struct drow {
 #define LOOP_INTERRUPTED 0x02  /* a signal cut the wait short (a resize, say) */
 
 typedef void (*loop_handler)(void *user);
+
+/* How long a wait sits before looking around again. A resize interrupts it, so
+ * this is not how quickly one is noticed; it is the ceiling on how long molly can
+ * be unaware that anything has happened. */
+#define LOOP_TICK_MS 100
 
 /* --- commands ---------------------------------------------------------------
  *
@@ -336,7 +353,7 @@ int chord_parse(const char *s);
 int cmd_shortcut(const char *name, char *dst, size_t n);
 int help_entry_count(void);
 void chord_name(int key, char *dst, size_t n);
-void editor_process_keypress(void);
+void editor_process_key(int c);
 void help_entry_at(int i, const char **group, char *key, size_t keysz, const char **desc);
 void keymap_dump(FILE *out);
 void keymap_init(void);
@@ -362,8 +379,17 @@ void grid_resize(int rows, int cols);
 void grid_role(unsigned char role);
 
 /* input.c */
-int editor_read_key(void);
 int input_last_key_had_shift(void);
+int ui_wait_key(void);
+
+/* layer.c */
+int layer_count(void);
+int layer_push(const struct layer *l);
+struct layer *layer_get(int i);
+void layer_draw_all(void);
+void layer_pop(void);
+void layer_pop_to(int count);
+void layer_set_bounds(int i, int x, int y, int w, int h);
 
 /* loop.c */
 int loop_add(int fd, loop_handler on_ready, void *user);
@@ -379,14 +405,12 @@ void init_editor(void);
 /* screen.c */
 int screen_poll_size(void);
 void ab_append(struct abuf *ab, const char *s, int len);
-void editor_draw_message_bar(void);
-void editor_draw_rows(void);
-void editor_draw_status_bar(void);
 void editor_draw_text_row(int y, erow *row, const struct drow *d, int sel0, int sel1);
 void editor_refresh_screen(void);
 void editor_set_status_message(const char *fmt, ...);
 void screen_cleanup(void);
 void screen_force_repaint(void);
+void screen_init_layers(void);
 void screen_init_size(void);
 
 /* search.c */

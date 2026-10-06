@@ -511,7 +511,7 @@ void editor_check_recovery(void) {
   editor_refresh_screen();
   int c;
   do {
-    c = editor_read_key();
+    c = ui_wait_key();
   } while (c == WINCH_KEY);
   if (c != 'r' && c != 'R') {
     editor_set_status_message("Recovery data dropped");

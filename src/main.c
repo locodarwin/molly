@@ -1,10 +1,6 @@
 /* main.c -- Startup, teardown and the main loop. Key dispatch lives in cmd.c,
    and the wait the loop is built on in loop.c. */
 
-/* How long the editor waits before looking around again. A resize interrupts the
-   wait, so this is not how quickly one is noticed; it is the ceiling on how long
-   molly can be unaware that anything has happened. */
-#define LOOP_TICK_MS 100
 
 #include "molly.h"
 
@@ -36,6 +32,7 @@ void init_editor(void) {
    * from here on, so a second buffer is a matter of pointing V.buf elsewhere. */
   V.buf = &B;
   theme_init();
+  screen_init_layers();
   keymap_init();
   cursors_init();
   V.drowoff = 0;
@@ -152,24 +149,15 @@ int main(int argc, char *argv[]) {
    * keystroke. */
   editor_refresh_screen();
 
-  /* Wait for something to happen, deal with it, repaint. The wait is the event
-   * loop's rather than a blocking read's, so a language server or an integrated
-   * terminal becomes a registered source instead of a reason to restructure this.
+  /* Wait for a key, act on it, repaint. The wait services the event loop, so a
+   * language server or an integrated terminal is a registered source rather than a
+   * reason to restructure this, and nothing is drawn until something has happened.
    *
-   * Only repaint once there is something to repaint: an idle tick leaves the
-   * screen alone, which matters over a slow link, where a frame emitted every
-   * hundred milliseconds for no reason is a frame too many. */
+   * A resize arrives as WINCH_KEY and is dispatched like any other key -- the
+   * app.resize command does nothing except decline to reset the quit countdown,
+   * and the repaint below picks up the new size. */
   while (1) {
-    int ready = loop_wait(LOOP_TICK_MS);
-
-    if (ready & LOOP_STDIN) {
-      editor_process_keypress();
-    } else if (term_take_winch()) {
-      /* A resize is not a keystroke; the repaint below picks up the new size. */
-    } else {
-      continue;  /* nothing happened, and nothing to draw */
-    }
-
+    editor_process_key(ui_wait_key());
     editor_refresh_screen();
   }
 

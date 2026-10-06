@@ -443,8 +443,9 @@ int cmd_shortcut(const char *name, char *dst, size_t n) {
 
 /* ---- the dispatcher ------------------------------------------------------ */
 
-void editor_process_keypress(void) {
-  int c = editor_read_key();
+/* Act on one key. The key is passed in rather than read here, so that exactly one
+ * place in molly waits for input -- see ui_wait_key. */
+void editor_process_key(int c) {
   int shift = input_last_key_had_shift();
   int pre_cx = CUR.cx, pre_cy = CUR.cy;
   const struct command *cmd = keymap_lookup(c);

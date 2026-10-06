@@ -145,6 +145,56 @@ static void test_loop_sources(void) {
   close(a[0]);
 }
 
+/* The property step 3 of Phase 1 exists for: a dialog waiting on a keystroke must
+ * not stop everything else. ui_wait_key is what every loop in the editor waits on,
+ * so proving it dispatches a ready source before handing back the key proves it for
+ * the prompt, the help screen and the open dialog alike. */
+static void test_wait_key_services_sources(void) {
+  int idx = 0;
+  int src[2], kb[2];
+  int key;
+
+  printf("\nui_wait_key: sources are serviced while waiting for a key\n");
+
+  loop_cleanup();
+  fired[0] = 0;
+  bytes_read[0] = 0;
+
+  if (pipe(src) != 0 || pipe(kb) != 0) {
+    perror("pipe");
+    failures++;
+    return;
+  }
+  if (dup2(kb[0], STDIN_FILENO) < 0) {
+    perror("dup2");
+    failures++;
+    return;
+  }
+  handler_fd[0] = src[0];
+  if (loop_add(src[0], drain_handler, &idx) < 0) {
+    failures++;
+    return;
+  }
+
+  /* Something arrives on the source, and a key is pressed. */
+  if (write(src[1], "diag", 4) != 4 || write(kb[1], "k", 1) != 1) {
+    perror("write");
+    failures++;
+    return;
+  }
+
+  key = ui_wait_key();
+  check("the key comes back", key, 'k');
+  check("the source was serviced on the way", fired[0], 1);
+  check("and its bytes were delivered", bytes_read[0], 4);
+
+  loop_cleanup();
+  close(src[0]);
+  close(src[1]);
+  close(kb[0]);
+  close(kb[1]);
+}
+
 /* ---- the theme ----------------------------------------------------------- */
 
 static void test_theme_depth(void) {
@@ -234,6 +284,7 @@ static void test_theme_color_bytes(void) {
 
 int main(void) {
   test_loop_sources();
+  test_wait_key_services_sources();
   test_theme_depth();
   test_theme_styles();
   test_theme_color_bytes();

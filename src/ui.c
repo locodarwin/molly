@@ -14,7 +14,7 @@ char *editor_prompt(char *prompt, void (*callback)(char *, int)) {
     editor_set_status_message(prompt, buf);
     editor_refresh_screen();
 
-    int c = editor_read_key();
+    int c = ui_wait_key();
 
     if (c == DEL_KEY || c == CTRL_KEY('h') || c == BACKSPACE) {
       if (buflen != 0) {
@@ -211,7 +211,7 @@ void editor_help(void) {
     write_all(STDOUT_FILENO, ab.b, (size_t)ab.len);
     free(ab.b);
 
-    int c = editor_read_key();
+    int c = ui_wait_key();
     /* A resize is not a dismiss: fall through to the top of the loop, which
      * re-reads the size and re-lays the screen out at the new dimensions. */
     if (c == WINCH_KEY) continue;
@@ -372,7 +372,7 @@ char *editor_open_dialog(void) {
     free(ab.b);
     msg = "";
 
-    int c = editor_read_key();
+    int c = ui_wait_key();
     if (c == WINCH_KEY) continue;
     int ns = sel;
     if (c == ARROW_DOWN || c == CTRL_KEY('n')) ns = sel + 1;

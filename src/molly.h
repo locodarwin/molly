@@ -51,8 +51,23 @@ enum editorKey {
   END_KEY,
   PAGE_UP,
   PAGE_DOWN,
-  WINCH_KEY  /* not a real keystroke -- a SIGWINCH woke the read loop */
+  WINCH_KEY,  /* not a real keystroke -- a SIGWINCH woke the read loop */
+
+  /* Function keys. Recognized but deliberately unbound: the menu bar wants F10
+   * and help wants F1, and both are Phase 1 bindings rather than Phase 0 ones. */
+  F1_KEY = 1100,
+  F2_KEY, F3_KEY, F4_KEY, F5_KEY, F6_KEY,
+  F7_KEY, F8_KEY, F9_KEY, F10_KEY, F11_KEY, F12_KEY,
+
+  /* Alt + a printable character, as ALT_KEY_BASE + that character. Alt is half
+   * of molly's answer to a full Ctrl keyspace, and the menu bar reserves eight
+   * of these for its titles. Also unbound for now. */
+  ALT_KEY_BASE = 2000
 };
+
+#define ALT_KEY(c)       (ALT_KEY_BASE + (unsigned char)(c))
+#define IS_ALT_KEY(k)    ((k) > ALT_KEY_BASE && (k) < ALT_KEY_BASE + 128)
+#define ALT_KEY_CHAR(k)  ((k) - ALT_KEY_BASE)
 
 typedef struct erow {
   int size;

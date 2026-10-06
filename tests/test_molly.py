@@ -1309,6 +1309,52 @@ def test_undo_cap(tmpdir):
           play(once * 3 + [UNDO, UNDO, UNDO, SAVE]), b"x x x\n")
 
 
+def test_input_decoding(tmpdir):
+    print("\ninput: Esc, Alt and function keys")
+
+    # Alt-x arrives as ESC then 'x'. Nothing is bound to it yet, so the test is
+    # that it stays inert: the letter must not reach the buffer, which is also
+    # what olly did with the byte after an Esc.
+    check("alt-letter inserts nothing",
+          edit(tmpdir, "ab\n", ["\x1bx", SAVE]), "ab\n")
+    check("alt-shift-letter inserts nothing",
+          edit(tmpdir, "ab\n", ["\x1bX", SAVE]), "ab\n")
+    check("alt-digit inserts nothing",
+          edit(tmpdir, "ab\n", ["\x1b7", SAVE]), "ab\n")
+
+    # Esc on its own, and Esc twice, are still just Esc.
+    check("bare esc inserts nothing",
+          edit(tmpdir, "ab\n", ["\x1b", 0.3, SAVE]), "ab\n")
+    check("esc esc inserts nothing",
+          edit(tmpdir, "ab\n", ["\x1b\x1b", SAVE]), "ab\n")
+
+    # Function keys are recognized and deliberately unbound; recognized matters
+    # because an unparsed sequence would leak its tail into the buffer.
+    for label, seq in [("F1 (SS3)", "\x1bOP"),
+                       ("F4 (SS3)", "\x1bOS"),
+                       ("F5 (CSI)", "\x1b[15~"),
+                       ("F10 (CSI)", "\x1b[21~"),
+                       ("F12 (CSI)", "\x1b[24~"),
+                       ("F1 (CSI final)", "\x1b[P")]:
+        check("%s inserts nothing" % label,
+              edit(tmpdir, "ab\n", [seq, SAVE]), "ab\n")
+
+    # A sequence that arrives in pieces, as it does over a slow link. Giving up
+    # after one VTIME tick consumed the head and delivered the tail as text, so
+    # a split "\x1b[C" used to type a literal "C" into the buffer instead of
+    # moving right. The pause here is longer than one tick and shorter than the
+    # patient read's budget.
+    check("a split escape sequence is still one key",
+          edit(tmpdir, "ab\n", ["\x1b[", 0.15, "C", "X", SAVE]), "aXb\n")
+    check("a split SS3 sequence is still one key",
+          edit(tmpdir, "ab\n", ["\x1bO", 0.15, "C", "X", SAVE]), "aXb\n")
+
+    # A sequence truncated for good must not hang or leak: the editor waits out
+    # the budget, reports Esc, and the following keys are ordinary input.
+    check("an abandoned sequence degrades to esc, and typing continues",
+          edit(tmpdir, "ab\n", ["\x1b[", 0.6, "X", SAVE]), "Xab\n")
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -1318,6 +1364,7 @@ def main():
     tmpdir = tempfile.mkdtemp(prefix="molly-tests-")
     try:
         test_keys(tmpdir)
+        test_input_decoding(tmpdir)
         test_tab(tmpdir)
         test_utf8(tmpdir)
         test_wide(tmpdir)

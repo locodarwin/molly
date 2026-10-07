@@ -69,6 +69,31 @@ int editor_row_cx_to_rx(erow *row, int cx) {
  * the status bar reports as "Col" -- a tab-stop- or wide-glyph-aware display
  * column would jump around in a way that doesn't match "the Nth character
  * in the line," which is what most editors and tools mean by column. */
+/* The byte offset whose glyph covers display column `rx`: the inverse of
+ * editor_row_cx_to_rx, for turning a mouse click into a cursor position.
+ *
+ * A click lands on a column, which may be in the middle of a tab's run of blanks or
+ * on the second half of a wide glyph; either way the whole character is what the
+ * cursor goes to, so the walk stops at the character whose span contains the column.
+ * A click past the last glyph gives the end of the line, which is where someone
+ * clicking in the empty space to the right of a line expects the cursor. */
+int editor_row_rx_to_cx(erow *row, int rx) {
+  int cur = 0, j = 0;
+  while (j < row->size) {
+    int w, nb;
+    if (row->chars[j] == '\t') {
+      w = KILO_TAB_STOP - (cur % KILO_TAB_STOP);
+      nb = 1;
+    } else {
+      w = utf8_char_cols(row->chars, row->size, j, &nb);
+    }
+    if (cur + w > rx) return j;
+    cur += w;
+    j += nb;
+  }
+  return row->size;
+}
+
 int editor_row_cx_to_charcol(erow *row, int cx) {
   int col = 0, j = 0;
   while (j < cx) {
@@ -117,7 +142,7 @@ int editor_render_byte_to_cx(erow *row, int rbyte) {
 
 
 /* Display rows the buffer occupies. */
-static int drow_total(void) {
+int drow_total(void) {
   return row_count();
 }
 
@@ -189,6 +214,12 @@ void editor_move_cursor(int key) {
   }
 }
 
+/* Where the cursor was when the view was last scrolled, so editor_scroll can tell a
+ * cursor that moved from a view the user scrolled. Starts at a position no cursor
+ * can hold, so the first frame counts as movement and scrolls the cursor into view. */
+static int last_scroll_cy = -1;
+static int last_scroll_cx = -1;
+
 void editor_scroll(void) {
   /* Every edit path funnels through a refresh, so clamping here keeps the whole
    * list valid without each one having to remember to. With a single cursor
@@ -203,9 +234,23 @@ void editor_scroll(void) {
   {
     int cur_drow = drow_of_cursor(&CUR);
     int total = drow_total();
-    if (cur_drow < V.drowoff) V.drowoff = cur_drow;
-    if (cur_drow >= V.drowoff + V.screenrows)
-      V.drowoff = cur_drow - V.screenrows + 1;
+    /* The view follows the cursor only when the cursor has moved.
+     *
+     * Olly's view was welded to the cursor: every frame pulled the scroll offset
+     * back until the cursor was visible. That is right for keyboard movement and
+     * wrong for a wheel, which scrolls the view and deliberately leaves the cursor
+     * where it is -- welded, a wheel event was undone by the very next frame. So the
+     * view is allowed to detach, and any cursor movement re-attaches it, which is
+     * what every editor does and what makes scrolling up to look at something and
+     * then typing behave the way people expect. */
+    int cursor_moved = (CUR.cy != last_scroll_cy || CUR.cx != last_scroll_cx);
+    last_scroll_cy = CUR.cy;
+    last_scroll_cx = CUR.cx;
+    if (cursor_moved) {
+      if (cur_drow < V.drowoff) V.drowoff = cur_drow;
+      if (cur_drow >= V.drowoff + V.screenrows)
+        V.drowoff = cur_drow - V.screenrows + 1;
+    }
     if (V.drowoff > total) V.drowoff = total;
     if (V.drowoff < 0) V.drowoff = 0;
   }

@@ -449,6 +449,18 @@ int cmd_shortcut(const char *name, char *dst, size_t n) {
 void editor_process_key(int c) {
   int shift = input_last_key_had_shift();
   int pre_cx = CUR.cx, pre_cy = CUR.cy;
+
+  /* A mouse event carries coordinates, so it cannot be a chord the keymap binds to
+   * a command: it goes to whichever layer is on top where it landed. It also must
+   * not fall through to the selection handling below, which would clear the
+   * selection a drag has just been building. */
+  if (c == MOUSE_KEY) {
+    struct mouse_event ev;
+    input_last_mouse(&ev);
+    layer_dispatch_mouse(&ev);
+    return;
+  }
+
   const struct command *cmd = keymap_lookup(c);
   int sel_move = (cmd != NULL && (cmd->flags & CMD_MOVEMENT));
   int res = 0;

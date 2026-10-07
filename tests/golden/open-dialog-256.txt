@@ -1,0 +1,64 @@
+--- screen ---
+alpha
+beta
+gamm╔═════════════════════ Open File ══════════════════════╗
+~   ║ /tmp/molly-golden                                    ║
+~   ║ ../                                                  ║
+~   ║ subdir/                                              ║
+~   ║ sample.txt                                           ║
+~   ║                                                      ║
+~   ║                                                      ║
+~   ║                                                      ║
+~   ║                                                      ║
+~   ║                                                      ║
+~   ║                                                      ║
+~   ║                                                      ║
+~   ║                                                      ║
+~   ║                                                      ║
+~   ║ Enter open   Esc cancel                              ║
+~   ╚══════════════════════════════════════════════════════╝
+sample.txt - 3 lines                                 Ln 1, Col 1
+HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | Ctrl-N = n
+--- attrs ---
+
+
+....gggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+RRRRRRggggggggggggggggggggggggggggggggggggggggggggggggggggggggRR
+
+--- colors ---
+3: 4-26 245/238  27-35 231/238  36-59 245/238
+4: 0-0 8/-  4-4 245/238  5-58 252/238  59-59 245/238  60-61 240/234
+5: 0-0 8/-  4-4 245/238  5-5 252/238  6-57 234/110  58-58 252/238  59-59 245/238  60-61 240/234
+6: 0-0 8/-  4-4 245/238  5-58 252/238  59-59 245/238  60-61 240/234
+7: 0-0 8/-  4-4 245/238  5-58 252/238  59-59 245/238  60-61 240/234
+8: 0-0 8/-  4-4 245/238  5-58 252/238  59-59 245/238  60-61 240/234
+9: 0-0 8/-  4-4 245/238  5-58 252/238  59-59 245/238  60-61 240/234
+10: 0-0 8/-  4-4 245/238  5-58 252/238  59-59 245/238  60-61 240/234
+11: 0-0 8/-  4-4 245/238  5-58 252/238  59-59 245/238  60-61 240/234
+12: 0-0 8/-  4-4 245/238  5-58 252/238  59-59 245/238  60-61 240/234
+13: 0-0 8/-  4-4 245/238  5-58 252/238  59-59 245/238  60-61 240/234
+14: 0-0 8/-  4-4 245/238  5-58 252/238  59-59 245/238  60-61 240/234
+15: 0-0 8/-  4-4 245/238  5-58 252/238  59-59 245/238  60-61 240/234
+16: 0-0 8/-  4-4 245/238  5-58 252/238  59-59 245/238  60-61 240/234
+17: 0-0 8/-  4-4 245/238  5-58 252/238  59-59 245/238  60-61 240/234
+18: 0-0 8/-  4-59 245/238  60-61 240/234
+19: 6-61 240/234
+--- modifiers ---
+3: 27-35 b
+--- cursor ---
+row 1 col 1 visible 0

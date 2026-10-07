@@ -1361,6 +1361,81 @@ def test_input_decoding(tmpdir):
           edit(tmpdir, "ab\n", ["\x1b[", 0.6, "X", SAVE]), "Xab\n")
 
 
+def test_mouse(tmpdir):
+    print("\nmouse: SGR 1006 reports move the cursor, select, and scroll")
+
+    # SGR mouse reports: ESC [ < button ; col ; row  then M for press/drag or m for
+    # release. Columns and rows are 1-based, as the terminal counts them.
+    def press(col, row, button=0):
+        return "\x1b[<%d;%d;%dM" % (button, col, row)
+
+    def release(col, row, button=0):
+        return "\x1b[<%d;%d;%dm" % (button, col, row)
+
+    def drag(col, row):
+        return "\x1b[<%d;%d;%dM" % (32, col, row)   # 32 = motion while held
+
+    def wheel(col, row, down=True):
+        return "\x1b[<%d;%d;%dM" % (65 if down else 64, col, row)
+
+    # A click puts the cursor where it landed: column 3 of row 1 is before the "c".
+    check("a click positions the cursor",
+          edit(tmpdir, "abcd\n", [press(3, 1), release(3, 1), "X", SAVE]),
+          "abXcd\n")
+    # And on the row it landed on.
+    check("a click picks the row too",
+          edit(tmpdir, "ab\ncd\n", [press(2, 2), release(2, 2), "X", SAVE]),
+          "ab\ncXd\n")
+    # Past the end of a line, the cursor goes to the end of that line.
+    check("a click past the text goes to end of line",
+          edit(tmpdir, "ab\n", [press(40, 1), release(40, 1), "X", SAVE]),
+          "abX\n")
+    # Below the last line, the cursor lands on the phantom row past the end.
+    check("a click below the text stays in the buffer",
+          edit(tmpdir, "ab\n", [press(1, 10), release(1, 10), "X", SAVE]),
+          "ab\nX\n")
+
+    # Dragging selects, using the same anchor-plus-cursor model Shift+arrows use,
+    # so typing over it replaces the selection.
+    check("a drag selects, and typing replaces the selection",
+          edit(tmpdir, "abcd\n", [press(1, 1), drag(3, 1), release(3, 1), "Z", SAVE]),
+          "Zcd\n")
+    # A drag leaves a real selection, so Ctrl-X cuts it.
+    check("a dragged selection can be cut",
+          edit(tmpdir, "abcd\n", [press(1, 1), drag(3, 1), release(3, 1),
+                                   "\x18", SAVE]),
+          "cd\n")
+
+    # The middle button is not a text gesture and must not move the cursor.
+    check("a middle click does not move the cursor",
+          edit(tmpdir, "abcd\n", [press(3, 1, button=1), release(3, 1, button=1),
+                                   "X", SAVE]),
+          "Xabcd\n")
+
+    # With the gutter on, a click in it goes to the start of that line rather than
+    # into the line numbers.
+    check("a click in the gutter goes to the line start",
+          edit(tmpdir, "ab\ncd\n", ["\x15", press(2, 2), release(2, 2), "X", SAVE]),
+          "ab\nXcd\n")
+
+    # The wheel scrolls the view without moving the cursor, so nothing is typed
+    # anywhere new.
+    body = "".join("line%d\n" % i for i in range(1, 60))
+    scrolled = run([MOLLY, os.path.join(tmpdir, "w.txt")], [])
+    with open(os.path.join(tmpdir, "w.txt"), "w") as fh:
+        fh.write(body)
+    out = run([MOLLY, os.path.join(tmpdir, "w.txt")],
+              [wheel(5, 5)] * 3)
+    scr = Screen(24, 80)
+    scr.feed(out)
+    check("the wheel scrolls the view", scr.text()[0].startswith("line"), True)
+    check("the wheel scrolled past the first line", scr.text()[0] != "line1", True)
+    # The cursor did not move with it: typing still edits line 1.
+    check("the wheel leaves the cursor alone",
+          edit(tmpdir, body, [wheel(5, 5), wheel(5, 5), "X", SAVE], name="w2.txt")
+          .startswith("Xline1"), True)
+
+
 def test_command_table(tmpdir):
     print("\ncommands: the keymap is parsed from chord text")
 
@@ -1419,6 +1494,7 @@ def main():
     try:
         test_keys(tmpdir)
         test_input_decoding(tmpdir)
+        test_mouse(tmpdir)
         test_command_table(tmpdir)
         test_tab(tmpdir)
         test_utf8(tmpdir)

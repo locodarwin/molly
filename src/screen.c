@@ -269,6 +269,56 @@ void screen_cleanup(void) {
   grid_cleanup();
 }
 
+/* A click, drag or wheel in the text area.
+ *
+ * A press puts the cursor where it was clicked and drops any selection; a drag
+ * extends a selection from where the press landed, which is the same anchor-plus-
+ * cursor model the Shift+arrow keys use, so cutting and copying work on a
+ * mouse-made selection without knowing it was made with a mouse. The wheel scrolls
+ * the view without moving the cursor, as every other editor does. */
+static int text_area_mouse(const struct layer *self, const struct mouse_event *ev) {
+  int drow, filerow, rcol;
+
+  if (ev->type == MOUSE_WHEEL_UP || ev->type == MOUSE_WHEEL_DOWN) {
+    int step = (ev->type == MOUSE_WHEEL_UP) ? -3 : 3;
+    V.drowoff += step;
+    if (V.drowoff > drow_total()) V.drowoff = drow_total();
+    if (V.drowoff < 0) V.drowoff = 0;
+    return 1;
+  }
+  if (ev->type == MOUSE_RELEASE) return 1;  /* nothing to do, but it is ours */
+  if (ev->button != MOUSE_BUTTON_LEFT) return 1;
+
+  /* Screen cell to buffer position. The gutter is not text: a click in it lands at
+   * the start of the line, which is what clicking a line number should do. */
+  drow = ev->y - self->y + V.drowoff;
+  filerow = drow;                 /* identity while nothing wraps; see struct drow */
+  if (filerow < 0) filerow = 0;
+  if (filerow > row_count()) filerow = row_count();
+
+  rcol = ev->x - self->x - V.gutter_w + V.coloff;
+  if (rcol < 0) rcol = 0;
+
+  if (ev->type == MOUSE_PRESS) {
+    selection_clear();
+    CUR.cy = filerow;
+    CUR.cx = (filerow < row_count())
+        ? editor_row_rx_to_cx(row_at(filerow), rcol) : 0;
+    return 1;
+  }
+
+  /* MOUSE_DRAG: seed the anchor on the first movement, then track. */
+  if (!CUR.sel_active) {
+    CUR.sx = CUR.cx;
+    CUR.sy = CUR.cy;
+    CUR.sel_active = 1;
+  }
+  CUR.cy = filerow;
+  CUR.cx = (filerow < row_count())
+      ? editor_row_rx_to_cx(row_at(filerow), rcol) : 0;
+  return 1;
+}
+
 /* The chrome's layers, pushed once and then only resized. Their indices are kept
  * so the layout pass can move them; everything above them on the stack is pushed
  * by whatever is showing it. */
@@ -291,7 +341,9 @@ void screen_init_layers(void) {
   struct layer l;
   memset(&l, 0, sizeof(l));
   l.draw = draw_text_area;
+  l.mouse = text_area_mouse;
   layer_text = layer_push(&l);
+  l.mouse = NULL;
   l.draw = draw_status_bar;
   layer_status = layer_push(&l);
   l.draw = draw_message_bar;

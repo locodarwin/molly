@@ -25,7 +25,12 @@ def run(argv, keys, rows=24, cols=80, settle=0.4, env=None, status=False):
     """
     pid, fd = pty.fork()
     if pid == 0:
-        environ = dict(os.environ, TERM="xterm")
+        # TERM and COLORTERM are both pinned, not just TERM: molly picks its colour
+        # depth from COLORTERM first, so inheriting it from whatever shell ran the
+        # tests made the golden screens depend on the ambient environment -- they
+        # came out sixteen-colour on one machine and 256-colour on the next. A test
+        # that wants a depth asks for it through `env`.
+        environ = dict(os.environ, TERM="xterm", COLORTERM="")
         if env:
             environ.update(env)
         os.execve(argv[0], argv, environ)
@@ -101,7 +106,7 @@ def run_until_signal(argv, sig, rows=24, cols=80, startup=0.5, keys=()):
                 os.dup2(slave, fd)
             if slave > 2:
                 os.close(slave)
-            os.execve(argv[0], argv, dict(os.environ, TERM="xterm"))
+            os.execve(argv[0], argv, dict(os.environ, TERM="xterm", COLORTERM=""))
         finally:
             os._exit(127)
 

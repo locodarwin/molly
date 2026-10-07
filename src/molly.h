@@ -52,6 +52,7 @@ enum editorKey {
   PAGE_UP,
   PAGE_DOWN,
   WINCH_KEY,  /* not a real keystroke -- a SIGWINCH woke the read loop */
+  MOUSE_KEY,  /* nor this one -- a mouse report; see input_last_mouse */
 
   /* Function keys. Recognized but deliberately unbound: the menu bar wants F10
    * and help wants F1, and both are Phase 1 bindings rather than Phase 0 ones. */
@@ -63,6 +64,32 @@ enum editorKey {
    * of molly's answer to a full Ctrl keyspace, and the menu bar reserves eight
    * of these for its titles. Also unbound for now. */
   ALT_KEY_BASE = 2000
+};
+
+/* A mouse report. Delivered as the key MOUSE_KEY, with the detail fetched through
+ * input_last_mouse -- the same out-of-band trick the Shift flag uses, because a
+ * mouse event is positional and so cannot be a chord bound to a command. */
+enum mouse_type {
+  MOUSE_PRESS = 0,
+  MOUSE_RELEASE,
+  MOUSE_DRAG,
+  MOUSE_WHEEL_UP,
+  MOUSE_WHEEL_DOWN
+};
+
+#define MOUSE_BUTTON_LEFT   0
+#define MOUSE_BUTTON_MIDDLE 1
+#define MOUSE_BUTTON_RIGHT  2
+
+#define MOUSE_MOD_SHIFT 0x01
+#define MOUSE_MOD_ALT   0x02
+#define MOUSE_MOD_CTRL  0x04
+
+struct mouse_event {
+  int type;     /* enum mouse_type */
+  int x, y;     /* zero-based cell, already converted from the terminal's 1-based */
+  int button;
+  unsigned mods;
 };
 
 #define ALT_KEY(c)       (ALT_KEY_BASE + (unsigned char)(c))
@@ -241,6 +268,10 @@ struct drow {
 struct layer {
   int x, y, w, h;
   void (*draw)(const struct layer *self);
+  /* Optional. Returns non-zero if the event was consumed, which stops it reaching
+   * anything underneath -- a click on a dialog must not also move the cursor in the
+   * text behind it. */
+  int (*mouse)(const struct layer *self, const struct mouse_event *ev);
   void *user;
 };
 
@@ -439,9 +470,12 @@ void grid_shade(int x, int y, int w, int h, unsigned char role);
 /* input.c */
 int input_last_key_had_shift(void);
 int ui_wait_key(void);
+void input_last_mouse(struct mouse_event *out);
 
 /* layer.c */
+int layer_at(int x, int y);
 int layer_count(void);
+int layer_dispatch_mouse(const struct mouse_event *ev);
 int layer_push(const struct layer *l);
 struct layer *layer_get(int i);
 void layer_draw_all(void);
@@ -552,10 +586,12 @@ int utf8_prev(const char *s, int i);
 
 /* view.c */
 int drow_of_cursor(const struct cursor *c);
+int drow_total(void);
 int editor_render_byte_to_cx(erow *row, int rbyte);
 int editor_row_cx_to_charcol(erow *row, int cx);
 int editor_row_cx_to_rbyte(erow *row, int cx);
 int editor_row_cx_to_rx(erow *row, int cx);
+int editor_row_rx_to_cx(erow *row, int rx);
 void cursors_collapse(void);
 void cursors_init(void);
 void drow_at(int index, struct drow *out);

@@ -41,7 +41,7 @@ def normalize(text):
 
 
 def check(name, keys, rows=24, cols=80, files=None, args=None, settle=0.5,
-          final=None):
+          final=None, env=None):
     """Run molly against a fresh copy of `files`, snapshot the screen, compare.
 
     `final` is the (rows, cols) the terminal ends at, for a case that resizes
@@ -57,7 +57,7 @@ def check(name, keys, rows=24, cols=80, files=None, args=None, settle=0.5,
             f.write(content)
 
     argv = [MOLLY] + (args if args is not None else ["sample.txt"])
-    out = pty_harness.run(argv, keys, rows=rows, cols=cols, settle=settle)
+    out = pty_harness.run(argv, keys, rows=rows, cols=cols, settle=settle, env=env)
 
     scr = Screen(*(final if final else (rows, cols)))
     scr.feed(out)
@@ -163,6 +163,13 @@ def main():
           files={"sample.txt": THREE_LINES})
     check("open-dialog-narrow", ["\x0f"], rows=12, cols=40,
           files={"sample.txt": THREE_LINES})
+    # The same dialog at 256 colours. Both depths are kept so neither rots: the
+    # sixteen-colour theme is what an old terminal gets, and nothing else would
+    # notice if it drifted.
+    check("open-dialog-256", ["\x0f"], rows=20, cols=64,
+          files={"sample.txt": THREE_LINES},
+          env={"TERM": "xterm-256color"})
+
     # Moving the selection must move the highlight and nothing else.
     check("open-dialog-selected", ["\x0f", "\x1b[B", "\x1b[B"], rows=20, cols=64,
           files={"sample.txt": THREE_LINES})

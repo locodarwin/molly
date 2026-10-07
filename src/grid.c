@@ -124,6 +124,13 @@ void grid_attrs(unsigned char attrs) {
 }
 
 void grid_cursor_to(int y, int x) {
+  /* Clamped into the grid: with the view scrolled away from the cursor, the cursor's
+   * row can be off-screen, and a position outside the terminal is a sequence whose
+   * handling is the terminal's business rather than something to rely on. */
+  if (y < 0) y = 0;
+  if (y >= g_rows) y = g_rows - 1;
+  if (x < 0) x = 0;
+  if (x >= g_cols) x = g_cols - 1;
   want_cy = y;
   want_cx = x;
 }

@@ -16,6 +16,11 @@ _Noreturn void die(const char *s) {
  * undefined behavior. If the terminal is already gone there is nothing left
  * to restore anyway. */
 void disable_raw_mode(void) {
+  /* Mouse reporting off before the terminal modes go back, or the shell inherits a
+   * terminal that sends it escape sequences whenever the user clicks. Writing from
+   * an atexit handler is allowed; failing is not worth checking for, since there is
+   * nothing useful to do about it at this point. */
+  write_all(STDOUT_FILENO, "\x1b[?1006l\x1b[?1002l", 16);
   tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.orig_termios);
 }
 
@@ -95,6 +100,19 @@ void enable_raw_mode(void) {
    * plus literal text; off, a paste is just literal keystrokes and inserts
    * cleanly. */
   write_all(STDOUT_FILENO, "\x1b[?2004l", 8);
+
+  /* Mouse reporting: 1002 reports presses, releases and motion while a button is
+   * held -- enough for click, drag and the wheel, without the flood that 1003's
+   * any-motion tracking produces. 1006 asks for the SGR encoding, whose
+   * coordinates are plain decimal and so are not capped at column 223 the way the
+   * original protocol's single bytes were.
+   *
+   * This takes drag-to-select away from the terminal, which is a real cost: the
+   * reflex of swiping text and middle-clicking it elsewhere stops working, because
+   * molly receives those events instead. Most terminals still pass the gesture
+   * through when Shift is held, which is the escape hatch, and the help screen says
+   * so. It becomes a setting when there is a configuration file to put it in. */
+  write_all(STDOUT_FILENO, "\x1b[?1002h\x1b[?1006h", 16);
 }
 
 int read_byte(unsigned char *c) {

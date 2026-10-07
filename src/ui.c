@@ -222,6 +222,16 @@ void editor_help(void) {
     c = ui_wait_key();
     /* A resize is not a dismiss: go round again at the new size. */
     if (c == WINCH_KEY) continue;
+    /* Nor is a mouse event. The wheel scrolls, as it would anywhere else; a click
+     * is ignored rather than treated as the "any other key" that returns, because
+     * closing the reference on a stray click would be a nasty surprise. */
+    if (c == MOUSE_KEY) {
+      struct mouse_event ev;
+      input_last_mouse(&ev);
+      if (ev.type == MOUSE_WHEEL_UP) widget_text_scroll(&widgets[0], -3);
+      else if (ev.type == MOUSE_WHEEL_DOWN) widget_text_scroll(&widgets[0], 3);
+      continue;
+    }
     if (max == 0) break;
     if (c == ARROW_DOWN) widget_text_scroll(&widgets[0], 1);
     else if (c == ARROW_UP) widget_text_scroll(&widgets[0], -1);
@@ -404,6 +414,25 @@ char *editor_open_dialog(void) {
     c = ui_wait_key();
     msg = "";
     if (c == WINCH_KEY) continue;
+
+    if (c == MOUSE_KEY) {
+      struct mouse_event ev;
+      input_last_mouse(&ev);
+      if (ev.type == MOUSE_WHEEL_UP) widget_list_move(&widgets[1], -3);
+      else if (ev.type == MOUSE_WHEEL_DOWN) widget_list_move(&widgets[1], 3);
+      else if (ev.type == MOUSE_PRESS && ev.button == MOUSE_BUTTON_LEFT) {
+        /* The list's rows in screen terms: the layer's origin, past the frame and
+         * the row the path occupies. A click outside them is ignored rather than
+         * clamped, so clicking the frame does not jump the selection. */
+        int row0 = lp->y + 1 + widgets[1].y;
+        int k = ev.y - row0;
+        if (k >= 0 && k < widgets[1].h && widgets[1].top + k < bs.n) {
+          widgets[1].sel = widgets[1].top + k;
+          widget_list_clamp(&widgets[1]);
+        }
+      }
+      continue;
+    }
 
     ns = 0;
     if (c == ARROW_DOWN || c == CTRL_KEY('n')) ns = 1;

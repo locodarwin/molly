@@ -77,3 +77,32 @@ void layer_draw_all(void) {
   for (i = 0; i < layer_n; i++)
     if (layers[i].draw != NULL) layers[i].draw(&layers[i]);
 }
+
+/* The topmost layer covering a point, or -1. A click belongs to whatever is visibly
+ * on top at that spot, which is the stack walked from the end. */
+int layer_at(int x, int y) {
+  int i;
+  for (i = layer_n - 1; i >= 0; i--) {
+    const struct layer *l = &layers[i];
+    if (x >= l->x && x < l->x + l->w && y >= l->y && y < l->y + l->h) return i;
+  }
+  return -1;
+}
+
+/* Offer an event to the layers, topmost first, stopping at the first that takes it.
+ *
+ * A layer without a mouse handler still blocks whatever is underneath it when the
+ * event falls inside its bounds: a click on a dialog that ignores clicks must not
+ * also move the cursor in the text behind it. Returns non-zero if the event was
+ * consumed. */
+int layer_dispatch_mouse(const struct mouse_event *ev) {
+  int i;
+  for (i = layer_n - 1; i >= 0; i--) {
+    struct layer *l = &layers[i];
+    if (ev->x < l->x || ev->x >= l->x + l->w) continue;
+    if (ev->y < l->y || ev->y >= l->y + l->h) continue;
+    if (l->mouse != NULL && l->mouse(l, ev)) return 1;
+    return 0;  /* inside an uninterested layer: swallowed, not passed down */
+  }
+  return 0;
+}

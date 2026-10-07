@@ -20,6 +20,55 @@ int input_last_key_had_shift(void) {
   return last_key_shift;
 }
 
+/* The mouse report that came with the last MOUSE_KEY. Out of band for the same
+ * reason the Shift flag is: an event carrying coordinates cannot be a chord that a
+ * keymap binds to a command. */
+static struct mouse_event last_mouse;
+
+void input_last_mouse(struct mouse_event *out) {
+  *out = last_mouse;
+}
+
+/* Decode an SGR mouse report: "<b;x;yM" for a press or drag, "<b;x;ym" for a
+ * release. The button byte packs the button in its low two bits, the modifiers
+ * above that, motion at 32 and the wheel at 64. Returns MOUSE_KEY, or Esc if the
+ * report makes no sense -- the sequence has already been consumed either way, so a
+ * malformed one cannot leak into the buffer. */
+static int decode_mouse(const char *params) {
+  int b, x, y;
+  const char *p = params;
+
+  if (*p != '<') return '\x1b';
+  p++;
+  if (sscanf(p, "%d;%d;%d", &b, &x, &y) != 3) return '\x1b';
+
+  last_mouse.mods = 0;
+  if (b & 4) last_mouse.mods |= MOUSE_MOD_SHIFT;
+  if (b & 8) last_mouse.mods |= MOUSE_MOD_ALT;
+  if (b & 16) last_mouse.mods |= MOUSE_MOD_CTRL;
+
+  /* The terminal counts from one; everything inside molly counts from zero. */
+  last_mouse.x = x - 1;
+  last_mouse.y = y - 1;
+  last_mouse.button = b & 0x03;
+
+  if (b & 64) {
+    /* Wheel. Buttons 64 and 65 are up and down; 66 and 67 are horizontal tilt on
+     * terminals that report it, and are ignored rather than mistaken for a click. */
+    if ((b & 0x03) == 0) last_mouse.type = MOUSE_WHEEL_UP;
+    else if ((b & 0x03) == 1) last_mouse.type = MOUSE_WHEEL_DOWN;
+    else return '\x1b';
+    last_mouse.button = MOUSE_BUTTON_LEFT;
+    return MOUSE_KEY;
+  }
+  if (b & 32) {
+    last_mouse.type = MOUSE_DRAG;
+    return MOUSE_KEY;
+  }
+  last_mouse.type = MOUSE_PRESS;   /* corrected to RELEASE by the caller on 'm' */
+  return MOUSE_KEY;
+}
+
 /* Read one byte, waiting up to `ticks` of the terminal's VTIME (100ms each).
  *
  * Only used once an escape sequence has begun. Giving up after a single tick is
@@ -80,6 +129,16 @@ static int editor_read_key(void) {
       if (n < sizeof(params) - 1) params[n++] = (char)b;
     }
     params[n] = '\0';
+
+    /* A mouse report is a CSI whose parameters start with '<'. It is checked before
+     * the final-byte switch because it uses 'M' and 'm' as finals, which mean
+     * nothing else to molly, and because its parameters are not the modifier form
+     * the code below expects. */
+    if (params[0] == '<') {
+      int k = decode_mouse(params);
+      if (k == MOUSE_KEY && final == 'm') last_mouse.type = MOUSE_RELEASE;
+      return k;
+    }
 
     /* The modifier, if any, rides after the ';' in the parameters ("\x1b[1;2C"
      * = Shift+Right). The value is one more than a bitfield (shift=1, alt=2,

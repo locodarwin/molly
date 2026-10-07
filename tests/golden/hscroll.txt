@@ -1,7 +1,7 @@
 --- screen ---
+ File  Edit  Search  View  Go  Help
 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
-~
 ~
 ~
 ~
@@ -24,9 +24,9 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 sample.txt - 2 lines                                               Ln 1, Col 201
 HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | Ctrl-N = next | Ctrl-? = h
 --- attrs ---
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 
 
-g
 g
 g
 g
@@ -49,7 +49,7 @@ g
 RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 
 --- colors ---
-3: 0-0 8/-
+1: 0-79 7/0
 4: 0-0 8/-
 5: 0-0 8/-
 6: 0-0 8/-
@@ -70,5 +70,6 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 21: 0-0 8/-
 22: 0-0 8/-
 --- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u
 --- cursor ---
-row 1 col 80 visible 1
+row 2 col 80 visible 1

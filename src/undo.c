@@ -32,6 +32,16 @@ static int undo_max_steps = UNDO_MAX_STEPS;
 static void undo_stack_trim(struct uchange **s, int *n, size_t *bytes);
 void uc_free(struct uchange *u);
 
+/* Whether there is anything to undo or redo, which is what greys out the two menu
+ * items rather than letting them look available and do nothing. */
+int undo_can_undo(void) {
+  return B.undo.undo_n > 0;
+}
+
+int undo_can_redo(void) {
+  return B.undo.redo_n > 0;
+}
+
 /* Lower the step cap, so that history eviction is reachable in a test without
  * editing for an hour. Only ever shrinks it. */
 void undo_set_max_steps(int n) {

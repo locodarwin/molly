@@ -156,6 +156,17 @@ static int cmd_repaint(void) {
   return 0;
 }
 
+/* The menu bar costs a row, so whether it is worth that row is the user's call. It
+ * is a command before it is a setting: configuration arrives in Phase 2, and this
+ * reads its default from there when it does. */
+static int cmd_menu_bar(void) {
+  V.menubar = !V.menubar;
+  /* The text area moves by a row, so every column of every row shifts. */
+  screen_force_repaint();
+  editor_set_status_message("Menu bar: %s", V.menubar ? "on" : "off");
+  return 0;
+}
+
 static int cmd_line_numbers(void) {
   V.linenum = !V.linenum;
   /* The gutter widens or shrinks the text area, shifting every column, so
@@ -165,6 +176,23 @@ static int cmd_line_numbers(void) {
   return 0;
 }
 
+/* Opening a menu is a command like any other, one per menu, so Alt-F and F10 are
+ * ordinary bindings rather than a special case in the dispatcher -- and the command
+ * palette will be able to offer "File menu" alongside everything else.
+ *
+ * Each returns what the command chosen inside the menu returned, so choosing Quit
+ * from the File menu behaves exactly as Ctrl-Q does, countdown included. */
+static int cmd_menu_file(void)   { return menu_open(0); }
+static int cmd_menu_edit(void)   { return menu_open(1); }
+static int cmd_menu_search(void) { return menu_open(2); }
+static int cmd_menu_view(void)   { return menu_open(3); }
+static int cmd_menu_go(void)     { return menu_open(4); }
+static int cmd_menu_help(void)   { return menu_open(5); }
+
+/* F10 opens the bar at the first menu, which is where every keyboard-driven menu bar
+ * since the 1980s has started. */
+static int cmd_menu_bar_open(void) { return menu_open(0); }
+
 /* Not a keystroke: a SIGWINCH woke the read loop. Nothing to do but let the next
  * refresh pick up the size -- without resetting the quit countdown, which a
  * terminal resize has no business cancelling. */
@@ -172,47 +200,91 @@ static int cmd_resize(void) {
   return CMD_KEEP_SELECTION | CMD_KEEP_QUIT_COUNT;
 }
 
+/* ---- what is available, and what is on -------------------------------------
+ *
+ * A menu greys out an item whose command is unavailable and ticks one that is on.
+ * Each predicate lives beside the command it describes rather than in the menu, so
+ * the palette and anything else that lists commands gets the same answers. */
+
+static int have_selection(void) { return CUR.sel_active; }
+static int have_clipboard(void) { return E.clipboard != NULL && E.clipsize > 0; }
+static int linenumbers_on(void) { return V.linenum; }
+static int menubar_on(void) { return V.menubar; }
+
 /* The table. Order matters only for the help screen, which walks it in order
  * within each group. `label` is for the menu bar and the palette; `help` and
  * `group` are what the help screen shows, and a command with no group is not
  * listed there. */
 static const struct command commands[] = {
-  {"file.save",       "Save",             "Save file",        "FILES",   0, cmd_save},
-  {"file.open",       "Open…",       "Open a file",      "FILES",   0, cmd_open},
-  {"file.quit",       "Quit",             "Quit",             "FILES",   0, cmd_quit},
-  {"view.help",       "Keyboard help",    "This help screen", "FILES",   0, cmd_help},
+  {.name = "file.save", .label = "Save",
+   .help = "Save file", .group = "FILES", .run = cmd_save},
+  {.name = "file.open", .label = "Open…",
+   .help = "Open a file", .group = "FILES", .run = cmd_open},
+  {.name = "file.quit", .label = "Quit",
+   .help = "Quit", .group = "FILES", .run = cmd_quit},
+  {.name = "view.help", .label = "Keyboard help",
+   .help = "This help screen", .group = "FILES", .run = cmd_help},
 
-  {"move.page-up",    "Page up",          NULL, NULL, CMD_MOVEMENT, cmd_page_up},
-  {"move.page-down",  "Page down",        NULL, NULL, CMD_MOVEMENT, cmd_page_down},
-  {"move.left",       "Left",             NULL, NULL, CMD_MOVEMENT, cmd_left},
-  {"move.right",      "Right",            NULL, NULL, CMD_MOVEMENT, cmd_right},
-  {"move.up",         "Up",               NULL, NULL, CMD_MOVEMENT, cmd_up},
-  {"move.down",       "Down",             NULL, NULL, CMD_MOVEMENT, cmd_down},
-  {"move.line-start", "Line start",       NULL, NULL, CMD_MOVEMENT, cmd_line_start},
-  {"move.line-end",   "Line end",         NULL, NULL, CMD_MOVEMENT, cmd_line_end},
-  {"goto.line",       "Go to line…", "Go to line",   "MOVEMENT",   0, cmd_goto_line},
+  {.name = "move.page-up", .label = "Page up",
+   .flags = CMD_MOVEMENT, .run = cmd_page_up},
+  {.name = "move.page-down", .label = "Page down",
+   .flags = CMD_MOVEMENT, .run = cmd_page_down},
+  {.name = "move.left", .label = "Left", .flags = CMD_MOVEMENT, .run = cmd_left},
+  {.name = "move.right", .label = "Right", .flags = CMD_MOVEMENT, .run = cmd_right},
+  {.name = "move.up", .label = "Up", .flags = CMD_MOVEMENT, .run = cmd_up},
+  {.name = "move.down", .label = "Down", .flags = CMD_MOVEMENT, .run = cmd_down},
+  {.name = "move.line-start", .label = "Line start",
+   .flags = CMD_MOVEMENT, .run = cmd_line_start},
+  {.name = "move.line-end", .label = "Line end",
+   .flags = CMD_MOVEMENT, .run = cmd_line_end},
+  {.name = "goto.line", .label = "Go to line…",
+   .help = "Go to line", .group = "MOVEMENT", .run = cmd_goto_line},
 
-  {"edit.newline",    "Insert line",      "Insert new line", "EDITING",  0, cmd_newline},
-  {"edit.delete-forward", "Delete",       "Delete at cursor", "EDITING", 0, cmd_delete_forward},
-  {"edit.delete-back", "Backspace",       NULL, NULL,                    0, cmd_delete_back},
+  {.name = "edit.newline", .label = "Insert line",
+   .help = "Insert new line", .group = "EDITING", .run = cmd_newline},
+  {.name = "edit.delete-forward", .label = "Delete",
+   .help = "Delete at cursor", .group = "EDITING", .run = cmd_delete_forward},
+  {.name = "edit.delete-back", .label = "Backspace", .run = cmd_delete_back},
 
-  {"search.find",     "Find…",       "Find forward",     "FIND & REPLACE", 0, cmd_find},
-  {"search.next",     "Find next",        "Find next",        "FIND & REPLACE", 0, cmd_find_next},
-  {"search.prev",     "Find previous",    "Find previous",    "FIND & REPLACE", 0, cmd_find_prev},
-  {"search.case",     "Match case",       "Case sensitivity", "FIND & REPLACE", 0, cmd_case_toggle},
-  {"search.replace",  "Replace…",    "Find & replace",   "FIND & REPLACE", 0, cmd_replace},
+  {.name = "search.find", .label = "Find…",
+   .help = "Find forward", .group = "FIND & REPLACE", .run = cmd_find},
+  {.name = "search.next", .label = "Find next",
+   .help = "Find next", .group = "FIND & REPLACE", .run = cmd_find_next, .enabled = search_has_query},
+  {.name = "search.prev", .label = "Find previous",
+   .help = "Find previous", .group = "FIND & REPLACE", .run = cmd_find_prev, .enabled = search_has_query},
+  {.name = "search.case", .label = "Match case",
+   .help = "Case sensitivity", .group = "FIND & REPLACE", .run = cmd_case_toggle, .checked = search_case_is_on},
+  {.name = "search.replace", .label = "Replace…",
+   .help = "Find & replace", .group = "FIND & REPLACE", .run = cmd_replace},
 
-  {"edit.copy",       "Copy",             "Copy selection",   "CLIPBOARD", 0, cmd_copy},
-  {"edit.cut",        "Cut",              "Cut selection",    "CLIPBOARD", 0, cmd_cut},
-  {"edit.paste",      "Paste",            "Paste at cursor",  "CLIPBOARD", 0, cmd_paste},
+  {.name = "edit.copy", .label = "Copy",
+   .help = "Copy selection", .group = "CLIPBOARD", .run = cmd_copy, .enabled = have_selection},
+  {.name = "edit.cut", .label = "Cut",
+   .help = "Cut selection", .group = "CLIPBOARD", .run = cmd_cut, .enabled = have_selection},
+  {.name = "edit.paste", .label = "Paste",
+   .help = "Paste at cursor", .group = "CLIPBOARD", .run = cmd_paste, .enabled = have_clipboard},
 
-  {"edit.undo",       "Undo",             "Undo",             "HISTORY",  0, cmd_undo},
-  {"edit.redo",       "Redo",             "Redo",             "HISTORY",  0, cmd_redo},
+  {.name = "edit.undo", .label = "Undo",
+   .help = "Undo", .group = "HISTORY", .run = cmd_undo, .enabled = undo_can_undo},
+  {.name = "edit.redo", .label = "Redo",
+   .help = "Redo", .group = "HISTORY", .run = cmd_redo, .enabled = undo_can_redo},
 
-  {"view.repaint",    "Redraw",           "Redraw screen",    "VIEW",     0, cmd_repaint},
-  {"view.line-numbers", "Line numbers",   "Line numbers",     "VIEW",     0, cmd_line_numbers},
+  {.name = "view.repaint", .label = "Redraw",
+   .help = "Redraw screen", .group = "VIEW", .run = cmd_repaint},
+  {.name = "view.line-numbers", .label = "Line numbers",
+   .help = "Line numbers", .group = "VIEW", .run = cmd_line_numbers, .checked = linenumbers_on},
+  {.name = "view.menu-bar", .label = "Menu bar",
+   .help = "Show the menu bar", .group = "VIEW", .run = cmd_menu_bar, .checked = menubar_on},
 
-  {"app.resize",      NULL,               NULL, NULL, 0, cmd_resize},
+  {.name = "menu.open", .label = "Menu bar", .run = cmd_menu_bar_open},
+  {.name = "menu.file", .label = "File menu", .run = cmd_menu_file},
+  {.name = "menu.edit", .label = "Edit menu", .run = cmd_menu_edit},
+  {.name = "menu.search", .label = "Search menu", .run = cmd_menu_search},
+  {.name = "menu.view", .label = "View menu", .run = cmd_menu_view},
+  {.name = "menu.go", .label = "Go menu", .run = cmd_menu_go},
+  {.name = "menu.help", .label = "Help menu", .run = cmd_menu_help},
+
+  {.name = "app.resize", .run = cmd_resize},
 };
 
 #define NCOMMANDS ((int)(sizeof(commands) / sizeof(commands[0])))
@@ -373,6 +445,16 @@ static const struct binding default_bindings[] = {
   {"ctrl-l", "view.repaint"},
   {"ctrl-u", "view.line-numbers"},
 
+  /* The menu bar: F10 as every keyboard-driven menu bar has had it, plus the eight
+   * reserved Alt letters -- six of which have a menu today. */
+  {"f10",    "menu.open"},
+  {"alt-f",  "menu.file"},
+  {"alt-e",  "menu.edit"},
+  {"alt-s",  "menu.search"},
+  {"alt-v",  "menu.view"},
+  {"alt-g",  "menu.go"},
+  {"alt-h",  "menu.help"},
+
   {"resize", "app.resize"},
 };
 
@@ -508,6 +590,10 @@ static const struct help_entry help_entries[] = {
   {NULL,    NULL, NULL, "file.quit"},
   {NULL,    NULL, NULL, "view.help"},
 
+  {"MENUS",      "F10",       "Open the menu bar", NULL},
+  {NULL,         "Alt-letter", "Open that menu",   NULL},
+  {NULL,         "Shift+drag", "Select with the terminal, not molly", NULL},
+
   {"MOVEMENT",   "Arrows",    "Move cursor",     NULL},
   {NULL,         "PgUp/PgDn", "Page up / down",  NULL},
   {NULL,         "Home/End",  "Line start / end", NULL},
@@ -537,6 +623,7 @@ static const struct help_entry help_entries[] = {
 
   {"VIEW",      NULL, NULL, "view.repaint"},
   {NULL,        NULL, NULL, "view.line-numbers"},
+  {NULL,        NULL, NULL, "view.menu-bar"},
 };
 
 int help_entry_count(void) {

@@ -47,6 +47,12 @@ static const struct theme_entry theme_256[ROLE_COUNT] = {
   /* ROLE_DIALOG_TITLE  */ {231, 238, 0, 1},
   /* ROLE_DIALOG_SHADOW */ {240, 234, 0, 0},
   /* ROLE_LIST_SELECTED */ {234, 110, 0, 0},
+  /* ROLE_MENUBAR          */ {252, 235, 0, 0},
+  /* ROLE_MENUBAR_SELECTED */ {234, 110, 0, 0},
+  /* ROLE_MENU             */ {252, 238, 0, 0},
+  /* ROLE_MENU_FRAME       */ {245, 238, 0, 0},
+  /* ROLE_MENU_SELECTED    */ {234, 110, 0, 0},
+  /* ROLE_MENU_DISABLED    */ {243, 238, 0, 0},
 };
 
 /* The sixteen-color theme, for terminals that cannot do better. */
@@ -61,6 +67,12 @@ static const struct theme_entry theme_16[ROLE_COUNT] = {
   /* ROLE_DIALOG_TITLE  */ {15, 8, 0, 1},
   /* ROLE_DIALOG_SHADOW */ {8,  0, 0, 0},
   /* ROLE_LIST_SELECTED */ {15, 4, 0, 0},
+  /* ROLE_MENUBAR          */ {7,  0, 0, 0},
+  /* ROLE_MENUBAR_SELECTED */ {15, 4, 0, 0},
+  /* ROLE_MENU             */ {15, 8, 0, 0},
+  /* ROLE_MENU_FRAME       */ {7,  8, 0, 0},
+  /* ROLE_MENU_SELECTED    */ {15, 4, 0, 0},
+  /* ROLE_MENU_DISABLED    */ {0,  8, 0, 0},
 };
 
 static const struct theme_entry *active = theme_16;

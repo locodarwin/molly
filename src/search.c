@@ -10,6 +10,16 @@ static char *last_query = NULL;
  * has no channel back to the caller besides the typed buffer. */
 static int search_case_sensitive = 0;
 
+/* Whether there is a term to find again, which is what greys out Find Next and
+ * Find Previous until the first search. */
+int search_has_query(void) {
+  return last_query != NULL && last_query[0] != '\0';
+}
+
+int search_case_is_on(void) {
+  return search_case_sensitive;
+}
+
 /* Release the remembered search term. */
 void search_cleanup(void) {
   free(last_query);

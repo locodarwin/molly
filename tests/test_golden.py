@@ -174,6 +174,31 @@ def main():
     check("open-dialog-selected", ["\x0f", "\x1b[B", "\x1b[B"], rows=20, cols=64,
           files={"sample.txt": THREE_LINES})
 
+    # The menu bar: the band at rest, a drop-down open, the states an item can be
+    # in, and the two things the hide toggle does.
+    check("menu-bar", [], rows=16, cols=64, files={"sample.txt": THREE_LINES})
+    check("menu-file-open", ["\x1b[21~"], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES})
+    # Find Next and Find Previous are greyed until something has been searched for,
+    # and Match Case is unticked.
+    check("menu-search-disabled", ["\x1bs"], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES})
+    # After a search they are available; after Ctrl-T Match Case is ticked.
+    check("menu-search-enabled", ["\x06", "beta", "\r", "\x1bs"], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES})
+    check("menu-search-checked", ["\x14", "\x1bs"], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES})
+    # Hidden, the band gives its row back to the text; opened while hidden, it draws
+    # over the first line rather than reflowing the screen.
+    check("menu-bar-hidden", ["\x1bv", "m"], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES})
+    check("menu-bar-hidden-open", ["\x1bv", "m", "\x1b[21~"], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES})
+    # And at 256 colours, where the band is a shade darker than a drop-down.
+    check("menu-search-256", ["\x1bs"], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES},
+          env={"TERM": "xterm-256color"})
+
     # Resizing: the grid is reallocated and the frame repainted in full. Shrinking
     # has to drop rows and columns without leaving anything behind; growing has to
     # fill what was not there before.

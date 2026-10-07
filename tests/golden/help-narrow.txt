@@ -1,33 +1,33 @@
 --- screen ---
+ File  Edit  Search  View  Go  Help
 alpha
-beta
-ga╔════════════ Keyboard Reference ════════════╗
-~ ║ FILES                                      ║
+be╔════════════ Keyboard Reference ════════════╗
+ga║ FILES                                      ║
 ~ ║   Ctrl-S         Save file                 ║
 ~ ║   Ctrl-O         Open a file               ║
 ~ ║   Ctrl-Q         Quit                      ║
 ~ ║   Ctrl-?         This help screen          ║
+~ ║                                            ║
+~ ║ MENUS                                      ║
+~ ║   F10            Open the menu bar         ║
+~ ║   Alt-letter     Open that menu            ║
+~ ║   Shift+drag     Select with the terminal, ║
 ~ ║                                            ║
 ~ ║ MOVEMENT                                   ║
 ~ ║   Arrows         Move cursor               ║
 ~ ║   PgUp/PgDn      Page up / down            ║
 ~ ║   Home/End       Line start / end          ║
 ~ ║   Ctrl-G         Go to line                ║
-~ ║                                            ║
-~ ║ SELECTION                                  ║
-~ ║   Shift+Arrows   Extend selection          ║
-~ ║   Shift+Home/End To line edge              ║
-~ ║   Shift+PgUp/Dn  Extend by page            ║
 ~ ║ In prompts: Enter accepts   Esc cancels    ║
 ~ ║ PgUp/PgDn scroll   any other key returns   ║
 ~ ╚════════════════════════════════════════════╝
 sample.txt - 3 lines                   Ln 1, Col 1
 HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = fin
 --- attrs ---
-
+gggggggggggggggggggggggggggggggggggggggggggggggggg
 
 ..gggggggggggggggggggggggggggggggggggggggggggggg
-g.gggggggggggggggggggggggggggggggggggggggggggggggg
+..gggggggggggggggggggggggggggggggggggggggggggggggg
 g.gggggggggggggggggggggggggggggggggggggggggggggggg
 g.gggggggggggggggggggggggggggggggggggggggggggggggg
 g.gggggggggggggggggggggggggggggggggggggggggggggggg
@@ -49,8 +49,9 @@ g.gggggggggggggggggggggggggggggggggggggggggggggggg
 RRRRgggggggggggggggggggggggggggggggggggggggggggggg
 
 --- colors ---
+1: 0-49 7/0
 3: 2-15 7/8  16-33 15/8  34-47 7/8
-4: 0-0 8/-  2-2 7/8  3-46 15/8  47-47 7/8  48-49 8/0
+4: 2-2 7/8  3-46 15/8  47-47 7/8  48-49 8/0
 5: 0-0 8/-  2-2 7/8  3-46 15/8  47-47 7/8  48-49 8/0
 6: 0-0 8/-  2-2 7/8  3-46 15/8  47-47 7/8  48-49 8/0
 7: 0-0 8/-  2-2 7/8  3-46 15/8  47-47 7/8  48-49 8/0
@@ -71,6 +72,7 @@ RRRRgggggggggggggggggggggggggggggggggggggggggggggg
 22: 0-0 8/-  2-47 7/8  48-49 8/0
 23: 4-49 8/0
 --- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u
 3: 16-33 b
 --- cursor ---
-row 1 col 1 visible 0
+row 2 col 1 visible 0

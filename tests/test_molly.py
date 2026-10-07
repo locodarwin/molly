@@ -851,6 +851,18 @@ LINENUM = "\x15"  # Ctrl-U toggles the line-number gutter
 # a reset. Output is decoded latin-1, so the bar is its three raw UTF-8 bytes.
 GRAY, SEP, RST = "\x1b[90m", "\xe2\x94\x82", "\x1b[m"
 
+# The screen row the buffer's first line is drawn on, one-based. The menu bar takes
+# row 1, so the text starts at row 2. Named once rather than written out in every
+# assertion, because the chrome above the text area is exactly the sort of thing that
+# changes again.
+TEXT_ROW = 2
+
+
+def at_row(n):
+    """The cursor-position escape for the nth line of the buffer, one-based."""
+    return "\x1b[%d;1H" % (TEXT_ROW + n - 1)
+
+
 def test_gutter(tmpdir):
     print("\ngutter: Ctrl-U shows a right-aligned line-number gutter behind a "
           "gray separator and shifts the text area right by its width")
@@ -863,28 +875,29 @@ def test_gutter(tmpdir):
 
     # Default off: text starts at screen column 1, no leading number.
     off = raw("alpha\nbeta\ngamma\n", [])
-    check("off by default (row 1 is the text itself)", "\x1b[1;1Halpha" in off, True)
-    check("off by default (no gutter number)", "\x1b[1;1H1 " in off, False)
+    check("off by default (the text starts at column 1)",
+          at_row(1) + "alpha" in off, True)
+    check("off by default (no gutter number)", at_row(1) + "1 " in off, False)
     check("off by default (no gutter separator)", SEP in off, False)
 
     # The below-EOF tilde is tinted gray even with the gutter off, matching
     # the tilde drawn inside the gutter.
     off_t = raw("one\n", [])
     check("tilde is gray in no-gutter mode",
-          "\x1b[2;1H" + GRAY + "~" + RST in off_t, True)
+          at_row(2) + GRAY + "~" + RST in off_t, True)
 
     # Toggle on: each row is prefixed by the line number right-aligned to the
     # digits of the largest line number, then " │ ": "1 │ alpha". The whole
     # gutter is gray and reset before the text.
     on = raw("alpha\nbeta\ngamma\n", [LINENUM])
     pre = GRAY + "%d " + SEP + " " + RST
-    check("row 1 numbered", "\x1b[1;1H" + (pre % 1) + "alpha" in on, True)
-    check("row 2 numbered", "\x1b[2;1H" + (pre % 2) + "beta" in on, True)
-    check("row 3 numbered", "\x1b[3;1H" + (pre % 3) + "gamma" in on, True)
+    check("row 1 numbered", at_row(1) + (pre % 1) + "alpha" in on, True)
+    check("row 2 numbered", at_row(2) + (pre % 2) + "beta" in on, True)
+    check("row 3 numbered", at_row(3) + (pre % 3) + "gamma" in on, True)
 
     # Toggling again reverts: the final paint has text at column 1 again.
     off2 = raw("alpha\nbeta\ngamma\n", [LINENUM, LINENUM])
-    check("toggle back to off", "\x1b[1;1Halpha" in off2, True)
+    check("toggle back to off", at_row(1) + "alpha" in off2, True)
 
     # Two-digit line numbers widen the field and stay right-aligned (numrows
     # 12 -> a 2-digit field). Line 3 is padded with a leading space; line 10 is
@@ -892,15 +905,15 @@ def test_gutter(tmpdir):
     body12 = "".join("A%02d\n" % i for i in range(1, 13))
     two = raw(body12, [LINENUM])
     check("single digit right-aligned in 2-wide field",
-          "\x1b[3;1H" + GRAY + " 3 " + SEP + " " + RST + "A03" in two, True)
+          at_row(3) + GRAY + " 3 " + SEP + " " + RST + "A03" in two, True)
     check("double digit fills the field",
-          "\x1b[10;1H" + GRAY + "10 " + SEP + " " + RST + "A10" in two, True)
+          at_row(10) + GRAY + "10 " + SEP + " " + RST + "A10" in two, True)
 
     # The separator continues through the blank rows below EOF: a gray blank
     # field, the bar and the tilde, then reset.
     tilde = raw("one\n", [LINENUM])
     check("separator continues through below-EOF rows",
-          "\x1b[2;1H" + GRAY + "  " + SEP + " ~" + RST in tilde, True)
+          at_row(2) + GRAY + "  " + SEP + " ~" + RST in tilde, True)
 
     # ...and through the welcome screen: the separator row carries the tilde
     # and the centered banner follows in the text area (row 24 - 2 status rows,
@@ -929,7 +942,7 @@ def test_gutter(tmpdir):
     # columns exactly as when the gutter is off.
     sel = raw("abcd\n", [LINENUM, SH_RIGHT, SH_RIGHT])
     check("gutter and selection highlight coexist",
-          "\x1b[1;1H" + (pre % 1) + "\x1b[7mab\x1b[27mcd" in sel, True)
+          at_row(1) + (pre % 1) + "\x1b[7mab\x1b[27mcd" in sel, True)
 
 
 def _gpath(tmpdir, body, name):
@@ -982,9 +995,17 @@ def test_help(tmpdir):
     # title together; one-column never does. help_row composes each row into one
     # write, so splitting the stream at every row-set cursor move isolates one
     # physical row per fragment.
+    # Two-column means one physical row carries two group titles; one-column never
+    # does. Which two is not the point and changes whenever a group is added, so any
+    # pair counts.
+    GROUPS = ["FILES", "MENUS", "MOVEMENT", "SELECTION", "EDITING",
+              "FIND & REPLACE", "CLIPBOARD", "HISTORY", "VIEW"]
+
     def two_col(text):
-        return any("FILES" in seg and "FIND & REPLACE" in seg
-                   for seg in re.split(r"\x1b\[\d+;\d+H", text))
+        for seg in re.split(r"\x1b\[\d+;\d+H", text):
+            if sum(1 for g in GROUPS if g in seg) >= 2:
+                return True
+        return False
 
     check("wide help is two columns", two_col(wide), True)
     check("narrow help is one column", two_col(narrow), False)
@@ -1135,9 +1156,14 @@ def test_cli_args(tmpdir):
         fh.write("one\ntwo\nthree\nfour\nfive\n")
 
     def cursor_row(out):
+        """The buffer line the cursor ended on, one-based.
+
+        Converted from the screen row, so these tests say which line of the file
+        the cursor is on rather than which row of the terminal it landed on.
+        """
         text = out.decode("latin-1")
         m = re.findall(r"\x1b\[(\d+);(\d+)H", text)
-        return int(m[-1][0]) if m else None
+        return int(m[-1][0]) - (TEXT_ROW - 1) if m else None
 
     out, st = run([MOLLY, "--version"], [], status=True)
     check("--version prints the version and exits cleanly",
@@ -1366,17 +1392,22 @@ def test_mouse(tmpdir):
 
     # SGR mouse reports: ESC [ < button ; col ; row  then M for press/drag or m for
     # release. Columns and rows are 1-based, as the terminal counts them.
+    # Rows here are rows *of the buffer*, converted to screen rows, so these tests
+    # say what they mean and do not move when the chrome above the text does.
+    def srow(row):
+        return TEXT_ROW + row - 1
+
     def press(col, row, button=0):
-        return "\x1b[<%d;%d;%dM" % (button, col, row)
+        return "\x1b[<%d;%d;%dM" % (button, col, srow(row))
 
     def release(col, row, button=0):
-        return "\x1b[<%d;%d;%dm" % (button, col, row)
+        return "\x1b[<%d;%d;%dm" % (button, col, srow(row))
 
     def drag(col, row):
-        return "\x1b[<%d;%d;%dM" % (32, col, row)   # 32 = motion while held
+        return "\x1b[<%d;%d;%dM" % (32, col, srow(row))   # 32 = motion while held
 
     def wheel(col, row, down=True):
-        return "\x1b[<%d;%d;%dM" % (65 if down else 64, col, row)
+        return "\x1b[<%d;%d;%dM" % (65 if down else 64, col, srow(row))
 
     # A click puts the cursor where it landed: column 3 of row 1 is before the "c".
     check("a click positions the cursor",
@@ -1428,12 +1459,100 @@ def test_mouse(tmpdir):
               [wheel(5, 5)] * 3)
     scr = Screen(24, 80)
     scr.feed(out)
-    check("the wheel scrolls the view", scr.text()[0].startswith("line"), True)
-    check("the wheel scrolled past the first line", scr.text()[0] != "line1", True)
+    top = scr.text()[TEXT_ROW - 1]
+    check("the wheel scrolls the view", top.startswith("line"), True)
+    check("the wheel scrolled past the first line", top != "line1", True)
     # The cursor did not move with it: typing still edits line 1.
     check("the wheel leaves the cursor alone",
           edit(tmpdir, body, [wheel(5, 5), wheel(5, 5), "X", SAVE], name="w2.txt")
           .startswith("Xline1"), True)
+
+
+def test_menu(tmpdir):
+    print("\nmenu bar: built from the command table, reached by key and by mouse")
+
+    path = os.path.join(tmpdir, "m.txt")
+
+    def msg(keys, body="alpha\nbeta\ngamma\n", rows=16, cols=64):
+        with open(path, "w") as fh:
+            fh.write(body)
+        out = run([MOLLY, path], list(keys), rows=rows, cols=cols)
+        return (status_lines(out, rows=rows, cols=cols) or [""])[-1]
+
+    def screen(keys, body="alpha\nbeta\ngamma\n", rows=16, cols=64):
+        with open(path, "w") as fh:
+            fh.write(body)
+        scr = Screen(rows, cols)
+        scr.feed(run([MOLLY, path], list(keys), rows=rows, cols=cols))
+        return scr
+
+    F10 = "\x1b[21~"
+
+    # The band is there by default, with every title on it.
+    band = screen([]).text()[0]
+    for title in ("File", "Edit", "Search", "View", "Go", "Help"):
+        check("the band lists %s" % title, title in band, True)
+    # Tools and Options have nothing in them yet and so are not shown, though their
+    # Alt letters stay reserved.
+    check("Tools is not shown while it is empty", "Tools" in band, False)
+    check("Options is not shown while it is empty", "Options" in band, False)
+
+    # F10 opens the first menu; Alt-letter opens a named one.
+    check("F10 opens the File menu", "Open" in screen([F10]).text()[2], True)
+    check("Alt-s opens the Search menu",
+          "Find" in screen(["\x1bs"]).text()[2], True)
+    check("Alt-e opens the Edit menu",
+          "Undo" in screen(["\x1be"]).text()[2], True)
+
+    # Enter runs the highlighted item; a mnemonic runs its own.
+    check("Enter runs the highlighted item", msg(["\x1bv", "\r"]),
+          "Line numbers: on")
+    check("a mnemonic runs its item", msg(["\x1bv", "m"]), "Menu bar: off")
+    # Arrows move within a menu and between menus.
+    check("Down then Enter takes the second item",
+          msg(["\x1bv", DOWN, "\r"]), "Menu bar: off")
+    check("Right moves to the next menu",
+          msg(["\x1bv", RIGHT, "\r"]).startswith("Go to line"), True)
+
+    # Esc closes without running anything.
+    check("Esc closes the menu", msg(["\x1bv", "\x1b", 0.3]).startswith("HELP:"),
+          True)
+
+    # A menu choice is the same command as its key, dispatcher flags included: Quit
+    # from the File menu counts down exactly as Ctrl-Q does.
+    check("Quit from the menu keeps the quit countdown",
+          msg(["X", "\x1bf", "q"]).startswith("WARNING!!!"), True)
+
+    # Unavailable items are skipped, not merely greyed: with nothing searched for,
+    # Down from Find goes past Find Next and Find Previous to Match Case.
+    check("Down skips unavailable items",
+          msg(["\x1bs", DOWN, "\r"]).startswith("Search is now"), True)
+    # And their mnemonics do nothing.
+    check("an unavailable item's mnemonic does nothing",
+          msg(["\x1bs", "n", 0.3]).startswith("HELP:"), True)
+
+    # The mouse: a click on a title opens that menu, a click on an item runs it, and
+    # a click outside closes. Search's title sits at column 20 of the band.
+    check("clicking a title opens its menu",
+          "Find" in screen(["\x1b[<0;20;1M", "\x1b[<0;20;1m"]).text()[2], True)
+    check("clicking an item runs it",
+          msg(["\x1b[<0;20;1M", "\x1b[<0;20;1m", 0.2,
+               "\x1b[<0;20;3M", "\x1b[<0;20;3m"]).startswith("Search:"), True)
+    check("clicking outside closes the menu",
+          msg(["\x1bv", 0.2, "\x1b[<0;2;8M", "\x1b[<0;2;8m",
+               0.3]).startswith("HELP:"), True)
+
+    # Hiding the band gives its row back to the text; opening a menu while it is
+    # hidden draws the band over the first line instead of reflowing the screen.
+    hidden = screen(["\x1bv", "m"])
+    check("hidden: the text starts at row 1", hidden.text()[0], "alpha")
+    check("hidden: an extra line of the file fits",
+          hidden.text()[2], "gamma")
+    overlay = screen(["\x1bv", "m", F10])
+    check("hidden: opening a menu puts the band back over row 1",
+          "File" in overlay.text()[0], True)
+    check("hidden: the drop-down is still there",
+          "Open" in overlay.text()[2], True)
 
 
 def test_command_table(tmpdir):
@@ -1495,6 +1614,7 @@ def main():
         test_keys(tmpdir)
         test_input_decoding(tmpdir)
         test_mouse(tmpdir)
+        test_menu(tmpdir)
         test_command_table(tmpdir)
         test_tab(tmpdir)
         test_utf8(tmpdir)

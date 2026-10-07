@@ -26,6 +26,11 @@ void ab_append(struct abuf *ab, const char *s, int len) {
 /* The renderer's remaining state. The grid holds the screen itself (grid.c);
  * what is left here is whether the next frame must repaint everything and the
  * last terminal size we saw. */
+/* How many rows the chrome takes above and below the text area. Declared up here
+ * because the size calculation needs them and they are defined with the layout. */
+static int chrome_rows_above(void);
+static int chrome_rows_below(void);
+
 static int force_full;
 static int last_wsrows;
 static int last_wscols;
@@ -245,7 +250,9 @@ int screen_poll_size(void) {
   changed = (wsrows != last_wsrows || wscols != last_wscols);
   last_wsrows = wsrows;
   last_wscols = wscols;
-  V.screenrows = wsrows - 2;
+  /* The text area is what is left after the chrome above and below it. Forgetting
+   * the row above pushed the status and message bars off the bottom of the grid. */
+  V.screenrows = wsrows - chrome_rows_above() - chrome_rows_below();
   if (V.screenrows < 1) V.screenrows = 1;
   V.screencols = wscols;
   return changed;
@@ -256,9 +263,9 @@ int screen_poll_size(void) {
 void screen_init_size(void) {
   if (get_window_size(&V.screenrows, &V.screencols) == -1)
     die("get_window_size");
-  V.screenrows -= 2;
+  V.screenrows -= chrome_rows_above() + chrome_rows_below();
   if (V.screenrows < 1) V.screenrows = 1;
-  last_wsrows = V.screenrows + 2;
+  last_wsrows = V.screenrows + chrome_rows_above() + chrome_rows_below();
   last_wscols = V.screencols;
   force_full = 1;
 }
@@ -325,12 +332,17 @@ static int text_area_mouse(const struct layer *self, const struct mouse_event *e
 static int layer_text = -1;
 static int layer_status = -1;
 static int layer_message = -1;
+static int layer_menubar = -1;
 
 /* Rows of chrome above and below the text area. The status and message bars are
  * always there; the menu bar will add one above, which is the whole reason the
  * text area's origin is a variable rather than zero. */
+/* The menu bar's row, when it has one. While the bar is hidden it does not reserve a
+ * row at all: an open menu draws its band *over* the top text row instead, because
+ * reflowing the whole screen by a row every time a menu opens would be worse than
+ * briefly covering a line of text. */
 static int chrome_rows_above(void) {
-  return 0;
+  return V.menubar ? 1 : 0;
 }
 
 static int chrome_rows_below(void) {
@@ -348,8 +360,17 @@ void screen_init_layers(void) {
   layer_status = layer_push(&l);
   l.draw = draw_message_bar;
   layer_message = layer_push(&l);
-  if (layer_text < 0 || layer_status < 0 || layer_message < 0)
+  /* Above the chrome, so that while the bar is hidden an open menu's band covers the
+   * text rather than being covered by it. Dialogs push higher still. */
+  l.draw = menu_bar_draw;
+  l.mouse = menu_bar_mouse;
+  layer_menubar = layer_push(&l);
+  if (layer_text < 0 || layer_status < 0 || layer_message < 0 || layer_menubar < 0)
     die("screen_init_layers");
+
+  /* Visible by default: the menu bar is molly's main way of showing what it can do,
+   * and hiding it by default would waste that. */
+  V.menubar = 1;
 }
 
 /* Give the chrome its bounds for this frame. One place does the row arithmetic
@@ -360,6 +381,11 @@ static void screen_layout(void) {
   layer_set_bounds(layer_text, 0, top, V.screencols, text_h);
   layer_set_bounds(layer_status, 0, top + text_h, V.screencols, 1);
   layer_set_bounds(layer_message, 0, top + text_h + 1, V.screencols, 1);
+  /* The band occupies row zero when shown, and nothing at all when hidden -- except
+   * while a menu is open, when it appears over the first text row. A layer with no
+   * height is skipped by both drawing and hit-testing. */
+  layer_set_bounds(layer_menubar, 0, 0, V.screencols,
+                   (V.menubar || menu_is_open()) ? 1 : 0);
 }
 
 /* Bring the view and the grid in step with the terminal, without drawing anything.

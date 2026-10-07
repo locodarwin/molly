@@ -101,3 +101,32 @@ int utf8_char_cols(const char *s, int size, int i, int *nbytes) {
   uint32_t cp = utf8_decode(s, size, i, nbytes);
   return molly_wcwidth(cp);
 }
+
+/* Display columns a whole string occupies.
+ *
+ * Not strlen: "Find…" is seven bytes and five columns, and a menu sized with
+ * the byte count comes out two columns too wide -- or misaligns outright once a
+ * mnemonic sits after a multibyte character. Anything laying out a box around text
+ * measures it with this. */
+int utf8_str_cols(const char *s) {
+  int i = 0, cols = 0, len = (int)strlen(s);
+  while (i < len) {
+    int nb;
+    cols += utf8_char_cols(s, len, i, &nb);
+    i += nb;
+  }
+  return cols;
+}
+
+/* The byte offset of the character at display column `col`, or the string's length
+ * if it is shorter than that. The inverse of the walk above, for finding the one
+ * character a mnemonic underlines. */
+int utf8_col_to_byte(const char *s, int col) {
+  int i = 0, cols = 0, len = (int)strlen(s);
+  while (i < len && cols < col) {
+    int nb;
+    cols += utf8_char_cols(s, len, i, &nb);
+    i += nb;
+  }
+  return i;
+}

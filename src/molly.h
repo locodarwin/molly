@@ -194,6 +194,7 @@ struct view {
   int screenrows;
   int screencols;
   int linenum;             /* line-number gutter shown (Ctrl-U toggles it) */
+  int menubar;             /* menu bar occupies a row (View > Menu Bar toggles it) */
   int gutter_w;            /* gutter width in columns for this frame, 0 when off */
 };
 
@@ -344,6 +345,11 @@ struct command {
   const char *group;  /* help-screen group heading */
   unsigned flags;     /* CMD_MOVEMENT */
   int (*run)(void);   /* returns CMD_KEEP_* flags */
+  /* Optional. NULL means always available and never ticked. A menu greys an item
+   * its command says is unavailable, and ticks one its command says is on; a
+   * command palette will want both for the same reason. */
+  int (*enabled)(void);
+  int (*checked)(void);
 };
 
 /* One line of the help screen. A literal key covers several keys at once, or
@@ -378,6 +384,15 @@ enum cell_role {
   ROLE_DIALOG_TITLE,   /* the title inset in the top border */
   ROLE_DIALOG_SHADOW,  /* the text it overshadows, dimmed */
   ROLE_LIST_SELECTED,  /* the current row of a list */
+
+  /* The menu bar is a shade darker than a dialog, so it reads as chrome fixed to
+   * the top rather than as a panel that happens to be parked there. */
+  ROLE_MENUBAR,          /* the band */
+  ROLE_MENUBAR_SELECTED, /* the title whose menu is open */
+  ROLE_MENU,             /* a drop-down's body */
+  ROLE_MENU_FRAME,       /* its single-line border */
+  ROLE_MENU_SELECTED,    /* the highlighted item */
+  ROLE_MENU_DISABLED,    /* an item its command says is unavailable */
   ROLE_COUNT
 };
 
@@ -494,6 +509,13 @@ void loop_remove(int id);
 void editor_cleanup(void);
 void init_editor(void);
 
+/* menu.c */
+int menu_bar_mouse(const struct layer *self, const struct mouse_event *ev);
+int menu_for_mnemonic(int ch);
+int menu_is_open(void);
+int menu_open(int index);
+void menu_bar_draw(const struct layer *self);
+
 /* screen.c */
 int screen_poll_size(void);
 void ab_append(struct abuf *ab, const char *s, int len);
@@ -507,6 +529,8 @@ void screen_init_size(void);
 void screen_sync_size(void);
 
 /* search.c */
+int search_case_is_on(void);
+int search_has_query(void);
 void editor_find(void);
 void editor_find_next(void);
 void editor_find_prev(void);
@@ -559,6 +583,8 @@ void editor_help(void);
 void editor_switch_file(char *path);
 
 /* undo.c */
+int undo_can_redo(void);
+int undo_can_undo(void);
 struct uchange *uc_new(int kind, int row, int at, const char *text, size_t len);
 void clear_redo(void);
 void editor_free_undo_redo(void);
@@ -581,8 +607,10 @@ void undo_set_max_steps(int n);
 /* utf8.c */
 int utf8_char_bytes(const char *s, int size, int i);
 int utf8_char_cols(const char *s, int size, int i, int *nbytes);
+int utf8_col_to_byte(const char *s, int col);
 int utf8_is_cont(unsigned char c);
 int utf8_prev(const char *s, int i);
+int utf8_str_cols(const char *s);
 
 /* view.c */
 int drow_of_cursor(const struct cursor *c);

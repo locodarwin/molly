@@ -69,13 +69,20 @@ void layer_set_bounds(int i, int x, int y, int w, int h) {
   l->h = h;
 }
 
-/* Draw every layer, bottom first. A layer with no draw function is a placeholder
- * -- a reserved slot, or one whose content is not ready -- and is skipped rather
- * than treated as an error. */
+/* Draw every layer, bottom first.
+ *
+ * A layer with no draw function is a placeholder -- a reserved slot, or one whose
+ * content is not ready -- and is skipped rather than treated as an error. So is one
+ * with no area: that is how the menu bar is hidden, and how hit-testing already
+ * treated it, so drawing had better agree. Before it did, the hidden band still
+ * painted itself over the first line of the file. */
 void layer_draw_all(void) {
   int i;
-  for (i = 0; i < layer_n; i++)
-    if (layers[i].draw != NULL) layers[i].draw(&layers[i]);
+  for (i = 0; i < layer_n; i++) {
+    if (layers[i].draw == NULL) continue;
+    if (layers[i].w <= 0 || layers[i].h <= 0) continue;
+    layers[i].draw(&layers[i]);
+  }
 }
 
 /* The topmost layer covering a point, or -1. A click belongs to whatever is visibly

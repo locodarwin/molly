@@ -1,8 +1,8 @@
 --- screen ---
+ File  Edit  Search  View  Go  Help
 alpha
-beta
-gamm╔═════════════════════ Open File ══════════════════════╗
-~   ║ /tmp/molly-golden                                    ║
+beta╔═════════════════════ Open File ══════════════════════╗
+gamm║ /tmp/molly-golden                                    ║
 ~   ║ ../                                                  ║
 ~   ║ subdir/                                              ║
 ~   ║ sample.txt                                           ║
@@ -20,10 +20,10 @@ gamm╔═════════════════════ Open File
 sample.txt - 3 lines                                 Ln 1, Col 1
 HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | Ctrl-N = n
 --- attrs ---
-
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 
 ....gggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+....gggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
@@ -41,8 +41,9 @@ g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 RRRRRRggggggggggggggggggggggggggggggggggggggggggggggggggggggggRR
 
 --- colors ---
+1: 0-63 7/0
 3: 4-26 7/8  27-35 15/8  36-59 7/8
-4: 0-0 8/-  4-4 7/8  5-58 15/8  59-59 7/8  60-61 8/0
+4: 4-4 7/8  5-58 15/8  59-59 7/8  60-61 8/0
 5: 0-0 8/-  4-4 7/8  5-58 15/8  59-59 7/8  60-61 8/0
 6: 0-0 8/-  4-4 7/8  5-58 15/8  59-59 7/8  60-61 8/0
 7: 0-0 8/-  4-4 7/8  5-5 15/8  6-57 15/4  58-58 15/8  59-59 7/8  60-61 8/0
@@ -59,6 +60,7 @@ RRRRRRggggggggggggggggggggggggggggggggggggggggggggggggggggggggRR
 18: 0-0 8/-  4-59 7/8  60-61 8/0
 19: 6-61 8/0
 --- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u
 3: 27-35 b
 --- cursor ---
-row 1 col 1 visible 0
+row 2 col 1 visible 0

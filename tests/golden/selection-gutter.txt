@@ -1,4 +1,5 @@
 --- screen ---
+ File  Edit  Search  View  Go  Help
 1 │ alpha
 2 │ beta
 3 │ gamma
@@ -20,10 +21,10 @@
   │ ~
   │ ~
   │ ~
-  │ ~
 sample.txt - 3 lines                                          Ln 1, Col 3  Sel 2
 Line numbers: on
 --- attrs ---
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 ggggRR
 gggg
 gggg
@@ -45,14 +46,13 @@ ggggg
 ggggg
 ggggg
 ggggg
-ggggg
 RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 
 --- colors ---
-1: 0-3 8/-
+1: 0-79 7/0
 2: 0-3 8/-
 3: 0-3 8/-
-4: 0-4 8/-
+4: 0-3 8/-
 5: 0-4 8/-
 6: 0-4 8/-
 7: 0-4 8/-
@@ -72,5 +72,6 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 21: 0-4 8/-
 22: 0-4 8/-
 --- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u
 --- cursor ---
-row 1 col 7 visible 1
+row 2 col 7 visible 1

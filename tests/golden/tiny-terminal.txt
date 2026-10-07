@@ -1,19 +1,20 @@
 --- screen ---
+ File  Edit  Search  Vie
 alpha
 beta
 gamma
-~
 sample.txt - 3 lines
 HELP: Ctrl-S = save | Ct
 --- attrs ---
+gggggggggggggggggggggggg
 
 
 
-g
 RRRRRRRRRRRRRRRRRRRRRRRR
 
 --- colors ---
-4: 0-0 8/-
+1: 0-23 7/0
 --- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u
 --- cursor ---
-row 1 col 1 visible 1
+row 2 col 1 visible 1

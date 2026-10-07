@@ -1,0 +1,26 @@
+--- screen ---
+ File  Edit  Search
+alpha
+beta
+gamma
+~
+~
+sample.txt - 3 lines
+Search: abcdefgh
+--- attrs ---
+gggggggggggggggggggg
+
+
+
+g
+g
+RRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-19 7/0
+5: 0-0 8/-
+6: 0-0 8/-
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u
+--- cursor ---
+row 8 col 17 visible 1

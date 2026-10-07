@@ -1505,12 +1505,15 @@ def test_menu(tmpdir):
           "Undo" in screen(["\x1be"]).text()[2], True)
 
     # Enter runs the highlighted item; a mnemonic runs its own.
-    check("Enter runs the highlighted item", msg(["\x1bv", "\r"]),
-          "Line numbers: on")
+    check("Enter runs the highlighted item",
+          msg(["\x1bs", "\r"]).startswith("Search:"), True)
     check("a mnemonic runs its item", msg(["\x1bv", "m"]), "Menu bar: off")
-    # Arrows move within a menu and between menus.
-    check("Down then Enter takes the second item",
-          msg(["\x1bv", DOWN, "\r"]), "Menu bar: off")
+    # Arrows move within a menu and between menus. The View menu opens on the command
+    # palette, with a separator under it, so one Down lands on Line numbers.
+    check("Down then Enter takes the next available item",
+          msg(["\x1bv", DOWN, "\r"]), "Line numbers: on")
+    check("Down twice takes the one after that",
+          msg(["\x1bv", DOWN, DOWN, "\r"]), "Menu bar: off")
     check("Right moves to the next menu",
           msg(["\x1bv", RIGHT, "\r"]).startswith("Go to line"), True)
 
@@ -1555,6 +1558,195 @@ def test_menu(tmpdir):
           "Open" in overlay.text()[2], True)
 
 
+def test_prompt_field(tmpdir):
+    print("\nprompt: an input field on the message line, with a cursor in it")
+
+    path = os.path.join(tmpdir, "pf.txt")
+
+    def line(keys, rows=10, cols=50, body="alpha\nbeta\ngamma\n"):
+        with open(path, "w") as fh:
+            fh.write(body)
+        out = run([MOLLY, path], list(keys), rows=rows, cols=cols)
+        scr = Screen(rows, cols)
+        scr.feed(out)
+        return scr.text()[-1], cursor_col(out)
+
+    FIND = "\x06"
+    DEL = "\x1b[3~"
+
+    # The line itself is what molly always drew: the prompt, the answer, the hint.
+    text, col = line([FIND, "bet"])
+    check("the prompt reads as one line",
+          text, "Search: bet (ESC to cancel, Enter to find)")
+    # And the cursor is in the answer rather than back in the buffer, which is the
+    # part that needed the grid to let a layer claim it.
+    check("the cursor sits after the answer", col, 12)
+
+    # Keys a prompt never had before. Each of these did nothing at all until the
+    # field existed, because the old prompt only understood typing and Backspace.
+    check("Left moves back in the answer",
+          line([FIND, "bet", LEFT, LEFT, "X"])[0].startswith("Search: bXet"), True)
+    check("Home goes to the start",
+          line([FIND, "bet", HOME, "Z"])[0].startswith("Search: Zbet"), True)
+    check("End comes back to the finish",
+          line([FIND, "bet", HOME, END, "!"])[0].startswith("Search: bet!"), True)
+    check("Delete takes the character at the cursor",
+          line([FIND, "bet", HOME, DEL])[0].startswith("Search: et"), True)
+    check("Backspace still takes the one before it",
+          line([FIND, "bet", "\x7f"])[0].startswith("Search: be"), True)
+
+    # An answer longer than the room for it scrolls, keeping the hint on screen.
+    # Before the field it simply ran off the right-hand edge, hint and all.
+    text, col = line([FIND] + list("abcdefghijklmnopqrstuvwxyz0123456789"))
+    check("a long answer keeps its tail in view",
+          text, "Search: 0123456789 (ESC to cancel, Enter to find)")
+    check("and the hint is still there", "(ESC to cancel" in text, True)
+
+    # Too narrow for both, and the hint goes rather than the answer. It used to be
+    # drawn over the prompt and the answer alike, which left the row reading
+    # " (ESC to cancel, Ent" with no sign of what was being asked.
+    check("a narrow terminal keeps the answer and drops the hint",
+          line([FIND, "abcdefgh"], rows=8, cols=20)[0], "Search: abcdefgh")
+    check("and the answer still scrolls there",
+          line([FIND] + list("abcdefghijklmnopqrst"), rows=8, cols=20)[0],
+          "Search: jklmnopqrst")
+
+    # A multi-byte character arrives as its bytes, one key at a time, and has to
+    # reassemble in the field rather than scatter.
+    check("a multi-byte character enters whole",
+          line([FIND, "café"])[0].startswith("Search: café"), True)
+
+    # And the field is still a prompt: Enter answers, Esc cancels.
+    check("Enter answers the prompt",
+          line([FIND, "beta", "\r"])[0].startswith("Found"), True)
+    check("Esc cancels it", line([FIND, "beta", "\x1b", 0.3])[0], "")
+
+    # The answer reaches the caller intact after being edited, not just displayed:
+    # go-to-line parses what the field holds.
+    with open(path, "w") as fh:
+        fh.write("one\ntwo\nthree\nfour\nfive\n")
+    out = run([MOLLY, path], [GOTO, "x", "5", HOME, DEL, "\r"])
+    check("an edited answer is what the caller gets",
+          (status_lines(out, rows=24, cols=80) or [""])[-1], "Ln 5")
+
+
+def test_palette(tmpdir):
+    print("\ncommand palette: a fuzzy filter over the whole command table")
+
+    path = os.path.join(tmpdir, "pal.txt")
+    PALETTE = "\x00"       # Ctrl-Space arrives as NUL
+    ALT_X = "\x1bx"
+
+    def screen(keys, body="alpha\nbeta\ngamma\n", rows=20, cols=72):
+        with open(path, "w") as fh:
+            fh.write(body)
+        out = run([MOLLY, path], list(keys), rows=rows, cols=cols)
+        scr = Screen(rows, cols)
+        scr.feed(out)
+        return scr
+
+    def rows_of(keys, **kw):
+        """The list's rows, in order, with the padding and the chord column
+        stripped -- what the palette is offering, and in what order."""
+        scr = screen(keys, **kw)
+        out = []
+        for row in scr.text():
+            if "║" not in row:
+                continue
+            inner = row.split("║")[1].strip()
+            if inner and not inner.startswith("›") and "choose" not in inner \
+                    and "No matching" not in inner and "Not available" not in inner:
+                out.append(inner.split("  ")[0].strip())
+        return out
+
+    def msg(keys, body="alpha\nbeta\ngamma\n", rows=20, cols=72):
+        with open(path, "w") as fh:
+            fh.write(body)
+        out = run([MOLLY, path], list(keys), rows=rows, cols=cols)
+        return (status_lines(out, rows=rows, cols=cols) or [""])[-1]
+
+    # Both chords open it, because not every terminal sends NUL for Ctrl-Space.
+    for label, key in (("Ctrl-Space", PALETTE), ("Alt-X", ALT_X)):
+        text = "\n".join(screen([key]).text())
+        check("%s opens the palette" % label, "Commands" in text, True)
+
+    # Every listed command shows the chord it is bound to, taken from the keymap.
+    opened = "\n".join(screen([PALETTE]).text())
+    check("a listed command shows its chord", "Save" in opened and "Ctrl-S" in opened,
+          True)
+
+    # Unfiltered, the list is the command table's own order rather than a ranking.
+    check("the unfiltered list starts where the table does",
+          rows_of([PALETTE])[:3], ["Save", "Open…", "Quit"])
+
+    # The filter narrows, and ranks a label match above a name-only one: "sav"
+    # matches Save's label and search.prev's name, in that order.
+    check("the filter puts the best label match first",
+          rows_of([PALETTE, "sav"])[0], "Save")
+    check("a word start beats a letter stranded mid-word",
+          rows_of([PALETTE, "ln"])[0], "Line numbers")
+
+    # The group is matched too, which is the only way "clip" reaches these three.
+    clip = rows_of([PALETTE, "clip"])
+    check("the group is searchable", sorted(clip), ["Copy", "Cut", "Paste"])
+
+    # Nothing matching says so rather than showing an empty box.
+    check("no match says so",
+          "No matching command" in "\n".join(screen([PALETTE, "zzqq"]).text()), True)
+
+    # Enter runs the selection; the arrows move it.
+    check("Enter runs the selected command",
+          msg([PALETTE, "line numbers", "\r"]), "Line numbers: on")
+    check("Down moves the selection",
+          msg([PALETTE, "li", DOWN, "\r"]) != "Line numbers: on", True)
+
+    # A command the palette lists but cannot run says why and stays open, rather
+    # than being hidden from the list in the first place.
+    check("an unavailable command is refused, not hidden",
+          "Paste" in "\n".join(screen([PALETTE, "paste"]).text()), True)
+    check("choosing it says why",
+          "Not available right now"
+          in "\n".join(screen([PALETTE, "paste", "\r"]).text()), True)
+
+    # Esc closes it without running anything.
+    check("Esc closes the palette",
+          msg([PALETTE, "line numbers", "\x1b", 0.3]).startswith("HELP:"), True)
+
+    # A command run from the palette is the same command as from its key,
+    # dispatcher flags included: Quit still counts down on a dirty buffer.
+    check("Quit from the palette keeps the quit countdown",
+          msg(["X", PALETTE, "quit", "\r"]).startswith("WARNING!!!"), True)
+
+    # A click on a row chooses it, as a click on a menu item does.
+    scr = screen([PALETTE, "line numbers"])
+    row = next(i for i, r in enumerate(scr.text()) if "Line numbers" in r)
+    check("clicking a row runs it",
+          msg([PALETTE, "line numbers", 0.2,
+               "\x1b[<0;20;%dM" % (row + 1), "\x1b[<0;20;%dm" % (row + 1)]),
+          "Line numbers: on")
+
+    # The palette lists only what is worth running: the menu openers and the
+    # palette itself are mechanism and stay out of it.
+    everything = rows_of([PALETTE], rows=40, cols=72)
+    check("the menu openers are not listed",
+          [r for r in everything if r.endswith("menu")], [])
+    check("the palette does not list itself",
+          [r for r in everything if r.startswith("Command palette")], [])
+
+    # And it is in the View menu, which is where it is discoverable without
+    # knowing the chord. Reached that way it is a modal loop inside a modal loop,
+    # which is the shape the roadmap settled on and the first place molly nests
+    # three deep: menu, palette, and whatever the command opens.
+    check("the View menu offers it",
+          "Command palette" in "\n".join(screen(["\x1bv"]).text()), True)
+    check("and running it from the menu works",
+          msg(["\x1bv", "c", 0.2, "line numbers", "\r"]), "Line numbers: on")
+    check("a command that opens a prompt works from the palette",
+          msg([PALETTE, "find", "\r", 0.2, "beta", "\r"]), "Found")
+    check("so does one that opens a dialog",
+          "Open File" in "\n".join(screen([PALETTE, "open", "\r"]).text()), True)
+
+
 def test_command_table(tmpdir):
     print("\ncommands: the keymap is parsed from chord text")
 
@@ -1593,14 +1785,20 @@ def test_command_table(tmpdir):
           all(name and "." in name for _, name in pairs), True)
 
     # The help screen takes its key column from this same keymap, so what it
-    # shows for a command has to be the chord that actually runs it.
-    out2 = run([MOLLY, os.path.join(tmpdir, "h.txt")], ["\x1f"])
-    scr = Screen(24, 80)
-    scr.feed(out2)
-    shown = "\n".join(scr.text())
+    # shows for a command has to be the chord that actually runs it. The reference is
+    # taller than a 24-row terminal, so the second screenful counts too -- which is
+    # what the footer's "PgUp/PgDn scroll" is there for.
+    def help_text(keys):
+        scr = Screen(24, 80)
+        scr.feed(run([MOLLY, os.path.join(tmpdir, "h.txt")], keys))
+        return "\n".join(scr.text())
+
+    shown = help_text(["\x1f"]) + help_text(["\x1f", "\x1b[6~"])
     check("help shows the bound chord for save", "Ctrl-S" in shown, True)
     check("help shows the bound chord for help", "Ctrl-?" in shown, True)
     check("help shows the bound chord for go to line", "Ctrl-G" in shown, True)
+    check("help shows the bound chord for the palette",
+          "Ctrl-Space" in shown, True)
 
 
 def main():
@@ -1615,6 +1813,8 @@ def main():
         test_input_decoding(tmpdir)
         test_mouse(tmpdir)
         test_menu(tmpdir)
+        test_prompt_field(tmpdir)
+        test_palette(tmpdir)
         test_command_table(tmpdir)
         test_tab(tmpdir)
         test_utf8(tmpdir)

@@ -416,8 +416,12 @@ void editor_refresh_screen(void) {
   screen_layout();
   grid_begin();
   layer_draw_all();
-  grid_cursor_to(chrome_rows_above() + drow_of_cursor(&CUR) - V.drowoff,
-                 (CUR.rx - V.coloff) + V.gutter_w);
+  /* The text cursor goes where the cursor in the buffer is -- unless something above
+   * claimed it, which an input field does: while a prompt is open the cursor belongs
+   * in the prompt, not back in the text behind it. */
+  if (!grid_cursor_claimed())
+    grid_cursor_to(chrome_rows_above() + drow_of_cursor(&CUR) - V.drowoff,
+                   (CUR.rx - V.coloff) + V.gutter_w);
   grid_flush();
 }
 

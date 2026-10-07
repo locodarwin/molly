@@ -286,21 +286,38 @@ struct layer {
 enum widget_kind {
   W_LABEL = 0,
   W_LIST,
-  W_TEXT   /* a list with nothing selected: scrolled, not navigated */
+  W_TEXT,  /* a list with nothing selected: scrolled, not navigated */
+  W_INPUT  /* an editable line: what editor_prompt was, without its loop */
 };
 
 /* A list asks its owner for a row's text rather than owning the data, so nothing
  * has to be copied into the widget to be shown. */
 typedef void (*widget_row_fn)(void *user, int i, char *dst, size_t dsz);
 
+/* The role a particular row takes, for a list whose rows are not all alike: the
+ * command palette dims the commands that are unavailable, exactly as a menu greys
+ * them out. NULL means every row takes the widget's own role. */
+typedef unsigned char (*widget_role_fn)(void *user, int i);
+
 struct widget {
   int kind;
   int x, y, w, h;       /* relative to the dialog's content area */
+  unsigned char role;   /* its background and text; ROLE_DIALOG inside a dialog */
   const char *text;     /* label */
   int count;            /* list: rows available */
   int sel, top;         /* list: selection, and the first row shown */
   widget_row_fn row;
+  widget_role_fn row_role;
   void *user;
+
+  /* W_INPUT only. The widget owns the buffer and grows it, so a long paste into a
+   * prompt is not capped the way a fixed field would cap it. `icur` is a byte
+   * offset into it and `iscroll` the first display column shown, which is what
+   * lets a line longer than the field be typed and edited. */
+  char *ibuf;
+  int ilen, icap;
+  int icur;
+  int iscroll;
 };
 
 struct dialog {
@@ -333,6 +350,9 @@ typedef void (*loop_handler)(void *user);
 
 /* Flags on a command. */
 #define CMD_MOVEMENT 0x01  /* a shifted press of this extends the selection */
+#define CMD_HIDDEN   0x02  /* not offered in the command palette: mechanism, not an
+                            * action -- the seven menu openers and the palette
+                            * itself, which has no business listing itself */
 
 /* What a command tells the dispatcher to do afterwards. */
 #define CMD_KEEP_SELECTION  0x01  /* do not clear the selection (copy) */
@@ -384,6 +404,7 @@ enum cell_role {
   ROLE_DIALOG_TITLE,   /* the title inset in the top border */
   ROLE_DIALOG_SHADOW,  /* the text it overshadows, dimmed */
   ROLE_LIST_SELECTED,  /* the current row of a list */
+  ROLE_INPUT,          /* an editable field, sunk a shade below the dialog */
 
   /* The menu bar is a shade darker than a dialog, so it reads as chrome fixed to
    * the top rather than as a panel that happens to be parked there. */
@@ -448,9 +469,11 @@ void saved_snapshot_take(void);
 void write_recovery_file(void);
 
 /* cmd.c */
+const struct command *cmd_at(int i);
 const struct command *cmd_find_by_name(const char *name);
 const struct command *keymap_lookup(int key);
 int chord_parse(const char *s);
+int cmd_count(void);
 int cmd_shortcut(const char *name, char *dst, size_t n);
 int help_entry_count(void);
 void chord_name(int key, char *dst, size_t n);
@@ -467,12 +490,14 @@ void editor_insert_newline(void);
 
 /* grid.c */
 int grid_cols(void);
+int grid_cursor_claimed(void);
 int grid_put_char(int y, int x, const char *s, int nbytes, int w);
 int grid_puts(int y, int x, const char *s, int len);
 int grid_rows(void);
 void grid_attrs(unsigned char attrs);
 void grid_begin(void);
 void grid_cleanup(void);
+void grid_cursor_claim(int y, int x);
 void grid_cursor_hide(void);
 void grid_cursor_to(int y, int x);
 void grid_fill(int y, int x, int n, char c);
@@ -515,6 +540,10 @@ int menu_for_mnemonic(int ch);
 int menu_is_open(void);
 int menu_open(int index);
 void menu_bar_draw(const struct layer *self);
+
+/* palette.c */
+int palette_open(void);
+int palette_score(const char *s, const char *pat);
 
 /* screen.c */
 int screen_poll_size(void);
@@ -637,5 +666,10 @@ void widget_list_clamp(struct widget *w);
 void widget_list_move(struct widget *w, int delta);
 void widget_text(struct widget *w, int x, int y, int cols, int rows, int count, widget_row_fn row, void *user);
 void widget_text_scroll(struct widget *w, int delta);
+void widget_input(struct widget *w, int x, int y, int cols);
+void widget_input_free(struct widget *w);
+int widget_input_key(struct widget *w, int c);
+int widget_input_draw(struct widget *w, int y, int x, int maxcols);
+const char *widget_input_text(const struct widget *w);
 
 #endif /* MOLLY_H */

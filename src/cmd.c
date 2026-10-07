@@ -182,6 +182,8 @@ static int cmd_line_numbers(void) {
  *
  * Each returns what the command chosen inside the menu returned, so choosing Quit
  * from the File menu behaves exactly as Ctrl-Q does, countdown included. */
+static int cmd_palette(void) { return palette_open(); }
+
 static int cmd_menu_file(void)   { return menu_open(0); }
 static int cmd_menu_edit(void)   { return menu_open(1); }
 static int cmd_menu_search(void) { return menu_open(2); }
@@ -276,13 +278,19 @@ static const struct command commands[] = {
   {.name = "view.menu-bar", .label = "Menu bar",
    .help = "Show the menu bar", .group = "VIEW", .run = cmd_menu_bar, .checked = menubar_on},
 
-  {.name = "menu.open", .label = "Menu bar", .run = cmd_menu_bar_open},
-  {.name = "menu.file", .label = "File menu", .run = cmd_menu_file},
-  {.name = "menu.edit", .label = "Edit menu", .run = cmd_menu_edit},
-  {.name = "menu.search", .label = "Search menu", .run = cmd_menu_search},
-  {.name = "menu.view", .label = "View menu", .run = cmd_menu_view},
-  {.name = "menu.go", .label = "Go menu", .run = cmd_menu_go},
-  {.name = "menu.help", .label = "Help menu", .run = cmd_menu_help},
+  /* Hidden from the palette, all of them: the palette has no business offering to
+   * open itself, and the menu openers are how you reach commands rather than commands
+   * anyone means to run. */
+  {.name = "app.palette", .label = "Command palette…", .flags = CMD_HIDDEN,
+   .help = "Command palette", .group = "MENUS", .run = cmd_palette},
+
+  {.name = "menu.open", .label = "Menu bar", .flags = CMD_HIDDEN, .run = cmd_menu_bar_open},
+  {.name = "menu.file", .label = "File menu", .flags = CMD_HIDDEN, .run = cmd_menu_file},
+  {.name = "menu.edit", .label = "Edit menu", .flags = CMD_HIDDEN, .run = cmd_menu_edit},
+  {.name = "menu.search", .label = "Search menu", .flags = CMD_HIDDEN, .run = cmd_menu_search},
+  {.name = "menu.view", .label = "View menu", .flags = CMD_HIDDEN, .run = cmd_menu_view},
+  {.name = "menu.go", .label = "Go menu", .flags = CMD_HIDDEN, .run = cmd_menu_go},
+  {.name = "menu.help", .label = "Help menu", .flags = CMD_HIDDEN, .run = cmd_menu_help},
 
   {.name = "app.resize", .run = cmd_resize},
 };
@@ -294,6 +302,17 @@ const struct command *cmd_find_by_name(const char *name) {
   for (i = 0; i < NCOMMANDS; i++)
     if (strcmp(commands[i].name, name) == 0) return &commands[i];
   return NULL;
+}
+
+/* The table by position, for anything that lists every command rather than looking one
+ * up: the command palette today, a keybinding editor and a macro recorder later. */
+int cmd_count(void) {
+  return NCOMMANDS;
+}
+
+const struct command *cmd_at(int i) {
+  if (i < 0 || i >= NCOMMANDS) return NULL;
+  return &commands[i];
 }
 
 /* ---- chords -------------------------------------------------------------- */
@@ -317,6 +336,10 @@ static const struct named_key named_keys[] = {
   {'\t',        "Tab",       "tab"},
   {'\x1b',      "Esc",       "escape"},
   {WINCH_KEY,   "Resize",    "resize"},
+  /* Ctrl-Space arrives as NUL, which is what CTRL_KEY(' ') produces. It is named here
+   * rather than handled in the "ctrl-" branch below so that one entry covers both
+   * parsing it and printing it. */
+  {CTRL_KEY(' '), "Ctrl-Space", "ctrl-space"},
 };
 
 #define NNAMED ((int)(sizeof(named_keys) / sizeof(named_keys[0])))
@@ -337,6 +360,13 @@ int chord_parse(const char *s) {
   int i;
   if (s == NULL || *s == '\0') return -1;
 
+  /* Named keys first, because one of them is spelled "ctrl-space" and the modifier
+   * prefix below would otherwise claim it and then reject it for having more than one
+   * character after the dash. No other name begins with a modifier prefix. */
+  for (i = 0; i < NNAMED; i++)
+    if (ieq(s, named_keys[i].name) || ieq(s, named_keys[i].alias))
+      return named_keys[i].key;
+
   if (ieq(s, "ctrl-?")) return CTRL_KEY('?');
   if (strncasecmp(s, "ctrl-", 5) == 0) {
     const char *rest = s + 5;
@@ -355,9 +385,6 @@ int chord_parse(const char *s) {
     int n = atoi(s + 1);
     if (n >= 1 && n <= 12) return F1_KEY + (n - 1);
   }
-  for (i = 0; i < NNAMED; i++)
-    if (ieq(s, named_keys[i].name) || ieq(s, named_keys[i].alias))
-      return named_keys[i].key;
   /* A bare printable character binds itself. */
   if (s[1] == '\0' && (unsigned char)s[0] >= 0x20 && (unsigned char)s[0] <= 0x7e)
     return (unsigned char)s[0];
@@ -444,6 +471,13 @@ static const struct binding default_bindings[] = {
 
   {"ctrl-l", "view.repaint"},
   {"ctrl-u", "view.line-numbers"},
+
+  /* The palette, on two chords. Ctrl-Space is the one the roadmap settles on, and
+   * Alt-X is there because not every terminal sends NUL for Ctrl-Space -- and because
+   * Alt-X has meant "run a command by name" for forty years. X is not one of the
+   * eight letters the menu bar reserves. */
+  {"ctrl-space", "app.palette"},
+  {"alt-x",      "app.palette"},
 
   /* The menu bar: F10 as every keyboard-driven menu bar has had it, plus the eight
    * reserved Alt letters -- six of which have a menu today. */
@@ -592,6 +626,7 @@ static const struct help_entry help_entries[] = {
 
   {"MENUS",      "F10",       "Open the menu bar", NULL},
   {NULL,         "Alt-letter", "Open that menu",   NULL},
+  {NULL,         NULL,        NULL,               "app.palette"},
   {NULL,         "Shift+drag", "Select with the terminal, not molly", NULL},
 
   {"MOVEMENT",   "Arrows",    "Move cursor",     NULL},

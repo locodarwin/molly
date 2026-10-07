@@ -199,6 +199,32 @@ def main():
           files={"sample.txt": THREE_LINES},
           env={"TERM": "xterm-256color"})
 
+    # The command palette: a framed dialog with a field at the top, the list of
+    # commands under it and the chord each is bound to down the right-hand side.
+    check("palette", ["\x00"], rows=20, cols=72,
+          files={"sample.txt": THREE_LINES})
+    # Filtered, which is where the ranking shows: "li" puts Line numbers first.
+    check("palette-filtered", ["\x00", "li"], rows=20, cols=72,
+          files={"sample.txt": THREE_LINES})
+    # An unavailable command is listed and dimmed rather than hidden, which is a
+    # colour difference and so only a snapshot would catch it going away.
+    check("palette-dimmed", ["\x00", "paste"], rows=20, cols=72,
+          files={"sample.txt": THREE_LINES},
+          env={"TERM": "xterm-256color"})
+    # At 256 colours the field is sunk a shade below the dialog around it.
+    check("palette-256", ["\x00"], rows=20, cols=72,
+          files={"sample.txt": THREE_LINES},
+          env={"TERM": "xterm-256color"})
+
+    # The prompt, which is an input field on the message row. An answer that fits is
+    # the line molly always drew; one that does not scrolls, and the hint stays on
+    # screen instead of being pushed off the edge.
+    check("prompt-scrolled", ["\x06"] + list("abcdefghijklmnopqrstuvwxyz0123456789"),
+          rows=10, cols=50, files={"sample.txt": THREE_LINES})
+    # Too narrow for both: the hint goes rather than the answer.
+    check("prompt-narrow", ["\x06", "abcdefgh"], rows=8, cols=20,
+          files={"sample.txt": THREE_LINES})
+
     # Resizing: the grid is reallocated and the frame repainted in full. Shrinking
     # has to drop rows and columns without leaving anything behind; growing has to
     # fill what was not there before.

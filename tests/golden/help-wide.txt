@@ -11,13 +11,13 @@ ga║ FILES                                 EDITING                            �
 ~ ║ MENUS                                 FIND & REPLACE                     ║
 ~ ║   F10            Open the menu bar      Ctrl-F         Find forward      ║
 ~ ║   Alt-letter     Open that menu         Ctrl-N         Find next         ║
-~ ║   Shift+drag     Select with the t      Ctrl-P         Find previous     ║
-~ ║                                         Ctrl-T         Case sensitivity  ║
-~ ║ MOVEMENT                                Ctrl-R         Find & replace    ║
-~ ║   Arrows         Move cursor                                             ║
-~ ║   PgUp/PgDn      Page up / down       CLIPBOARD                          ║
-~ ║   Home/End       Line start / end       Ctrl-C         Copy selection    ║
-~ ║   Ctrl-G         Go to line             Ctrl-X         Cut selection     ║
+~ ║   Ctrl-Space     Command palette        Ctrl-P         Find previous     ║
+~ ║   Shift+drag     Select with the t      Ctrl-T         Case sensitivity  ║
+~ ║                                         Ctrl-R         Find & replace    ║
+~ ║ MOVEMENT                                                                 ║
+~ ║   Arrows         Move cursor          CLIPBOARD                          ║
+~ ║   PgUp/PgDn      Page up / down         Ctrl-C         Copy selection    ║
+~ ║   Home/End       Line start / end       Ctrl-X         Cut selection     ║
 ~ ║ In prompts: Enter accepts   Esc cancels                                  ║
 ~ ║ PgUp/PgDn scroll   any other key returns                                 ║
 ~ ╚══════════════════════════════════════════════════════════════════════════╝

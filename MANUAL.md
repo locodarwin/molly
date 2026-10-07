@@ -1,19 +1,30 @@
 # Molly — A Command-Line Text Editor
 
-> **Note:** molly is at `0.1.0-dev` and currently has exactly the feature set it
-> inherited from [olly](https://github.com/locodarwin/olly). This manual
-> describes that behavior and is accurate today. For where molly is going, see
-> [`ROADMAP.md`](ROADMAP.md).
+> **Note:** molly is at `0.1.0-dev`. Its **interface** is molly's own — a menu
+> bar, a mouse, framed dialogs and a command palette — while its **editing**
+> features are still the ones it inherited from
+> [olly](https://github.com/locodarwin/olly): one file at a time, plain-text
+> search, no syntax highlighting and no configuration file yet. This manual
+> describes what is there today and is accurate. For what is coming, and why in
+> that order, see [`ROADMAP.md`](ROADMAP.md).
 
 Molly is a small, dependency-free text editor for the terminal, written in C.
-It provides modaless editing in the style of tools like nano: type to insert,
-the arrow keys move around, and the `Ctrl` combinations do the work.
+It provides modeless editing in the style of tools like nano — type to insert,
+the arrow keys move around, and the `Ctrl` combinations do the work — with the
+discoverability of a GUI editor on top: every command has a name, a menu entry
+and a searchable label, so nothing is reachable only by knowing a secret key.
 
 ## Table of Contents
 
 - [Building](#building)
 - [Installing](#installing)
 - [Getting Started](#getting-started)
+- [Things Worth Knowing First](#things-worth-knowing-first)
+- [The Menu Bar](#the-menu-bar)
+- [The Command Palette](#the-command-palette)
+- [The Mouse](#the-mouse)
+- [Colors](#colors)
+- [Prompts](#prompts)
 - [Editing](#editing)
 - [Moving Around](#moving-around)
 - [Help Screen](#help-screen)
@@ -24,7 +35,8 @@ the arrow keys move around, and the `Ctrl` combinations do the work.
 - [Undo and Redo](#undo-and-redo)
 - [Opening Another File](#opening-another-file)
 - [Saving and Quitting](#saving-and-quitting)
-- [Keys At a Glance](#keys-at-a-glance)
+- [Keyboard Shortcuts](#keyboard-shortcuts)
+- [Environment Variables](#environment-variables)
 - [File Format Notes](#file-format-notes)
 
 ## Building
@@ -78,6 +90,153 @@ The status bar (the highlighted line at the bottom) shows the file name, the
 number of lines, whether the buffer is modified, and the cursor position as
 `Ln <line>, Col <column>`.
 
+## Things Worth Knowing First
+
+Four things about molly will surprise you if nobody says them first.
+
+**The mouse is on.** Molly asks the terminal for mouse reporting at startup, so
+clicks, drags and the wheel go to molly instead of to your terminal. That means
+your terminal's own swipe-to-select and middle-click-to-paste stop working inside
+molly. **Hold `Shift`** while dragging and most terminals hand the selection back
+to themselves — that is the standard bypass and it is how you copy text out of
+molly with the terminal rather than with `Ctrl-C`. There is no switch to turn the
+mouse off yet; the configuration file that will carry one is a Phase 2 item.
+
+**Alt keys need the terminal to send them as `Esc`-prefixed.** That is the
+default in xterm, GNOME Terminal, Konsole, kitty, Alacritty, WezTerm and tmux.
+If your terminal is set to "Alt sends the eighth bit" (sometimes called *8-bit
+meta*) instead, `Alt-F` and friends will not reach molly. Everything they do is
+also on `F10` and in the menus, so nothing is lost either way.
+
+**`Ctrl-Space` may not survive the trip.** It arrives as a NUL byte, which most
+terminals send and a few swallow. `Alt-X` opens the command palette too, for
+exactly that reason.
+
+**The keymap is not configurable yet.** Every binding is already a line of text
+parsed at startup — which is the groundwork for a configuration file — but the
+file itself does not exist, so for now the bindings are what they are. `Ctrl-L`
+still repaints the screen and `Ctrl-T` still toggles case-sensitive search; the
+roadmap moves both to the CUA meanings when configuration arrives.
+
+## The Menu Bar
+
+The band across the top of the screen is molly's main answer to "what can this
+thing do?". Six menus: **File**, **Edit**, **Search**, **View**, **Go** and
+**Help**. (*Tools* and *Options* come with Phase 2; their `Alt` letters are
+reserved already, so adding them will not move anything.)
+
+| Key | Action |
+| --- | --- |
+| `F10` | Open the menu bar |
+| `Alt-F` `Alt-E` `Alt-S` `Alt-V` `Alt-G` `Alt-H` | Open that menu directly |
+| `←` / `→` | Move to the previous / next menu |
+| `↑` / `↓` | Move within the open menu |
+| `Home` / `End` | First / last item |
+| An underlined letter | Run that item |
+| `Enter` | Run the highlighted item |
+| `Esc` | Close without running anything |
+
+Eight letters are reserved on `Alt` — `F E S V G T O H`, the last two held for the
+menus that do not exist yet. **Every other `Alt`+letter is free for commands**,
+which is the point of reserving no more than the titles.
+
+Every entry is built from molly's command table, so a menu cannot drift out of
+step with the editor: the label, the shortcut shown down the right-hand side,
+whether the item is available and whether it is ticked all come from the command
+itself. **An item molly cannot run right now is greyed out, skipped by the
+arrows, and deaf to its own letter** — `Paste` with an empty clipboard, `Find
+Next` before you have searched for anything. Items that toggle something show a
+tick when it is on.
+
+Running a command from a menu is the same as running it from its key, down to
+the details: choosing **Quit** from the File menu with unsaved changes starts the
+same countdown `Ctrl-Q` does.
+
+The bar can be switched off with **View → Menu bar**, which gives its row back to
+the text — worth having on a 24-row terminal. While it is hidden, opening a menu
+draws the band *over* the first line of the file rather than reflowing the whole
+screen down a row.
+
+## The Command Palette
+
+`Ctrl-Space` (or `Alt-X`) opens a list of every command molly has, with a filter
+box at the top and the key each one is bound to beside it. It is the way to reach
+something without knowing its key and without hunting through the menus — and
+unlike the menus, which are curated, **it lists everything**.
+
+| Key | Action |
+| --- | --- |
+| Type anything | Filter the list |
+| `↑` / `↓`, `PgUp` / `PgDn` | Move the selection |
+| `←` `→` `Home` `End` `Backspace` `Delete` | Edit the filter text |
+| `Enter` | Run the selected command |
+| Click a row | Run that command |
+| `Esc` | Close without running anything |
+
+The filter is fuzzy: the letters you type have to appear in order but need not be
+adjacent, so `ln` finds **Line numbers** and `rep` finds **Replace…**. Matches
+are ranked, roughly, by how much they look like an abbreviation someone would
+actually type — letters that start a word count for more than letters stranded in
+the middle of one, and a run of adjacent letters counts for more still. The
+search also covers each command's internal name and its group, so `clip` finds
+**Copy**, **Cut** and **Paste** even though none of them says "clipboard".
+
+Commands molly cannot run at the moment are **listed and dimmed rather than
+hidden**, so the palette never looks as though a command has gone missing.
+Choosing one says why it cannot run and leaves the palette open.
+
+## The Mouse
+
+| Action | Effect |
+| --- | --- |
+| Click in the text | Put the cursor there |
+| Drag in the text | Select |
+| Click a line number | Go to the start of that line |
+| Wheel | Scroll the view without moving the cursor |
+| Click a menu title | Open that menu |
+| Click a menu item | Run it |
+| Click outside a menu | Close it |
+| Click a list row | Select it (in the file browser) or run it (in the palette) |
+| Wheel over a list | Scroll it |
+| `Shift` + drag | Hand the selection back to your terminal |
+
+A selection made with the mouse is the same selection `Shift`+arrows make, so
+`Ctrl-C` and `Ctrl-X` work on it without caring how it was made.
+
+## Colors
+
+Molly draws in one of two palettes and picks between them at startup: a
+**256-color** one if `COLORTERM` says `truecolor`/`24bit` or `TERM` mentions
+`256color`, and a **16-color** fallback otherwise. Nothing is lost at sixteen —
+the fallback is a different table, not a different renderer.
+
+Dialogs and menus **paint their own background** rather than inheriting the
+terminal's, so they read as panels floating above the text and look the same
+wherever molly runs. The text area itself still uses your terminal's own
+foreground and background, so molly fits a light or a dark theme without being
+told which it is.
+
+If a dialog looks wrong, check what your terminal claims:
+
+    echo "TERM=$TERM COLORTERM=$COLORTERM"
+
+## Prompts
+
+Anything molly asks you — a search term, a line number, a file name to save as —
+is an editable field on the bottom line, with a real cursor in it.
+
+| Key | Action |
+| --- | --- |
+| `←` / `→` | Move within the answer |
+| `Home` / `End` | Start / end of the answer |
+| `Backspace` / `Delete` | Delete before / at the cursor |
+| `Enter` | Accept |
+| `Esc` | Cancel |
+
+An answer longer than the room for it scrolls sideways, so the hint at the end of
+the line stays where it is. On a terminal too narrow for both, the hint is dropped
+and the whole width goes to the answer. Molly has no prompt history yet.
+
 ## Editing
 
 Molly is modeless: whatever you type is inserted at the cursor.
@@ -120,12 +279,17 @@ adjusts to the new size as it happens, without needing a keypress first.
 
 ## Help Screen
 
-`Ctrl-?` opens a keyboard reference. It lays out in two columns on a wide
-terminal and drops to a single column when the window is narrower, scrolling
-with the arrows, `PgUp`/`PgDn`, `Home`/`End` when the content is taller than the
-screen. Resizing the terminal **while the help screen is open** reflows it live —
-it re-reads the size and switches between the one- and two-column layouts to
-match, without leaving the screen. Press any other key to return to the editor.
+`Ctrl-?` opens a keyboard reference, in a framed dialog over the editor. It lays
+out in two columns on a wide terminal and drops to a single column when the
+window is narrower, scrolling with the arrows, `PgUp`/`PgDn`, `Home`/`End` when
+the content is taller than the screen — which at 24 rows it now is, so expect to
+page down to see all of it. Resizing the terminal **while the help screen is
+open** reflows it live: it re-reads the size and switches between the one- and
+two-column layouts to match, without leaving the screen. Press any other key to
+return to the editor.
+
+Its key column is generated from the same keymap the editor runs on, so it cannot
+tell you a key that does not work. **Help → Keyboard help** opens it too.
 
 ## Line Numbers
 
@@ -243,12 +407,6 @@ memory on history alone. (The step limit can be lowered through the
 `MOLLY_UNDO_STEPS` environment variable, which is how the test suite
 exercises the eviction.)
 
-Setting `MOLLY_DUMP_KEYMAP` makes Molly print its keymap as
-`chord<TAB>command` lines and exit without touching the terminal. Every
-binding there has been parsed from chord text at startup and printed back, so
-the output is both a reference for what is bound and how the test suite checks
-the chord code. It is also the form the configuration file will use.
-
 Changes are aggregated this way:
 
 - A run of typed characters undoes as one step.
@@ -357,6 +515,9 @@ After saving, the undo history is kept, but the dirty flag is cleared.
 
 ## Keyboard Shortcuts
 
+    F10      Open the menu bar
+    Alt-F/E/S/V/G/H  Open the File/Edit/Search/View/Go/Help menu
+    Ctrl-Space  Command palette (Alt-X does the same)
     Ctrl-S   Save file
     Ctrl-O   Open a file (directory browser)
     Ctrl-Q   Quit (asks several times if there are unsaved changes)
@@ -375,7 +536,20 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     Ctrl-L   Repaint the screen
     Ctrl-U   Toggle the line-number gutter
     Shift    Hold with arrows / Home / End / PgUp / PgDn to select
-    Esc      Cancel the current prompt
+    Shift    Hold while dragging to select with the terminal, not molly
+    Esc      Cancel the current prompt, menu or dialog
+
+To see the live keymap rather than this list:
+
+    MOLLY_DUMP_KEYMAP=1 molly
+
+## Environment Variables
+
+| Variable | Effect |
+| --- | --- |
+| `TERM`, `COLORTERM` | Choose the 256-color or the 16-color palette — see [Colors](#colors) |
+| `MOLLY_DUMP_KEYMAP` | Print the keymap as `chord<TAB>command` lines and exit, without touching the terminal. Every binding in it was parsed from chord text at startup and printed back, so it is both a reference for what is bound and how the test suite checks the chord code — and it is the form the configuration file will read and write. |
+| `MOLLY_UNDO_STEPS` | Lower the undo history's step limit, which is how the test suite exercises its eviction. |
 
 ## File Format Notes
 

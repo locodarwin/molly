@@ -1,47 +1,150 @@
 /* ui.c -- The parts the user interacts with that are not the text itself: the prompt
-   line, the help screen and the open-file dialog. These three are hand-rolled
-   full-screen UIs today; Phase 1 replaces them with the widget toolkit. */
+   line, the help screen and the open-file dialog. All three are on the widget
+   toolkit; nothing here writes an escape sequence or positions the terminal's cursor
+   by hand any more. */
 
 #include "molly.h"
 
-char *editor_prompt(char *prompt, void (*callback)(char *, int)) {
-  size_t bufsize = 128;
-  char *buf = xmalloc(bufsize);
-  size_t buflen = 0;
-  buf[0] = '\0';
+/* ---- the prompt ---------------------------------------------------------- *
+ *
+ * A one-line input field on the message row.
+ *
+ * The format string keeps its %s and the field goes where the %s was, with the text
+ * before and after it drawn around the field. So for any answer short enough to fit,
+ * the row is what molly has always drawn, to the byte. What the field adds is a real
+ * cursor and the keys that go with one -- the arrows, Home, End and Delete, none of
+ * which did anything in a prompt before -- plus horizontal scrolling once the answer
+ * outgrows the space for it, where the line used to simply run off the edge.
+ *
+ * Turbo Vision would make this a framed dialog. Phase 2's Find dialog is where the
+ * find and replace prompts become exactly that, checkbox and all; framing them now
+ * would mean building them twice, which is the roadmap's reasoning and still holds. */
 
-  while (1) {
-    editor_set_status_message(prompt, buf);
+struct prompt_pane {
+  const char *prefix;     /* the format string up to its %s */
+  const char *suffix;     /* and everything past it */
+  struct widget field;
+};
+
+/* Below this many columns for the answer, the hint is dropped instead. The answer
+ * matters more than the advice about it does -- and on a 20-column terminal the hint
+ * is longer than the whole row, so keeping it would mean no answer at all. */
+#define PROMPT_MIN_FIELD 8
+
+static void prompt_draw(const struct layer *self) {
+  struct prompt_pane *pp = self->user;
+  int pcols = utf8_str_cols(pp->prefix);
+  int scols = utf8_str_cols(pp->suffix);
+  int avail, used, sx;
+
+  grid_role(ROLE_MESSAGE);
+  grid_fill(self->y, self->x, self->w, ' ');
+  grid_puts(self->y, self->x, pp->prefix, (int)strlen(pp->prefix));
+
+  /* The field gets what is left once the hint has its columns. Giving the hint its
+   * space first is what keeps "(ESC to cancel)" on screen while a long answer
+   * scrolls, rather than pushing it off the right-hand edge -- but only while there
+   * is still room worth having for the answer. */
+  avail = self->w - pcols - scols;
+  if (avail < PROMPT_MIN_FIELD) {
+    scols = 0;
+    avail = self->w - pcols;
+  }
+  if (avail < 1) avail = 1;
+  pp->field.role = ROLE_MESSAGE;   /* the message row, not a dialog's field */
+  used = widget_input_draw(&pp->field, self->y, self->x + pcols, avail);
+
+  /* The hint follows the answer rather than sitting at a fixed column, so a short
+   * answer reads as one sentence -- which is also what makes this byte-identical to
+   * the line molly drew before the field existed. */
+  if (scols > 0) {
+    sx = self->x + pcols + used;
+    if (sx + scols > self->x + self->w) sx = self->x + self->w - scols;
+    if (sx < self->x) sx = self->x;
+    grid_role(ROLE_MESSAGE);
+    grid_puts(self->y, sx, pp->suffix, (int)strlen(pp->suffix));
+  }
+  grid_role(ROLE_TEXT);
+}
+
+char *editor_prompt(char *prompt, void (*callback)(char *, int)) {
+  struct prompt_pane pp;
+  struct layer l;
+  const char *pct = strstr(prompt, "%s");
+  char prefix[256];
+  int depth, li;
+  char *result = NULL;
+
+  /* Split the format string at its %s. A prompt without one is all prefix, which is
+   * not a case any caller has but is the only sane reading of it. */
+  if (pct != NULL) {
+    size_t n = (size_t)(pct - prompt);
+    if (n >= sizeof(prefix)) n = sizeof(prefix) - 1;
+    memcpy(prefix, prompt, n);
+    prefix[n] = '\0';
+    pp.suffix = pct + 2;
+  } else {
+    snprintf(prefix, sizeof(prefix), "%s", prompt);
+    pp.suffix = "";
+  }
+  pp.prefix = prefix;
+  widget_input(&pp.field, 0, 0, 1);
+
+  depth = layer_count();
+  memset(&l, 0, sizeof(l));
+  l.draw = prompt_draw;
+  l.user = &pp;
+  li = layer_push(&l);
+  if (li < 0) {
+    widget_input_free(&pp.field);
+    return NULL;
+  }
+
+  for (;;) {
+    struct layer *lp;
+    int c;
+
+    /* Before measuring anything: see screen_sync_size. */
+    screen_sync_size();
+    lp = layer_get(li);
+    /* The message row, which is the last row of the screen. Taken from the grid
+     * rather than from the message bar's layer so that the two cannot disagree about
+     * where the bottom of the screen is during a resize. */
+    lp->x = 0;
+    lp->y = grid_rows() - 1;
+    lp->w = grid_cols();
+    lp->h = 1;
+
+    /* E.statusmsg is still set to the formatted line, though nothing draws it while
+     * the prompt is up. It is set because several callers leave the prompt text on
+     * screen on purpose after the prompt closes, until they replace it with a result
+     * -- so the message state a caller sees afterwards is the one it always saw. */
+    editor_set_status_message(prompt, widget_input_text(&pp.field));
     editor_refresh_screen();
 
-    int c = ui_wait_key();
+    c = ui_wait_key();
+    if (c == WINCH_KEY) continue;
+    /* A click or a wheel is not an answer. Ignored rather than cancelling, because
+     * losing a half-typed search term to a stray scroll would be a nasty surprise. */
+    if (c == MOUSE_KEY) continue;
 
-    if (c == DEL_KEY || c == CTRL_KEY('h') || c == BACKSPACE) {
-      if (buflen != 0) {
-        buflen = (size_t)utf8_prev(buf, (int)buflen);
-        buf[buflen] = '\0';
-      }
-    } else if (c == '\x1b') {
+    if (c == '\x1b') {
       editor_set_status_message("");
-      if (callback) callback(buf, c);
-      free(buf);
-      return NULL;
-    } else if (c == '\r') {
-      if (callback) callback(buf, c);
-      return buf;
-    } else if (c >= 32 && c != 127 && c < 256) {
-      /* Any byte that is not a control code or one of the >=1000 key codes,
-       * so a pasted or typed UTF-8 character enters the prompt intact. */
-      if (buflen == bufsize - 1) {
-        bufsize *= 2;
-        buf = xrealloc(buf, bufsize);
-      }
-      buf[buflen++] = c;
-      buf[buflen] = '\0';
+      if (callback) callback(pp.field.ibuf, c);
+      break;
     }
-
-    if (callback) callback(buf, c);
+    if (c == '\r') {
+      result = xstrdup(widget_input_text(&pp.field));
+      if (callback) callback(result, c);
+      break;
+    }
+    widget_input_key(&pp.field, c);
+    if (callback) callback(pp.field.ibuf, c);
   }
+
+  widget_input_free(&pp.field);
+  layer_pop_to(depth);
+  return result;
 }
 
 

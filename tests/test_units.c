@@ -394,6 +394,127 @@ static void test_theme_color_bytes(void) {
   emitted("the default color emits nothing", -1, 0, "");
 }
 
+/* --- the command palette's matcher ---------------------------------------- *
+ *
+ * Checked here rather than through the pty because what is being tested is an
+ * ordering, and an ordering is far easier to be sure of as a pair of scores than as
+ * a screenful of list rows. The pty tests check that the ordering reaches the
+ * screen; these check that it is the right one. */
+
+static void better(const char *label, const char *pat, const char *win,
+                   const char *lose) {
+  int a = palette_score(win, pat), b = palette_score(lose, pat);
+  if (a > b) {
+    printf("  pass  %s\n", label);
+  } else {
+    printf("  FAIL  %s\n          \"%s\" scored %d, \"%s\" scored %d\n",
+           label, win, a, lose, b);
+    failures++;
+  }
+}
+
+static void test_palette_matcher(void) {
+  printf("\npalette: the fuzzy matcher's ranking\n");
+
+  /* A subsequence matches; anything else does not. */
+  check("an empty pattern matches everything", palette_score("Save", "") > 0, 1);
+  check("a prefix matches", palette_score("Save", "sav") > 0, 1);
+  check("a subsequence matches", palette_score("Line numbers", "lnm") > 0, 1);
+  check("case is ignored", palette_score("Save", "SAV") > 0, 1);
+  check("out of order does not match", palette_score("Save", "vas"), 0);
+  check("a letter that is not there does not match",
+        palette_score("Save", "sax"), 0);
+  check("a pattern longer than the text does not match",
+        palette_score("Cut", "cutting"), 0);
+
+  /* The ranking, which is the part that decides how the palette feels. */
+  better("a prefix beats a match halfway along", "sav", "Save", "Also saved");
+  better("a word start beats a letter stranded mid-word",
+         "ln", "Line numbers", "Line end");
+  better("contiguous beats scattered", "red", "Redraw", "Reorder dates");
+  better("the whole pattern at a word start wins", "mc", "Match case", "Mimic");
+
+  /* The second pass must not lose a match the first one found: preferring a
+   * word-start 'b' walks past the only 'a' that could follow it. */
+  check("preferring a word start cannot lose a match",
+        palette_score("ab a b", "aba") > 0, 1);
+}
+
+/* --- the input field ------------------------------------------------------ *
+ *
+ * The prompt and the palette both drive this, and the pty tests cover what that
+ * looks like. What they cannot easily reach is the state after a sequence of edits
+ * in the middle of a multi-byte string, which is exactly where an off-by-one would
+ * leave invalid bytes behind. */
+
+static void typed(struct widget *w, const char *s) {
+  const unsigned char *p = (const unsigned char *)s;
+  for (; *p != '\0'; p++) widget_input_key(w, *p);
+}
+
+static void test_input_field(void) {
+  struct widget w;
+  printf("\ninput field: editing stays on character boundaries\n");
+
+  widget_input(&w, 0, 0, 20);
+  typed(&w, "hello");
+  check("typing accumulates", strcmp(widget_input_text(&w), "hello"), 0);
+  check("the cursor is at the end", w.icur, 5);
+
+  widget_input_key(&w, BACKSPACE);
+  check("backspace deletes one character", strcmp(widget_input_text(&w), "hell"), 0);
+
+  widget_input_key(&w, HOME_KEY);
+  check("home goes to the start", w.icur, 0);
+  widget_input_key(&w, DEL_KEY);
+  check("delete takes the character at the cursor",
+        strcmp(widget_input_text(&w), "ell"), 0);
+  widget_input_key(&w, END_KEY);
+  check("end goes to the finish", w.icur, 3);
+
+  /* A key the field has no use for is handed back, which is how the palette can
+   * give the arrows to its list and the text to the field. */
+  check("an unknown key is not consumed", widget_input_key(&w, F5_KEY), 0);
+  check("and the text is untouched", strcmp(widget_input_text(&w), "ell"), 0);
+  check("a control byte is not consumed", widget_input_key(&w, 1), 0);
+  widget_input_free(&w);
+
+  /* Multi-byte characters. Each arrives as its bytes, one key at a time, and the
+   * cursor must step over the whole character afterwards. */
+  widget_input(&w, 0, 0, 20);
+  typed(&w, "caf\xc3\xa9x");
+  check("a multi-byte character reassembles",
+        strcmp(widget_input_text(&w), "caf\xc3\xa9x"), 0);
+  widget_input_key(&w, BACKSPACE);
+  widget_input_key(&w, BACKSPACE);
+  check("backspace eats the whole character, not one byte",
+        strcmp(widget_input_text(&w), "caf"), 0);
+
+  typed(&w, "\xc3\xa9\xc3\xa8");
+  widget_input_key(&w, ARROW_LEFT);
+  check("left steps back over a whole character", w.icur, 5);
+  widget_input_key(&w, ARROW_LEFT);
+  check("and over the one before it", w.icur, 3);
+  widget_input_key(&w, ARROW_RIGHT);
+  check("right steps forward over a whole character", w.icur, 5);
+  widget_input_key(&w, DEL_KEY);
+  check("delete removes the whole character",
+        strcmp(widget_input_text(&w), "caf\xc3\xa9"), 0);
+  widget_input_free(&w);
+
+  /* The buffer grows: nothing caps what can be pasted into a prompt. */
+  widget_input(&w, 0, 0, 20);
+  {
+    int i;
+    for (i = 0; i < 5000; i++) widget_input_key(&w, 'x');
+  }
+  check("the buffer grows past its initial size", w.ilen, 5000);
+  check("and stays terminated", (int)strlen(widget_input_text(&w)), 5000);
+  widget_input_free(&w);
+  check("freeing drops the buffer", w.ibuf == NULL, 1);
+}
+
+
 int main(void) {
   test_loop_sources();
   test_wait_key_services_sources();
@@ -401,6 +522,8 @@ int main(void) {
   test_theme_depth();
   test_theme_styles();
   test_theme_color_bytes();
+  test_palette_matcher();
+  test_input_field();
 
   printf("\n%s\n", failures ? "FAILED" : "ok");
   return failures ? 1 : 0;

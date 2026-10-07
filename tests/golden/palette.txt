@@ -1,0 +1,66 @@
+--- screen ---
+ File  Edit  Search  View  Go  Help
+alpha
+beta╔══════════════════════════ Commands ══════════════════════════╗
+gamm║ ›                                                            ║
+~   ║ Save                                                  Ctrl-S ║
+~   ║ Open…                                                 Ctrl-O ║
+~   ║ Quit                                                  Ctrl-Q ║
+~   ║ Keyboard help                                         Ctrl-? ║
+~   ║ Page up                                                 PgUp ║
+~   ║ Page down                                               PgDn ║
+~   ║ Left                                                    Left ║
+~   ║ Right                                                  Right ║
+~   ║ Up                                                        Up ║
+~   ║ Down                                                    Down ║
+~   ║ Line start                                              Home ║
+~   ║ Line end                                                 End ║
+~   ║ ↑↓ choose   Enter run   Esc cancel                           ║
+~   ╚══════════════════════════════════════════════════════════════╝
+sample.txt - 3 lines                                         Ln 1, Col 1
+HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | Ctrl-N = next | Ct
+--- attrs ---
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+
+....gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+....gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+RRRRRRggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggRR
+
+--- colors ---
+1: 0-71 7/0
+3: 4-31 7/8  32-39 15/8  40-67 7/8
+4: 4-4 7/8  5-7 15/8  8-65 15/0  66-66 15/8  67-67 7/8  68-69 8/0
+5: 0-0 8/-  4-4 7/8  5-5 15/8  6-65 15/4  66-66 15/8  67-67 7/8  68-69 8/0
+6: 0-0 8/-  4-4 7/8  5-66 15/8  67-67 7/8  68-69 8/0
+7: 0-0 8/-  4-4 7/8  5-66 15/8  67-67 7/8  68-69 8/0
+8: 0-0 8/-  4-4 7/8  5-66 15/8  67-67 7/8  68-69 8/0
+9: 0-0 8/-  4-4 7/8  5-66 15/8  67-67 7/8  68-69 8/0
+10: 0-0 8/-  4-4 7/8  5-66 15/8  67-67 7/8  68-69 8/0
+11: 0-0 8/-  4-4 7/8  5-66 15/8  67-67 7/8  68-69 8/0
+12: 0-0 8/-  4-4 7/8  5-66 15/8  67-67 7/8  68-69 8/0
+13: 0-0 8/-  4-4 7/8  5-66 15/8  67-67 7/8  68-69 8/0
+14: 0-0 8/-  4-4 7/8  5-66 15/8  67-67 7/8  68-69 8/0
+15: 0-0 8/-  4-4 7/8  5-66 15/8  67-67 7/8  68-69 8/0
+16: 0-0 8/-  4-4 7/8  5-66 15/8  67-67 7/8  68-69 8/0
+17: 0-0 8/-  4-4 7/8  5-66 15/8  67-67 7/8  68-69 8/0
+18: 0-0 8/-  4-67 7/8  68-69 8/0
+19: 6-69 8/0
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u
+3: 32-39 b
+--- cursor ---
+row 4 col 9 visible 1

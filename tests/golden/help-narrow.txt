@@ -11,13 +11,13 @@ ga║ FILES                                      ║
 ~ ║ MENUS                                      ║
 ~ ║   F10            Open the menu bar         ║
 ~ ║   Alt-letter     Open that menu            ║
+~ ║   Ctrl-Space     Command palette           ║
 ~ ║   Shift+drag     Select with the terminal, ║
 ~ ║                                            ║
 ~ ║ MOVEMENT                                   ║
 ~ ║   Arrows         Move cursor               ║
 ~ ║   PgUp/PgDn      Page up / down            ║
 ~ ║   Home/End       Line start / end          ║
-~ ║   Ctrl-G         Go to line                ║
 ~ ║ In prompts: Enter accepts   Esc cancels    ║
 ~ ║ PgUp/PgDn scroll   any other key returns   ║
 ~ ╚════════════════════════════════════════════╝

@@ -50,6 +50,7 @@ static int g_rows, g_cols;
 static int g_alloc;        /* cells allocated per plane */
 static int prev_valid;     /* 0 = the terminal's contents are unknown */
 static int cursor_shown;         /* a dialog hides it; see grid_cursor_hide */
+static int cursor_claimed;       /* an input field took it; see grid_cursor_claim */
 static unsigned char pen;        /* the role new cells are written with */
 static unsigned char pen_attrs;  /* and the modifiers they carry */
 static int want_cy, want_cx;
@@ -108,6 +109,7 @@ void grid_begin(void) {
   want_cy = 0;
   want_cx = 0;
   cursor_shown = 1;
+  cursor_claimed = 0;
 }
 
 /* The role that subsequent writes are tagged with. Setting a role clears the
@@ -140,6 +142,24 @@ void grid_cursor_to(int y, int x) {
  * grid_begin, so it lasts one frame and has to be asked for again. */
 void grid_cursor_hide(void) {
   cursor_shown = 0;
+}
+
+/* Put the cursor here, and say so.
+ *
+ * The refresh positions the text cursor after every layer has drawn, which would
+ * otherwise overwrite anything a layer asked for; a claim says "this one is mine",
+ * and the refresh leaves it alone. It is what puts the cursor in the prompt while
+ * typing into it rather than back in the buffer. Claiming also unhides, because a
+ * dialog hides the cursor on the way past and an input field inside one still wants
+ * it. Cleared by grid_begin, so a claim lasts exactly one frame. */
+void grid_cursor_claim(int y, int x) {
+  grid_cursor_to(y, x);
+  cursor_shown = 1;
+  cursor_claimed = 1;
+}
+
+int grid_cursor_claimed(void) {
+  return cursor_claimed;
 }
 
 int grid_rows(void) { return g_rows; }

@@ -6,8 +6,14 @@ behaves like a GUI one: menu bar, mouse, dialogs, splits, discoverable
 everything. Molly aims at that experience in C, keeping olly's zero runtime
 dependencies and instant start.
 
-**Current state:** molly is olly at `b258ebe`, renamed. 3,311 lines in one file,
-298 tests passing, `0.1.0-dev`. No new features yet.
+**Current state:** Phases 0 and 1 are done. Molly is 7,037 lines across
+`src/molly.h` and twenty-two `.c` files, with a menu bar, a mouse, framed
+dialogs, a command palette and a keyboard reference generated from its own
+command table. 488 checks pass (368 pty, 33 golden screens, 87 unit) plus 40
+fuzz cases and the allocation-failure sweep, and every file is clean under
+`-Wall -Wextra -Wpedantic -Wshadow`. Still `0.1.0-dev`: the *interface* is
+molly's own now, and the *editing* features are still olly's — Phase 2 is where
+those start.
 
 **Reaching commands:** Ctrl keys *and* Alt keys, plus a menu system on Alt.
 That decision is settled and it drives Phases 0-1 below.
@@ -264,7 +270,7 @@ loop.
   `CTRL_KEY(' ')` already produces, so it needs a spelling in the chord parser and
   nothing else.
 
-### 4. The widget toolkit — **in progress**
+### 4. The widget toolkit — **done, less the two pieces Phase 2 needs**
 
 Only what the ported UIs and the menus actually need, which is less than it looks:
 
@@ -282,18 +288,29 @@ Only what the ported UIs and the menus actually need, which is less than it look
 Checkbox and radio group wait for the Find dialog in Phase 2 — including the
 "Match case" checkbox that replaces `Ctrl-T`.
 
-**Landed so far:** frame with title and drop shadow, label, list box (the open-file
-dialog) and text pane (the help screen). Still to come: the input field, with the
-prompt; buttons and focus order, with the first dialog that has two things to
-focus, which is Phase 2's Find dialog.
+**Landed:** frame with title and drop shadow, label, list box (the open-file dialog
+and the palette), text pane (the help screen) and input field (the prompt and the
+palette's filter). Still to come, deliberately: buttons, focus and tab order, and
+the checkbox and radio group — all four arrive with Phase 2's Find dialog, which is
+the first thing molly has with two widgets worth focusing between.
+
+Two things the toolkit grew that the plan did not predict. A widget carries a
+**role**, rather than every widget assuming it is inside a dialog, which is what lets
+the prompt's field sit on the message row and look like the message row. And a list
+may give a **role per row**, which is how the palette dims a command that cannot run;
+without it a list could only be uniform, and the menu would have needed its own list.
 
 **The prompt stays on the message line.** Turbo Vision would have made it a dialog
 — "Find what: [____] [OK] [Cancel]" — but Phase 2 replaces the find and replace
 prompts with exactly that dialog, checkbox and all, so framing them now means
 building them twice. Porting the prompt to an input-field widget on the message
-line is the part that is not wasted.
+line is the part that is not wasted. It landed that way: the format string keeps its
+`%s`, the field goes where the `%s` was, and the row is byte-identical to what molly
+drew before for any answer that fits — so the port is provable rather than hopeful,
+and what it adds is a real cursor, the editing keys a prompt never had, and
+horizontal scrolling where the line used to run off the edge.
 
-### 5. Mouse (SGR 1006)
+### 5. Mouse (SGR 1006) — **done**
 
 Before the menu bar, so the menu bar is clickable the day it exists.
 
@@ -305,7 +322,7 @@ Before the menu bar, so the menu bar is clickable the day it exists.
 - Hit-testing against the view stack, so menus and dialogs get their own clicks.
 - See **Decisions, E**.
 
-### 6. Port the three UIs onto the toolkit — **two of three done**
+### 6. Port the three UIs onto the toolkit — **done**
 
 The step that proves the toolkit, and the one that should make the diff negative:
 `editor_prompt` becomes an input field, `editor_help` a text pane, the open-file
@@ -318,7 +335,7 @@ buttons — exercises nearly all of it. So: the grid and theme groundwork lands
 first, then each widget arrives with the UI that needed it, the open dialog first
 and the help screen and prompt behind it.
 
-### 7. The menu bar
+### 7. The menu bar — **done**
 
 - Titles with underlined mnemonics, reserving only the eight title letters on Alt
   (§1) so every other Alt-letter stays free for commands.
@@ -330,11 +347,66 @@ and the help screen and prompt behind it.
   written down twice. Menus list only what exists; placeholders that never work
   are worse than absence.
 
-### 8. The command palette
+### 8. The command palette — **done**
 
 Nearly free once the table and the list box exist, and the answer to reaching the
 long tail without memorizing it: one key, fuzzy-match command labels, show the
-bound chord beside each.
+bound chord beside each. It was as cheap as predicted; the only part with any real
+content is the matcher, and the only real decision was what to do about commands
+that cannot run — **listed and dimmed, not hidden**, because a palette that silently
+drops Paste when the clipboard is empty looks broken rather than careful.
+
+Three details worth recording. `Ctrl-Space` is bound **and so is `Alt-X`**, because
+not every terminal sends NUL for `Ctrl-Space` and `Alt-X` has meant "run a command by
+name" for forty years; X is not one of the eight letters the menu bar reserves. The
+matcher runs **two passes** and takes the better — matching each character's first
+occurrence ranks "ln" no better in *Line numbers* than in *Line end*, and preferring
+the one that starts a word fixes that but can walk past the only match there was, so
+neither pass alone is right. And the filter searches each command's **group** as well
+as its label and name, which made `struct command`'s `group` field load-bearing: it
+was written down for the help screen, the help screen takes its headings from its own
+table, and until now nothing read it at all.
+
+### What Phase 1 cost, and what it found
+
+The phase was predicted to *delete* code, on the grounds that three hand-rolled
+full-screen UIs would shrink once they sat on a toolkit. **That prediction was
+wrong, and not marginally**: every port added lines rather than removing them — +24
+for the open dialog, +7 for the help screen, +91 for the prompt, on top of the ~175
+the reusable input field cost in `widget.c`. The escape sequences and the manual
+cursor arithmetic did go, which was the point; what replaced them is layout code
+that is longer and says what it means, plus a comment explaining each decision. The
+toolkit pays for itself in what comes *next* — the palette is 382 lines of which
+only 246 are code, and a third of those are its matcher, because the list box, the
+field and the frame already existed — not in what it replaced.
+
+Six bugs the phase surfaced, each of which is the sort that only appears once
+something new sits on old foundations:
+
+- **A resize while a dialog was open laid the dialog out against the previous
+  size**, because the grid only learns about a resize when a refresh begins. A help
+  dialog centred for 100 columns and drawn into 40 put its title off the edge and
+  left it there. Fixed with `screen_sync_size()`, which every modal loop now calls
+  before it measures anything.
+- **`V.screenrows` did not account for the row above the text area**, so the status
+  and message bars fell off the bottom of the grid the moment the menu bar existed.
+- **A zero-height layer still drew itself**, which is how the hidden menu band kept
+  painting over the first line of the file. Hit-testing already skipped empty
+  layers; drawing now agrees with it.
+- **Wheel scrolling was undone every frame**, because the view was welded to the
+  cursor. `editor_scroll` now only re-attaches when the cursor itself moved.
+- **The golden snapshots depended on the ambient `COLORTERM`**, so they came out
+  sixteen-colour on one machine and 256-colour on the next. Pinned in the harness,
+  with a snapshot at each depth so neither rots.
+- **A prompt on a terminal narrower than its own hint drew the hint over the
+  prompt**, leaving a row reading " (ESC to cancel, Ent" with no sign of what was
+  being asked. Found by probing the new field at twenty columns, which is the width
+  nothing had been tried at before. The hint is now dropped rather than squeezed,
+  because the answer matters more than the advice about it does.
+
+And one claim in this document was wrong until it was built: the roadmap said the
+command table "has a slot for" an `enabled` hook that "nothing fills yet". It had no
+such slot. `enabled` and `checked` both exist now, and ten commands fill them.
 
 ### Decisions, settled
 

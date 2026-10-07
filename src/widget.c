@@ -13,11 +13,11 @@
  * legible through it, which is what it looked like on a VGA console and costs one
  * call.
  *
- * Widgets arrive with the thing that needs them. This file holds the label and the
- * list box, which is what the open-file dialog uses; the input field comes with the
- * prompt, the text pane with the help screen, and buttons with the first dialog that
- * has two things to focus. Building the full set first would mean building most of
- * it blind.
+ * Widgets arrive with the thing that needs them: the label and the list box came
+ * with the open-file dialog, the text pane with the help screen, the input field with
+ * the prompt and the command palette. Buttons wait for the first dialog with two
+ * things to focus, which is Phase 2's Find dialog -- building the full set first
+ * would mean building most of it blind.
  *
  * The caller keeps the loop. Nothing here waits for a key: a dialog is laid out and
  * drawn, the caller reads with ui_wait_key and decides what a key means. Modal
@@ -46,6 +46,7 @@
 void widget_label(struct widget *w, int x, int y, int cols, const char *text) {
   memset(w, 0, sizeof(*w));
   w->kind = W_LABEL;
+  w->role = ROLE_DIALOG;
   w->x = x;
   w->y = y;
   w->w = cols;
@@ -57,6 +58,7 @@ void widget_list(struct widget *w, int x, int y, int cols, int rows,
                  int count, widget_row_fn row, void *user) {
   memset(w, 0, sizeof(*w));
   w->kind = W_LIST;
+  w->role = ROLE_DIALOG;
   w->x = x;
   w->y = y;
   w->w = cols;
@@ -97,6 +99,7 @@ void widget_text(struct widget *w, int x, int y, int cols, int rows,
                  int count, widget_row_fn row, void *user) {
   memset(w, 0, sizeof(*w));
   w->kind = W_TEXT;
+  w->role = ROLE_DIALOG;
   w->x = x;
   w->y = y;
   w->w = cols;
@@ -118,6 +121,113 @@ void widget_text_scroll(struct widget *w, int delta) {
   if (w->top > max) w->top = max;
   if (w->top < 0) w->top = 0;
 }
+
+/* --- the input field ------------------------------------------------------ *
+ *
+ * An editable line: what editor_prompt used to be, with the loop taken out and a
+ * cursor put in. The widget owns its buffer and grows it, so neither the prompt nor
+ * the palette has to decide in advance how much anyone might type.
+ *
+ * It holds bytes rather than characters, as everything else in molly does, but every
+ * move and every delete lands on a character boundary -- so an edit can no more
+ * split a UTF-8 sequence here than it can in the buffer. */
+
+#define INPUT_INITIAL 128
+
+void widget_input(struct widget *w, int x, int y, int cols) {
+  memset(w, 0, sizeof(*w));
+  w->kind = W_INPUT;
+  w->role = ROLE_INPUT;
+  w->x = x;
+  w->y = y;
+  w->w = cols;
+  w->h = 1;
+  w->icap = INPUT_INITIAL;
+  w->ibuf = xmalloc((size_t)w->icap);
+  w->ibuf[0] = '\0';
+}
+
+void widget_input_free(struct widget *w) {
+  free(w->ibuf);
+  w->ibuf = NULL;
+  w->ilen = 0;
+  w->icap = 0;
+  w->icur = 0;
+  w->iscroll = 0;
+}
+
+const char *widget_input_text(const struct widget *w) {
+  return (w->ibuf != NULL) ? w->ibuf : "";
+}
+
+static void input_reserve(struct widget *w, int extra) {
+  if (w->ilen + extra + 1 <= w->icap) return;
+  while (w->icap < w->ilen + extra + 1) w->icap *= 2;
+  w->ibuf = xrealloc(w->ibuf, (size_t)w->icap);
+}
+
+/* Insert one byte at the cursor.
+ *
+ * One byte rather than one character, deliberately: the input layer delivers a
+ * multi-byte character as its bytes in order, and inserting each at a cursor that
+ * then steps past it reassembles the character where it belongs. */
+static void input_insert_byte(struct widget *w, int c) {
+  input_reserve(w, 1);
+  memmove(w->ibuf + w->icur + 1, w->ibuf + w->icur,
+          (size_t)(w->ilen - w->icur + 1));
+  w->ibuf[w->icur] = (char)c;
+  w->ilen++;
+  w->icur++;
+}
+
+static void input_delete_range(struct widget *w, int from, int to) {
+  if (from < 0 || to > w->ilen || from >= to) return;
+  memmove(w->ibuf + from, w->ibuf + to, (size_t)(w->ilen - to + 1));
+  w->ilen -= to - from;
+  w->icur = from;
+}
+
+/* Act on one key. Returns 1 if the field took it, so the caller's loop can tell a
+ * key that edited the text from one that means something to the dialog around it --
+ * which is how the palette gives Home and End to the text and the arrows to the
+ * list without either having to know about the other. */
+int widget_input_key(struct widget *w, int c) {
+  if (w->ibuf == NULL) return 0;
+  switch (c) {
+    case BACKSPACE:
+    case CTRL_KEY('h'):
+      if (w->icur > 0) input_delete_range(w, utf8_prev(w->ibuf, w->icur), w->icur);
+      return 1;
+    case DEL_KEY:
+      if (w->icur < w->ilen)
+        input_delete_range(w, w->icur,
+                           w->icur + utf8_char_bytes(w->ibuf, w->ilen, w->icur));
+      return 1;
+    case ARROW_LEFT:
+      w->icur = utf8_prev(w->ibuf, w->icur);
+      return 1;
+    case ARROW_RIGHT:
+      if (w->icur < w->ilen)
+        w->icur += utf8_char_bytes(w->ibuf, w->ilen, w->icur);
+      return 1;
+    case HOME_KEY:
+      w->icur = 0;
+      return 1;
+    case END_KEY:
+      w->icur = w->ilen;
+      return 1;
+    default:
+      break;
+  }
+  /* Any byte that is neither a control code nor one of the >= 1000 key codes, so a
+   * typed or pasted UTF-8 character enters the field intact. */
+  if (c >= 32 && c != 127 && c < 256) {
+    input_insert_byte(w, c);
+    return 1;
+  }
+  return 0;
+}
+
 
 /* Truncate to fit `cols` columns without splitting a character. Names are
  * arbitrary bytes and the box has fixed columns; display width is honored so a
@@ -148,14 +258,14 @@ static void draw_label(const struct widget *w, int ox, int oy) {
   char buf[512];
   if (w->text == NULL) return;
   fit_cols(w->text, w->w, buf, sizeof(buf));
-  grid_role(ROLE_DIALOG);
+  grid_role(w->role);
   grid_puts(oy + w->y, ox + w->x, buf, (int)strlen(buf));
 }
 
 static void draw_text(const struct widget *w, int ox, int oy) {
   int k;
   char buf[1024], fitted[1024];
-  grid_role(ROLE_DIALOG);
+  grid_role(w->role);
   for (k = 0; k < w->h; k++) {
     int i = w->top + k;
     int y = oy + w->y + k;
@@ -175,7 +285,13 @@ static void draw_list(const struct widget *w, int ox, int oy) {
     int i = w->top + k;
     int y = oy + w->y + k;
     int selected = (i == w->sel && w->count > 0);
-    grid_role(selected ? ROLE_LIST_SELECTED : ROLE_DIALOG);
+    unsigned char role = w->role;
+    /* A row may have a role of its own -- the palette dims a command that is not
+     * available -- but the selected row takes the highlight regardless, so the bar
+     * never disappears over an unavailable entry. */
+    if (!selected && w->row_role != NULL && i < w->count)
+      role = w->row_role(w->user, i);
+    grid_role(selected ? ROLE_LIST_SELECTED : role);
     /* The selected row is highlighted across the full width, not just behind its
      * text, so the bar reads as a row rather than as a word. */
     grid_fill(y, ox + w->x, w->w, ' ');
@@ -188,6 +304,49 @@ static void draw_list(const struct widget *w, int ox, int oy) {
       grid_puts(y, ox + w->x, fitted, (int)strlen(fitted));
     }
   }
+}
+
+/* Display columns the first `n` bytes of `s` occupy. */
+static int cols_upto(const char *s, int n) {
+  int i = 0, cols = 0;
+  while (i < n) {
+    int nb;
+    cols += utf8_char_cols(s, n, i, &nb);
+    i += nb;
+  }
+  return cols;
+}
+
+/* Draw an input field at an absolute position and claim the cursor. Returns the
+ * columns its text filled, which is what lets the prompt put its hint directly after
+ * the answer instead of at a fixed column.
+ *
+ * The horizontal scroll is settled here rather than when a key arrives, because it
+ * depends on the field's width -- and the width is only known once the dialog, or in
+ * the prompt's case the terminal, has been laid out for this frame. */
+int widget_input_draw(struct widget *w, int y, int x, int maxcols) {
+  char fitted[1024];
+  int ccol, off, used;
+
+  if (maxcols < 1 || w->ibuf == NULL) return 0;
+  ccol = cols_upto(w->ibuf, w->icur);
+  /* Keep the cursor in view, with the rightmost column kept for it: a cursor sitting
+   * one past the last character still has to be somewhere. */
+  if (ccol - w->iscroll > maxcols - 1) w->iscroll = ccol - maxcols + 1;
+  if (ccol < w->iscroll) w->iscroll = ccol;
+  if (w->iscroll < 0) w->iscroll = 0;
+
+  off = utf8_col_to_byte(w->ibuf, w->iscroll);
+  used = fit_cols(w->ibuf + off, maxcols, fitted, sizeof(fitted));
+  grid_role(w->role);
+  grid_fill(y, x, maxcols, ' ');
+  grid_puts(y, x, fitted, (int)strlen(fitted));
+  grid_cursor_claim(y, x + (ccol - w->iscroll));
+  return used;
+}
+
+static void draw_input(struct widget *w, int ox, int oy) {
+  widget_input_draw(w, oy + w->y, ox + w->x, w->w);
 }
 
 void dialog_init(struct dialog *d, const char *title,
@@ -283,13 +442,17 @@ void dialog_draw(const struct layer *self) {
       case W_TEXT:
         draw_text(wd, x + FRAME_PAD + CONTENT_PAD, y + FRAME_PAD);
         break;
+      case W_INPUT:
+        draw_input(wd, x + FRAME_PAD + CONTENT_PAD, y + FRAME_PAD);
+        break;
       default: break;
     }
   }
 
   grid_role(ROLE_TEXT);
 
-  /* Nothing in this dialog is typed into, so the cursor stays out of sight rather
-   * than blinking in the text underneath. */
-  grid_cursor_hide();
+  /* Unless a field in the dialog claimed the cursor while drawing, it stays out of
+   * sight: a dialog with nothing to type into has no business parking a blinking
+   * cursor in the text underneath it. */
+  if (!grid_cursor_claimed()) grid_cursor_hide();
 }

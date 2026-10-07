@@ -601,12 +601,17 @@ def test_signals(tmpdir):
         fh.write("data\n")
     for name in ("SIGTERM", "SIGHUP", "SIGINT"):
         sig = getattr(signal, name)
-        before, during, after, st = run_until_signal([MOLLY, path], sig)
+        before, during, after, st, out = run_until_signal([MOLLY, path], sig)
         check(name + ": the editor had switched the terminal to raw mode",
               during != before, True)
         check(name + ": terminal modes restored", after, before)
         check(name + ": still exits by the signal",
               os.WIFSIGNALED(st) and os.WTERMSIG(st) == sig, True)
+        # And mouse reporting switched off. Terminal modes are only half of what
+        # the user is left with: a terminal still reporting clicks types an escape
+        # sequence at the shell prompt every time they click in that window.
+        check(name + ": mouse reporting switched off",
+              b"\x1b[?1002l" in out and b"\x1b[?1006l" in out, True)
 
 
 # ---------------------------------------------------------------- utf-8 ----

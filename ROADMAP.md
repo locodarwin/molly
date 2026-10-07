@@ -9,7 +9,7 @@ dependencies and instant start.
 **Current state:** Phases 0 and 1 are done. Molly is 7,037 lines across
 `src/molly.h` and twenty-two `.c` files, with a menu bar, a mouse, framed
 dialogs, a command palette and a keyboard reference generated from its own
-command table. 488 checks pass (368 pty, 33 golden screens, 87 unit) plus 40
+command table. 491 checks pass (371 pty, 33 golden screens, 87 unit) plus 40
 fuzz cases and the allocation-failure sweep, and every file is clean under
 `-Wall -Wextra -Wpedantic -Wshadow`. Still `0.1.0-dev`: the *interface* is
 molly's own now, and the *editing* features are still olly's — Phase 2 is where
@@ -380,7 +380,7 @@ toolkit pays for itself in what comes *next* — the palette is 382 lines of whi
 only 246 are code, and a third of those are its matcher, because the list box, the
 field and the frame already existed — not in what it replaced.
 
-Six bugs the phase surfaced, each of which is the sort that only appears once
+Seven bugs the phase surfaced, each of which is the sort that only appears once
 something new sits on old foundations:
 
 - **A resize while a dialog was open laid the dialog out against the previous
@@ -403,6 +403,13 @@ something new sits on old foundations:
   being asked. Found by probing the new field at twenty columns, which is the width
   nothing had been tried at before. The hint is now dropped rather than squeezed,
   because the answer matters more than the advice about it does.
+- **A molly killed by a signal left mouse reporting on**, so the next click in that
+  window typed an escape sequence at the shell prompt. The atexit path had always
+  turned it off; the fatal-signal handler had not, because the handler is Phase 0
+  code and the mouse is Phase 1's — which is exactly the shape of bug that gets
+  past a test suite organised by feature. Found by asking what a user is actually
+  left with after a crash, which is the question `test_signals` was written to
+  answer and had only half answered.
 
 And one claim in this document was wrong until it was built: the roadmap said the
 command table "has a slot for" an `enabled` hook that "nothing fills yet". It had no

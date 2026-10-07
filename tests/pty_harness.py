@@ -89,9 +89,11 @@ def run_until_signal(argv, sig, rows=24, cols=80, startup=0.5, keys=()):
     """Start argv on a pty, let it paint, optionally type `keys`, then `sig`.
 
     Returns (modes before start, modes while running, modes after exit, wait
-    status), each set of modes as termios.tcgetattr reports them. The slave
-    end stays open here so the terminal can still be inspected once the
-    program has gone -- its modes then are what the user is left with.
+    status, output), each set of modes as termios.tcgetattr reports them. The
+    slave end stays open here so the terminal can still be inspected once the
+    program has gone -- its modes then are what the user is left with. The output
+    is kept because the modes are only half of what the user is left with: the
+    other half is the escape sequences the program wrote on its way out.
     """
     master, slave = os.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
@@ -110,13 +112,18 @@ def run_until_signal(argv, sig, rows=24, cols=80, startup=0.5, keys=()):
         finally:
             os._exit(127)
 
+    out = b""
+
     def drain(timeout):
+        nonlocal out
         while select.select([master], [], [], timeout)[0]:
             try:
-                if not os.read(master, 1 << 20):
-                    return
+                chunk = os.read(master, 1 << 20)
             except OSError:
                 return
+            if not chunk:
+                return
+            out += chunk
 
     deadline = time.time() + startup
     while time.time() < deadline:
@@ -141,7 +148,7 @@ def run_until_signal(argv, sig, rows=24, cols=80, startup=0.5, keys=()):
     after = termios.tcgetattr(slave)
     os.close(master)
     os.close(slave)
-    return before, during, after, wstatus
+    return before, during, after, wstatus, out
 
 
 def cursor_col(out):

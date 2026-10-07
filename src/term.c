@@ -27,9 +27,16 @@ void disable_raw_mode(void) {
 /* A fatal signal bypasses atexit, so closing the terminal window or a plain
  * `kill` used to leave the terminal in raw mode, with no echo and no line
  * editing. Restore it, then re-raise so the process still dies by the signal.
- * Only async-signal-safe calls belong here. */
+ * Only async-signal-safe calls belong here, which write and tcsetattr are.
+ *
+ * Mouse reporting is switched off here as well as in disable_raw_mode. Missing it
+ * was not a cosmetic slip: a molly killed by a signal left the shell with a
+ * terminal still reporting clicks, so the next click in that window typed an escape
+ * sequence at the prompt. The atexit path had always handled it; this one had not,
+ * and nothing noticed because the mouse was Phase 1 work and this handler was
+ * Phase 0's. */
 static void handle_fatal_signal(int sig) {
-  static const char reset[] = "\x1b[?25h\x1b[2J\x1b[H";
+  static const char reset[] = "\x1b[?1006l\x1b[?1002l\x1b[?25h\x1b[2J\x1b[H";
   write_recovery_file();
   tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.orig_termios);
   write(STDOUT_FILENO, reset, sizeof(reset) - 1);

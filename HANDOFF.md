@@ -1,6 +1,6 @@
 # Handoff
 
-Written 2026-10-08 at `79f586a`, which is `main` and matches `origin/main`.
+Written 2026-10-08 at `35cf7dc`, which is `main`.
 This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
@@ -9,18 +9,21 @@ hour if nobody tells you.
 
 ## Where we are
 
-Phases 0 and 1 are done. Phase 2 has started and its first feature — regular
-expressions — is finished end to end: molly searches and replaces with
-patterns, on an engine of its own, driven from a Find dialog.
+Phases 0 and 1 are done. Phase 2 has three features finished end to end:
+regular expressions, the configuration file, and the CUA keymap. Molly searches
+and replaces with patterns on an engine of its own; it reads
+`~/.config/molly/mollyrc` and can write it back; and its keys are CUA and
+remappable.
 
 **Measured, not remembered** (re-measure before quoting these anywhere):
 
 | | |
 | --- | --- |
-| Source | 8,843 lines, `src/molly.h` plus 23 `.c` files |
-| Checks | 658 — 415 pty, 36 golden screens, 207 unit |
+| Source | 10,143 lines, `src/molly.h` plus 24 `.c` files |
+| Checks | 832 — 480 pty, 44 golden screens, 308 unit |
 | Fuzz | 4,040 cases per `make test` (40 replace, 4,000 regex, seed 42) |
 | Warnings | clean under `-Wall -Wextra -Wpedantic -Wshadow`; `regex.c` also under `-Wconversion` |
+| OOM sweep | `make test-oom` green: 126 allocations failed in turn, 114 through `die()`, 12 kept running |
 | Version | still `0.1.0-dev` |
 
 The gate is `make test`: the pty suite, the golden screens, both fuzzers and
@@ -28,8 +31,8 @@ the unit binary. `make test-oom` is the allocation-failure sweep and needs
 `cc` at runtime; it is not part of `make test`. Green at the last commit:
 
 ```text
-415 passed, 0 failed
-36 passed, 0 failed
+480 passed, 0 failed
+44 passed, 0 failed
 40 cases, 0 failed (seed 42)
 4000 cases, 0 failed (seed 42)
 ```
@@ -53,6 +56,10 @@ the unit binary. `make test-oom` is the allocation-failure sweep and needs
 - A **regex engine** (`src/regex.c`, 1,143 lines): a backtracking PCRE subset
   with counted repetition, captures, a step budget and two prefilters. It is
   fuzzed differentially against Python's `re` in bytes mode.
+- A **configuration file** (`src/config.c`, 724 lines): an INI parser that warns
+  and carries on, a settings table that owns every default, atomic write-back,
+  and a `[keys]` section. `View ▸ Save Settings` writes it.
+- A **CUA keymap**, fully remappable, with `Shift` nameable in a chord.
 
 ### Decisions already settled — do not reopen without asking
 
@@ -68,6 +75,17 @@ Full table in `ROADMAP.md` §7. The ones that bite soonest:
   eight Alt-letter menu titles.
 - **Linux now. Windows possibly later. No macOS.** No Windows code gets
   written, but platform calls stay behind `term.c` and `sys.c`.
+- **Every default lives in the settings table and nowhere else.** The menu bar
+  used to declare its default in `screen_init_layers` as well, and the mouse was
+  enabled in `enable_raw_mode` and taken back afterwards if the file said off.
+  Both now have one home, applied by `config_apply()` straight after
+  `init_editor()`.
+- **Syntax definitions ship for Rust, C, C++, C#, Python, AutoIt (`.au3`) and
+  Markdown.** Seven, decided 2026-10-08. Two of them are what make a cached
+  per-row lexer state unavoidable rather than merely correct: AutoIt's
+  `#cs`/`#ce` blocks and Markdown's fenced code blocks both open a region whose
+  end is many rows away. Markdown also means the definition format cannot assume
+  keyword/string/comment rules are enough.
 
 ---
 
@@ -75,30 +93,41 @@ Full table in `ROADMAP.md` §7. The ones that bite soonest:
 
 ### Still open — needs Shawn
 
-- **Which languages ship with syntax definitions initially.** This is the only
-  item left in `ROADMAP.md` §8, and it blocks nothing until syntax highlighting
-  starts.
+Nothing. `ROADMAP.md` §8 is empty: the last item, which languages ship with
+syntax definitions, was answered on 2026-10-08 and is recorded in §7.
 
 ### Next by dependency
 
-This order was stated to Shawn and not yet agreed as a task. Confirm before
-starting.
+Item 1 of the previous handoff — the config file and the CUA keymap — is done.
+The rest of that order stands, and still wants confirming before it is started.
 
-1. **The config file and the CUA keymap.** These go together: config is what
-   gives `mouse off`, `menu bar hidden` and a remapped chord somewhere to live,
-   and the keymap is already chord *text* in the command table, so parsing a
-   chord back out of a file is the missing half. Syntax INI, decided. Path
-   `~/.config/molly/mollyrc`.
-2. **Multiple buffers and tabs.** Mostly bookkeeping now that buffer and view
+1. **Multiple buffers and tabs.** Mostly bookkeeping now that buffer and view
    are separate, and a prerequisite for File→Close, the explorer and grep
    results. Expect every "are you sure?" path to become a list.
-3. **Window splits.** Free-ish after the grid and `struct view`, with a long
+2. **Window splits.** Free-ish after the grid and `struct view`, with a long
    tail of off-by-one bugs — which is what the golden harness is for.
-4. **Syntax highlighting.** The rules are cheap; the cost is a cached lexer
-   state per row and invalidating it on edit.
-5. **Shell filter.** Best value-per-line left on the list after regex. Needs a
+3. **Syntax highlighting.** The rules are cheap; the cost is a cached lexer
+   state per row and invalidating it on edit. The seven languages are settled;
+   AutoIt and Markdown are the two that force the cached state.
+4. **Shell filter.** Best value-per-line left on the list after regex. Needs a
    timeout, a cancel key and an output cap, and it is the first place molly runs
    something on the user's behalf.
+
+### Found along the way, not fixed
+
+- **A menu's shortcut column collides with a truncated label.** At 24 columns
+  the View menu's first item draws as `Command pCtrl-Space` — a cut label runs
+  straight into the chord with no gap. It is older than anything in this
+  session and lives in `menu.c`'s drawing. `tests/golden/menu-view-narrow.txt`
+  pins it as it is and says in `test_golden.py` that it is a defect rather than
+  the intent, so when it is fixed the diff is the point.
+- **Tabs versus spaces is not a setting yet.** `[editor] tab width` changes how
+  a tab *renders*; molly still inserts a literal tab. "Insert spaces instead" is
+  an editing change, and it belongs with the indentation work.
+- **An Options dialog has nothing to do but exist.** Write-back, the settings
+  table and the live-value read-back are all in place and all exercised by
+  `View ▸ Save Settings`; the dialog is now presentation over a finished
+  mechanism.
 
 Everything else — the cheap Edit/View/Navigate items, soft wrap, multi-cursor,
 the integrated terminal, LSP, big-file handling — is argued in `ROADMAP.md` §5
@@ -153,15 +182,41 @@ landed; the features come later.
 - **The regex prefilters can defeat a budget test.** `(a+)+b` on thirty a's is
   now an instant no-match, because `b` is a required character. Budget tests
   anchor instead: `(a+)+$`.
-- **The help column truncates.** A `.help` string longer than the column is
-  silently cut; check the help screen after adding a command.
+- **The help column truncates.** It is 17 columns and cuts in silence; check the
+  help screen after adding a command. "Swap the two characters at the cursor"
+  came out as "Swap the two char".
+- **A command with no chord has no business on the help screen.** It renders as a
+  blank key beside a description, which reads as a bug. Match case is reachable
+  from the Search menu and the palette instead.
+- **`config_write` saves what the editor is doing, not what the file said.** Each
+  setting may name a function to read its live value back, which is what makes
+  "toggle it, then save" work. A test that parses a file and writes it straight
+  back out without applying it will see the live defaults, not the parsed values.
+- **Shift is only nameable where a terminal reports it** — the function and
+  navigation keys. `shift-a` and `ctrl-shift-l` are refused at parse time, which
+  is also why the roadmap's `Ctrl-Shift-L` for repaint could not be used.
+- **A new setting applied in `config_apply()` can silently defeat an env test
+  hook.** `undo steps` becoming a setting made `MOLLY_UNDO_STEPS` useless,
+  because `config_apply()` ran after `init_editor()` and put the cap back. The
+  precedence is now default, then file, then environment, and the hook sits
+  after `config_apply()` in `main()` to say so.
 
 ### Operational mistakes to not repeat
 
 These all cost real time in the last session.
 
 - **Do not rebuild `./molly` while a test run is in flight.** It invalidated
-  three separate runs before I noticed.
+  three separate runs before I noticed. `make test` recompiles the unit binary,
+  so editing anything under `src/` or `tests/` mid-run counts as rebuilding.
+- **Read the screen before writing the assertion.** Six of my first pty checks
+  failed on my guesses rather than on molly: the gutter reads `1 │ alpha` and not
+  four spaces, `Sel` is on the status row and not the message row, a selection of
+  three lines counts 16 and not 19, and `a` occurs twice in `alpha` so "the next
+  match" was never going to be the next line. One peek script would have saved
+  all six.
+- **`edit()` in the pty tests does not save.** It reads the file back off disk,
+  so a key list without `SAVE` in it compares the original against itself and
+  passes for the wrong reason.
 - **Kill by exact PID.** `pkill -f "..."` matched its own wrapper shell and
   killed it — exit 144 — twice.
 - **Background task output files stay empty until the command completes.**
@@ -185,9 +240,23 @@ MOLLY_UPDATE_GOLDEN=1 python3 tests/test_golden.py ./molly   # rewrite snapshots
 Rewrite snapshots only when the change to the output is intended, and read the
 resulting diff.
 
+Two more hooks, both documented in `MANUAL.md` and both cheaper than a pty:
+
+```bash
+MOLLY_DUMP_CONFIG=1 ./molly    # the parsed file, every setting, every warning
+MOLLY_DUMP_KEYMAP=1 ./molly    # every binding, with [keys] already applied
+MOLLY_CONFIG=/path/to/rc ./molly   # read that file instead; empty = read none
+```
+
+The test harness pins `MOLLY_CONFIG` empty, so the suite never reads your own
+`mollyrc`. If you are debugging a config problem through the tests, set it
+through `env=` rather than exporting it.
+
 What to try first, since these are the new surfaces: **Ctrl-F** for the Find
 dialog (Tab between field, the two checkboxes and the buttons, Space toggles),
 **Alt-R** to read the query as a pattern, **Ctrl-Space** (or Alt-X) for the palette,
-**Alt-F** and friends for the menus, **Ctrl-?** for help, and the mouse on all
-of it. `MANUAL.md` has the regular-expression syntax table, what is not
-supported, and what a search matches against.
+**Alt-F** and friends for the menus, **F1** for help, **Ctrl-A** / **Ctrl-L** /
+**Ctrl-T** for the new CUA keys, **F3** / **Shift-F3** to walk matches, and
+**View ▸ Save Settings** then a restart to watch a setting survive.
+`MANUAL.md` has the regular-expression syntax table, what is not supported, what
+a search matches against, and the configuration reference.

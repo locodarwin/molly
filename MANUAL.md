@@ -223,8 +223,10 @@ If a dialog looks wrong, check what your terminal claims:
 
 ## Prompts
 
-Anything molly asks you — a search term, a line number, a file name to save as —
-is an editable field on the bottom line, with a real cursor in it.
+Anything molly asks you on one line — a line number, a file name to save as, a
+replacement — is an editable field on the bottom line, with a real cursor in it.
+(Find asks for more than one thing at a time and so gets a dialog instead; see
+[Searching](#searching).)
 
 | Key | Action |
 | --- | --- |
@@ -350,14 +352,30 @@ Molly last copied or cut.
 
 ## Searching
 
-`Ctrl-F` starts a search. Type your query and press `Enter`. Matching begins
-from the current cursor position, and whenever the search wraps around the
-end of the file, Molly just keeps going.
+`Ctrl-F` opens the **Find dialog**: a field for what to look for, a checkbox for
+each of the two settings that decide what it means, and Find and Cancel buttons.
+Type and press `Enter`, which presses Find from wherever you are in the dialog.
+Matching begins from the current cursor position, and whenever the search wraps
+around the end of the file, Molly just keeps going.
+
+`Tab` and `Shift-Tab` move between the field, the checkboxes and the buttons.
+`Space` ticks the checkbox that has the keyboard, or presses the button that has
+it. `Esc` closes the dialog without searching, and a click does whatever you
+clicked on. The checkboxes start from the current settings and are applied when
+you press Find, so cancelling changes nothing — `Ctrl-T` and `Alt-R` remain the
+way to change a setting without searching.
+
+Leaving the field empty and pressing Find repeats the last search, and the
+dialog's hint row names the term that would be. On a terminal too short for the
+whole dialog, the hint goes first and then a checkbox; the buttons keep the last
+row.
 
 | Key | Action |
 | --- | --- |
-| `Ctrl-F` | Start a search; `Enter` finds the first match |
-| `Ctrl-F` `Enter` (empty query) | Repeat the last search forward |
+| `Ctrl-F` | Open the Find dialog; `Enter` finds the first match |
+| `Ctrl-F` `Enter` (empty field) | Repeat the last search forward |
+| `Tab` / `Shift-Tab` | Move between the field, the checkboxes and the buttons |
+| `Space` | Tick the checkbox, or press the button, that has the keyboard |
 | `Ctrl-N` | Find the next instance of the search term |
 | `Ctrl-P` | Find the previous instance of the search term |
 | `Ctrl-T` | Toggle case-sensitive search |
@@ -605,7 +623,7 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     Ctrl-S   Save file
     Ctrl-O   Open a file (directory browser)
     Ctrl-Q   Quit (asks several times if there are unsaved changes)
-    Ctrl-F   Search forward (case-insensitive by default)
+    Ctrl-F   Open the Find dialog (case-insensitive by default)
     Ctrl-N   Find next instance of the search
     Ctrl-P   Find previous instance of the search
     Ctrl-T   Toggle case-sensitive search
@@ -620,6 +638,9 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     Ctrl-?   Show this help screen
     Ctrl-L   Repaint the screen
     Ctrl-U   Toggle the line-number gutter
+    Tab      In a dialog: move to the next field, checkbox or button
+    Shift-Tab  In a dialog: move back to the previous one
+    Space    In a dialog: tick the checkbox or press the button with the keyboard
     Shift    Hold with arrows / Home / End / PgUp / PgDn to select
     Shift    Hold while dragging to select with the terminal, not molly
     Esc      Cancel the current prompt, menu or dialog

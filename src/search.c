@@ -276,10 +276,156 @@ static void search_report_miss(int r, const char *advice) {
     editor_set_status_message("%s", advice);
 }
 
+/* --- the Find dialog --------------------------------------------------------
+ *
+ * Ctrl-F used to open a prompt on the message row, which can ask one thing at a
+ * time: the term, and nothing about how to look for it. The two settings that
+ * decide what the term *means* lived on Ctrl-T and Alt-R, where you had to know
+ * they were. A dialog puts all three in one place, and that is most of the
+ * argument for having built a widget toolkit at all.
+ *
+ * The checkboxes start from the current modes and are committed only by Find, so
+ * cancelling leaves everything as it was. Ctrl-T and Alt-R stay as they are: the
+ * way to change a mode without searching.
+ *
+ * The field starts empty rather than pre-filled with the last term. A dialog
+ * that pre-fills normally selects what it pre-filled, so that typing replaces
+ * it; molly's field has no selection yet, so a pre-filled one would have to be
+ * cleared by hand before it could be retyped. Empty keeps the prompt's own
+ * bargain -- Enter on an empty field repeats the last search -- and the hint row
+ * says so, which is more than the prompt ever did. */
+
+enum {
+  FIND_LABEL = 0,
+  FIND_FIELD,
+  FIND_CASE,
+  FIND_REGEX,
+  FIND_HINT,
+  FIND_FIND,
+  FIND_CANCEL,
+  FIND_NWIDGETS
+};
+
+/* Returns the term to search for, or NULL if the dialog was cancelled. Commits
+ * the two settings on the way out, and only then. */
+static char *find_dialog(void) {
+  struct widget w[FIND_NWIDGETS];
+  struct dialog d;
+  struct layer l;
+  char hint[256];
+  char *answer = NULL;
+  int depth, li, done = 0;
+
+  widget_label(&w[FIND_LABEL], 0, 0, 1, "Find what:");
+  widget_input(&w[FIND_FIELD], 0, 1, 1);
+  widget_check(&w[FIND_CASE], 0, 2, 1, "Match case", search_case_sensitive);
+  widget_check(&w[FIND_REGEX], 0, 3, 1, "Regular expression", search_use_regex);
+  widget_label(&w[FIND_HINT], 0, 4, 1, "");
+  widget_button(&w[FIND_FIND], 0, 5, "Find", 1);
+  widget_button(&w[FIND_CANCEL], 0, 5, "Cancel", 0);
+
+  if (search_has_query())
+    snprintf(hint, sizeof hint, "Enter alone repeats \"%s\"", last_query);
+  else
+    snprintf(hint, sizeof hint, "Tab moves   Space ticks   Esc cancels");
+  w[FIND_HINT].text = hint;
+
+  depth = layer_count();
+  memset(&l, 0, sizeof(l));
+  li = layer_push(&l);
+  if (li < 0) {
+    widget_input_free(&w[FIND_FIELD]);
+    return NULL;
+  }
+
+  /* Once, outside the loop: dialog_init zeroes the dialog, and the focus is
+   * state that has to survive a redraw. */
+  dialog_init(&d, "Find", w, FIND_NWIDGETS, 1, 1);
+  d.focus = FIND_FIELD;
+
+  while (!done) {
+    struct layer *lp;
+    int cols, contentw, bw, bx, y_btn, c;
+
+    /* Before measuring anything: see screen_sync_size. */
+    screen_sync_size();
+    cols = grid_cols() - 8;
+    if (cols > 52) cols = 52;
+    if (cols < 24) cols = 24;
+    d.cols = cols - 2;
+    d.rows = 6;
+    lp = layer_get(li);
+    dialog_layout(&d, lp);
+
+    /* Widths come from what the layout *granted*, not from what was asked for: on
+     * a terminal narrower than the floor above, the dialog is clamped and a widget
+     * sized to the request would run through the frame. */
+    contentw = d.cols - 2;
+    if (contentw < 1) contentw = 1;
+    w[FIND_LABEL].w = contentw;
+    w[FIND_FIELD].w = contentw;
+    w[FIND_CASE].w = contentw;
+    w[FIND_REGEX].w = contentw;
+    w[FIND_HINT].w = contentw;
+
+    /* And so do the rows. The buttons keep the last row whatever happens, because
+     * a dialog whose buttons are off the bottom looks broken even when Enter still
+     * presses the default one; the hint goes first when there is no room for
+     * everything, and then a setting, which is worth less than being able to see
+     * what you are about to press. */
+    y_btn = d.rows - 1;
+    if (y_btn > 5) y_btn = 5;
+    w[FIND_CASE].y = 2;
+    w[FIND_REGEX].y = 3;
+    w[FIND_HINT].y = (y_btn >= 5) ? 4 : d.rows;
+    if (w[FIND_CASE].y >= y_btn) w[FIND_CASE].y = d.rows;
+    if (w[FIND_REGEX].y >= y_btn) w[FIND_REGEX].y = d.rows;
+    w[FIND_FIND].y = y_btn;
+    w[FIND_CANCEL].y = y_btn;
+
+    /* The two buttons centred as a pair, with two columns between them -- or Find
+     * alone when the pair will not fit, since Esc cancels and a Cancel button
+     * sawn off at the frame is worse than no Cancel button. */
+    bw = w[FIND_FIND].w + 2 + w[FIND_CANCEL].w;
+    if (bw > contentw) {
+      w[FIND_CANCEL].y = d.rows;
+      bw = w[FIND_FIND].w;
+    }
+    bx = (contentw - bw) / 2;
+    if (bx < 0) bx = 0;
+    w[FIND_FIND].x = bx;
+    w[FIND_CANCEL].x = bx + w[FIND_FIND].w + 2;
+
+    editor_refresh_screen();
+
+    c = ui_wait_key();
+    if (c == WINCH_KEY) continue;
+
+    if (c == MOUSE_KEY) {
+      struct mouse_event ev;
+      input_last_mouse(&ev);
+      if (dialog_mouse(&d, lp, &ev) != DIALOG_PRESSED) continue;
+    } else {
+      int r = dialog_key(&d, c);
+      if (r == DIALOG_CANCEL) break;
+      if (r != DIALOG_PRESSED) continue;
+    }
+
+    if (d.pressed == FIND_FIND) {
+      answer = xstrdup(widget_input_text(&w[FIND_FIELD]));
+      search_case_sensitive = w[FIND_CASE].on;
+      search_use_regex = w[FIND_REGEX].on;
+    }
+    done = 1;
+  }
+
+  widget_input_free(&w[FIND_FIELD]);
+  layer_pop_to(depth);
+  return answer;
+}
+
 void editor_find(void) {
-  char *query = editor_prompt(search_use_regex
-      ? "Pattern: %s (ESC to cancel, Enter to find)"
-      : "Search: %s (ESC to cancel, Enter to find)", NULL);
+  char *query = find_dialog();
   const char *term;
   struct regex *re = NULL;
   int excl, r;

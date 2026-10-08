@@ -542,6 +542,117 @@ def test_regex_replace(tmpdir):
           "a-c\n")
 
 
+def test_find_dialog(tmpdir):
+    print("\nfind: Ctrl-F opens a dialog with the term and both settings on it")
+    path = os.path.join(tmpdir, "fd.txt")
+    BTAB = "\x1b[Z"   # Shift-Tab, which has a sequence of its own
+
+    def go(body, keys, rows=24, cols=80):
+        """The last message, where the cursor ended up, and the screen."""
+        with open(path, "w") as fh:
+            fh.write(body)
+        out = run([MOLLY, path], keys, rows=rows, cols=cols)
+        sc = Screen(rows, cols)
+        sc.feed(out)
+        msg = (status_lines(out, rows=rows, cols=cols) or [""])[-1]
+        pos = re.findall(r"Ln (\d+), Col (\d+)", out.decode("utf-8", "replace"))
+        return msg, (pos[-1] if pos else None), [l.rstrip() for l in sc.text()]
+
+    def press(col, row, button=0):
+        return "\x1b[<%d;%d;%dM" % (button, col, row)
+
+    def release(col, row, button=0):
+        return "\x1b[<%d;%d;%dm" % (button, col, row)
+
+    screen = go("alpha beta\n", ["\x06"])[2]
+    check("the dialog is titled Find",
+          any("Find" in l and "\u2550" in l for l in screen), True)
+    check("with a field, two settings and two buttons",
+          [any("Find what:" in l for l in screen),
+           any("[ ] Match case" in l for l in screen),
+           any("[ ] Regular expression" in l for l in screen),
+           any("[ Find ]" in l and "[ Cancel ]" in l for l in screen)],
+          [True, True, True, True])
+
+    # Enter presses the default button from anywhere, which is what makes the
+    # dialog behave like the prompt it replaced: type the term, press Enter.
+    check("a term and Enter finds it",
+          go("alpha beta\n", ["\x06", "beta", "\r"])[:2],
+          ("Found", ("1", "7")))
+    check("and a term that is not there says so",
+          go("alpha\n", ["\x06", "zzz", "\r"])[0].startswith("Not found"), True)
+    check("Esc closes it without searching",
+          go("alpha\n", ["\x06", "alpha", "\x1b", 0.15])[0].startswith("Found"),
+          False)
+
+    # Tab moves the focus, Space ticks what it lands on, and Find commits both
+    # settings -- which is checked by asking Ctrl-T afterwards what it toggled
+    # *from*.
+    check("Tab and Space tick Match case, and Find commits it",
+          go("ALPHA\n", ["\x06", "alpha", "\t", " ", "\r"])[0]
+          .startswith("Not found"), True)
+    check("which Ctrl-T then toggles back off",
+          go("ALPHA\n", ["\x06", "alpha", "\t", " ", "\r", TOGGLE_CASE])[0],
+          "Search is now case-insensitive")
+    check("cancelling commits nothing",
+          go("ALPHA\n", ["\x06", "\t", " ", "\x1b", 0.15, TOGGLE_CASE])[0],
+          "Search is now case-sensitive")
+    check("the second checkbox reads the term as a pattern",
+          go("a1 b22\n", ["\x06", r"\d+", "\t", "\t", " ", "\r"])[:2],
+          ("Found", ("1", "2")))
+
+    # Shift-Tab arrives as its own sequence. Before the input layer knew it, it
+    # fell through to Esc -- so going backwards through the focus order closed
+    # the dialog.
+    check("Shift-Tab goes back round without closing the dialog",
+          any("[ Find ]" in l for l in go("alpha\n", ["\x06", BTAB])[2]), True)
+    check("Space presses a focused button",
+          go("alpha beta\n", ["\x06", "beta", "\t", "\t", "\t", " "])[:2],
+          ("Found", ("1", "7")))
+    # Cancel is three Tabs past the two checkboxes and Find. Reaching it and
+    # pressing it must leave the buffer alone, which the typed X proves.
+    check("the Cancel button closes without searching",
+          edit(tmpdir, "alpha\n",
+               ["\x06", "alpha", "\t", "\t", "\t", "\t", "\r", 0.15, "X",
+                SAVE]),
+          "Xalpha\n")
+
+    # The mouse. Rows are screen rows, 1-based, as the terminal counts them: on an
+    # 80x24 screen the dialog's checkboxes land on 12 and 13 and its buttons on 15.
+    check("a click ticks a checkbox",
+          any("[\u2713] Match case" in l
+              for l in go("alpha\n", ["\x06", press(18, 12),
+                                      release(18, 12)])[2]), True)
+    check("a click presses Find",
+          go("alpha beta\n",
+             ["\x06", "beta", press(33, 15), release(33, 15)])[:2],
+          ("Found", ("1", "7")))
+    check("and a click on Cancel does not",
+          go("alpha\n",
+             ["\x06", "alpha", press(43, 15), release(43, 15)])[0]
+          .startswith("Found"), False)
+
+    # The hint row says what Enter alone will do, which the prompt never did.
+    check("the hint names the term Enter would repeat",
+          any('repeats "beta"' in l
+              for l in go("alpha beta\n", ["\x06", "beta", "\r", "\x06"])[2]),
+          True)
+
+    # A terminal too short for all six content rows drops the hint and then a
+    # setting, and keeps the buttons on the last row -- a dialog whose buttons are
+    # off the bottom looks broken even though Enter still works.
+    short = go("alpha\n", ["\x06"], rows=6, cols=20)[2]
+    check("on a six-row terminal the buttons keep the last row",
+          [any("[ Find ]" in l for l in short),
+           any("Match case" in l for l in short),
+           any("Space ticks" in l for l in short)],
+          [True, True, False])
+    check("and nothing is drawn outside the frame",
+          all(l == "" or (l.startswith("\u2554") or l.startswith("\u2551")
+                          or l.startswith("\u255a"))
+              for l in short), True)
+
+
 def test_save(tmpdir):
     print("\nsave: naming")
     # Regression: answering the "Save as" prompt with an empty line used to set
@@ -1633,9 +1744,11 @@ def test_menu(tmpdir):
     check("Alt-e opens the Edit menu",
           "Undo" in screen(["\x1be"]).text()[2], True)
 
-    # Enter runs the highlighted item; a mnemonic runs its own.
+    # Enter runs the highlighted item; a mnemonic runs its own. The Search menu's
+    # first item is Find, which opens a dialog rather than leaving a message, so
+    # what proves it ran is the dialog.
     check("Enter runs the highlighted item",
-          msg(["\x1bs", "\r"]).startswith("Search:"), True)
+          any("Find what:" in l for l in screen(["\x1bs", "\r"]).text()), True)
     check("a mnemonic runs its item", msg(["\x1bv", "m"]), "Menu bar: off")
     # Arrows move within a menu and between menus. The View menu opens on the command
     # palette, with a separator under it, so one Down lands on Line numbers.
@@ -1668,8 +1781,9 @@ def test_menu(tmpdir):
     check("clicking a title opens its menu",
           "Find" in screen(["\x1b[<0;20;1M", "\x1b[<0;20;1m"]).text()[2], True)
     check("clicking an item runs it",
-          msg(["\x1b[<0;20;1M", "\x1b[<0;20;1m", 0.2,
-               "\x1b[<0;20;3M", "\x1b[<0;20;3m"]).startswith("Search:"), True)
+          any("Find what:" in l
+              for l in screen(["\x1b[<0;20;1M", "\x1b[<0;20;1m", 0.2,
+                               "\x1b[<0;20;3M", "\x1b[<0;20;3m"]).text()), True)
     check("clicking outside closes the menu",
           msg(["\x1bv", 0.2, "\x1b[<0;2;8M", "\x1b[<0;2;8m",
                0.3]).startswith("HELP:"), True)
@@ -1700,55 +1814,61 @@ def test_prompt_field(tmpdir):
         scr.feed(out)
         return scr.text()[-1], cursor_col(out)
 
-    FIND = "\x06"
     DEL = "\x1b[3~"
+    # Go to line, because Find is a dialog now and this is about the field on the
+    # message row. Any prompt exercises it: the field is the same widget whatever
+    # is being asked.
+    ASK = GOTO
+    LEAD = "Go to line: "
 
     # The line itself is what molly always drew: the prompt, the answer, the hint.
-    text, col = line([FIND, "bet"])
+    text, col = line([ASK, "bet"])
     check("the prompt reads as one line",
-          text, "Search: bet (ESC to cancel, Enter to find)")
+          text, LEAD + "bet (ESC to cancel)")
     # And the cursor is in the answer rather than back in the buffer, which is the
     # part that needed the grid to let a layer claim it.
-    check("the cursor sits after the answer", col, 12)
+    check("the cursor sits after the answer", col, len(LEAD) + 4)
 
     # Keys a prompt never had before. Each of these did nothing at all until the
     # field existed, because the old prompt only understood typing and Backspace.
     check("Left moves back in the answer",
-          line([FIND, "bet", LEFT, LEFT, "X"])[0].startswith("Search: bXet"), True)
+          line([ASK, "bet", LEFT, LEFT, "X"])[0].startswith(LEAD + "bXet"), True)
     check("Home goes to the start",
-          line([FIND, "bet", HOME, "Z"])[0].startswith("Search: Zbet"), True)
+          line([ASK, "bet", HOME, "Z"])[0].startswith(LEAD + "Zbet"), True)
     check("End comes back to the finish",
-          line([FIND, "bet", HOME, END, "!"])[0].startswith("Search: bet!"), True)
+          line([ASK, "bet", HOME, END, "!"])[0].startswith(LEAD + "bet!"), True)
     check("Delete takes the character at the cursor",
-          line([FIND, "bet", HOME, DEL])[0].startswith("Search: et"), True)
+          line([ASK, "bet", HOME, DEL])[0].startswith(LEAD + "et"), True)
     check("Backspace still takes the one before it",
-          line([FIND, "bet", "\x7f"])[0].startswith("Search: be"), True)
+          line([ASK, "bet", "\x7f"])[0].startswith(LEAD + "be"), True)
 
     # An answer longer than the room for it scrolls, keeping the hint on screen.
     # Before the field it simply ran off the right-hand edge, hint and all.
-    text, col = line([FIND] + list("abcdefghijklmnopqrstuvwxyz0123456789"))
+    text, col = line([ASK] + list("abcdefghijklmnopqrstuvwxyz0123456789"))
     check("a long answer keeps its tail in view",
-          text, "Search: 0123456789 (ESC to cancel, Enter to find)")
+          text.endswith("0123456789 (ESC to cancel)"), True)
     check("and the hint is still there", "(ESC to cancel" in text, True)
 
     # Too narrow for both, and the hint goes rather than the answer. It used to be
     # drawn over the prompt and the answer alike, which left the row reading
     # " (ESC to cancel, Ent" with no sign of what was being asked.
+    # Seven characters, not eight: twenty columns less "Go to line: " leaves eight,
+    # and the field keeps the rightmost one for the cursor.
     check("a narrow terminal keeps the answer and drops the hint",
-          line([FIND, "abcdefgh"], rows=8, cols=20)[0], "Search: abcdefgh")
+          line([ASK, "abcdefg"], rows=8, cols=20)[0], LEAD + "abcdefg")
     check("and the answer still scrolls there",
-          line([FIND] + list("abcdefghijklmnopqrst"), rows=8, cols=20)[0],
-          "Search: jklmnopqrst")
+          line([ASK] + list("abcdefghijklmnopqrst"), rows=8, cols=20)[0],
+          LEAD + "nopqrst")
 
     # A multi-byte character arrives as its bytes, one key at a time, and has to
     # reassemble in the field rather than scatter.
     check("a multi-byte character enters whole",
-          line([FIND, "café"])[0].startswith("Search: café"), True)
+          line([ASK, "café"])[0].startswith(LEAD + "café"), True)
 
     # And the field is still a prompt: Enter answers, Esc cancels.
     check("Enter answers the prompt",
-          line([FIND, "beta", "\r"])[0].startswith("Found"), True)
-    check("Esc cancels it", line([FIND, "beta", "\x1b", 0.3])[0], "")
+          line([ASK, "2", "\r"])[0].startswith("Ln 2"), True)
+    check("Esc cancels it", line([ASK, "2", "\x1b", 0.3])[0], "")
 
     # The answer reaches the caller intact after being edited, not just displayed:
     # go-to-line parses what the field holds.
@@ -1958,6 +2078,7 @@ def main():
         test_search(tmpdir)
         test_case_sensitive_search(tmpdir)
         test_regex_search(tmpdir)
+        test_find_dialog(tmpdir)
         test_char_aligned_search(tmpdir)
         test_goto_line(tmpdir)
         test_replace(tmpdir)

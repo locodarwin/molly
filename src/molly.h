@@ -53,6 +53,9 @@ enum editorKey {
   PAGE_DOWN,
   WINCH_KEY,  /* not a real keystroke -- a SIGWINCH woke the read loop */
   MOUSE_KEY,  /* nor this one -- a mouse report; see input_last_mouse */
+  BACKTAB_KEY, /* Shift-Tab, which arrives as its own sequence rather than as
+                * Tab with a modifier, and which a focus order needs in order to
+                * have a way back round */
 
   /* Function keys. Recognized but deliberately unbound: the menu bar wants F10
    * and help wants F1, and both are Phase 1 bindings rather than Phase 0 ones. */
@@ -287,7 +290,9 @@ enum widget_kind {
   W_LABEL = 0,
   W_LIST,
   W_TEXT,  /* a list with nothing selected: scrolled, not navigated */
-  W_INPUT  /* an editable line: what editor_prompt was, without its loop */
+  W_INPUT, /* an editable line: what editor_prompt was, without its loop */
+  W_CHECK, /* a setting: [ ] off, [tick] on, Space toggles it */
+  W_BUTTON /* [ Find ]: Enter or Space presses it, so does a click */
 };
 
 /* A list asks its owner for a row's text rather than owning the data, so nothing
@@ -318,6 +323,10 @@ struct widget {
   int ilen, icap;
   int icur;
   int iscroll;
+
+  unsigned char on;    /* W_CHECK: ticked */
+  unsigned char dflt;  /* W_BUTTON: the default one, which Enter presses from
+                        * anywhere in the dialog */
 };
 
 struct dialog {
@@ -325,7 +334,20 @@ struct dialog {
   int cols, rows;       /* content size; the frame adds one on each side */
   struct widget *widgets;
   int nwidgets;
+
+  /* Which widget has the keyboard, and which button was last pressed. A dialog
+   * with one thing on it needs neither, which is why neither existed until a
+   * dialog had five. dialog_init zeroes them, so a caller that wants the focus
+   * somewhere other than the first widget sets it afterwards. */
+  int focus;
+  int pressed;
 };
+
+/* What dialog_key and dialog_mouse made of a key or a click. */
+#define DIALOG_IGNORED 0  /* the caller's own business */
+#define DIALOG_HANDLED 1  /* consumed: redraw and wait again */
+#define DIALOG_CANCEL  2  /* Esc, or Ctrl-C */
+#define DIALOG_PRESSED 3  /* a button went in; d->pressed says which */
 
 /* --- the event loop --------------------------------------------------------
  *
@@ -405,6 +427,8 @@ enum cell_role {
   ROLE_DIALOG_SHADOW,  /* the text it overshadows, dimmed */
   ROLE_LIST_SELECTED,  /* the current row of a list */
   ROLE_INPUT,          /* an editable field, sunk a shade below the dialog */
+  ROLE_BUTTON,         /* a button, raised a shade above it */
+  ROLE_FOCUS,          /* whichever control has the keyboard */
 
   /* The menu bar is a shade darker than a dialog, so it reads as chrome fixed to
    * the top rather than as a panel that happens to be parked there. */
@@ -696,10 +720,18 @@ void editor_move_cursor(int key);
 void editor_scroll(void);
 
 /* widget.c */
+int dialog_hit(const struct dialog *d, const struct layer *l, int row, int col);
+int dialog_key(struct dialog *d, int c);
+int dialog_mouse(struct dialog *d, const struct layer *l, const struct mouse_event *ev);
+int widget_button_cols(const char *text);
+int widget_can_focus(const struct widget *w);
 int widget_text_maxtop(const struct widget *w);
 void dialog_draw(const struct layer *self);
+void dialog_focus_move(struct dialog *d, int delta);
 void dialog_init(struct dialog *d, const char *title, struct widget *widgets, int nwidgets, int cols, int rows);
 void dialog_layout(struct dialog *d, struct layer *l);
+void widget_button(struct widget *w, int x, int y, const char *text, int is_default);
+void widget_check(struct widget *w, int x, int y, int cols, const char *text, int on);
 void widget_label(struct widget *w, int x, int y, int cols, const char *text);
 void widget_list(struct widget *w, int x, int y, int cols, int rows, int count, widget_row_fn row, void *user);
 void widget_list_clamp(struct widget *w);
@@ -709,7 +741,7 @@ void widget_text_scroll(struct widget *w, int delta);
 void widget_input(struct widget *w, int x, int y, int cols);
 void widget_input_free(struct widget *w);
 int widget_input_key(struct widget *w, int c);
-int widget_input_draw(struct widget *w, int y, int x, int maxcols);
+int widget_input_draw(struct widget *w, int y, int x, int maxcols, int claim);
 const char *widget_input_text(const struct widget *w);
 
 #endif /* MOLLY_H */

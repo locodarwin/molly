@@ -6,7 +6,7 @@ gamma
 ~
 ~
 sample.txt - 3 lines
-Search: abcdefgh
+Go to line: bcdefgh
 --- attrs ---
 gggggggggggggggggggg
 
@@ -23,4 +23,4 @@ RRRRRRRRRRRRRRRRRRRR
 --- modifiers ---
 1: 1-1 u  7-7 u  13-13 u
 --- cursor ---
-row 8 col 17 visible 1
+row 8 col 20 visible 1

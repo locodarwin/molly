@@ -8,7 +8,7 @@ gamma
 ~
 ~
 sample.txt - 3 lines                   Ln 1, Col 1
-Search: 0123456789 (ESC to cancel, Enter to find)
+Go to line: pqrstuvwxyz0123456789 (ESC to cancel)
 --- attrs ---
 gggggggggggggggggggggggggggggggggggggggggggggggggg
 
@@ -29,4 +29,4 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 --- modifiers ---
 1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u
 --- cursor ---
-row 10 col 19 visible 1
+row 10 col 34 visible 1

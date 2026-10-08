@@ -52,7 +52,7 @@ static void prompt_draw(const struct layer *self) {
   }
   if (avail < 1) avail = 1;
   pp->field.role = ROLE_MESSAGE;   /* the message row, not a dialog's field */
-  used = widget_input_draw(&pp->field, self->y, self->x + pcols, avail);
+  used = widget_input_draw(&pp->field, self->y, self->x + pcols, avail, 1);
 
   /* The hint follows the answer rather than sitting at a fixed column, so a short
    * answer reads as one sentence -- which is also what makes this byte-identical to

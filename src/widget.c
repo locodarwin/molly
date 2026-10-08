@@ -324,7 +324,7 @@ static int cols_upto(const char *s, int n) {
  * The horizontal scroll is settled here rather than when a key arrives, because it
  * depends on the field's width -- and the width is only known once the dialog, or in
  * the prompt's case the terminal, has been laid out for this frame. */
-int widget_input_draw(struct widget *w, int y, int x, int maxcols) {
+int widget_input_draw(struct widget *w, int y, int x, int maxcols, int claim) {
   char fitted[1024];
   int ccol, off, used;
 
@@ -341,12 +341,116 @@ int widget_input_draw(struct widget *w, int y, int x, int maxcols) {
   grid_role(w->role);
   grid_fill(y, x, maxcols, ' ');
   grid_puts(y, x, fitted, (int)strlen(fitted));
-  grid_cursor_claim(y, x + (ccol - w->iscroll));
+  /* The cursor goes where the text is being typed -- but only if this field is
+   * where that is. A dialog with a field and four other controls would otherwise
+   * park the cursor in the field while the highlight was on a checkbox, and two
+   * things would each be claiming to have the keyboard. */
+  if (claim) grid_cursor_claim(y, x + (ccol - w->iscroll));
   return used;
 }
 
-static void draw_input(struct widget *w, int ox, int oy) {
-  widget_input_draw(w, oy + w->y, ox + w->x, w->w);
+static void draw_input(struct widget *w, int ox, int oy, int focused) {
+  widget_input_draw(w, oy + w->y, ox + w->x, w->w, focused);
+}
+
+/* --- checkboxes, buttons, and a focus order ---------------------------------
+ *
+ * The three pieces the toolkit was missing, and the reason it was missing them:
+ * nothing until now had more than one thing on it worth focusing, so there was no
+ * focus order -- and with no focus order a button has no way to be pressed and a
+ * checkbox no way to be reached. The Find dialog is the first screen with a field,
+ * two settings and two buttons on it, and these arrived with it.
+ *
+ * Focus is shown with one role rather than with a cursor or a marker: whichever
+ * control has the keyboard is drawn in ROLE_FOCUS, and the rest are not. The
+ * glyphs carry the state -- [ ] against [TICK] -- and the colour carries the
+ * focus, which means neither has to be read to understand the other. */
+
+#define TICK "\xe2\x9c\x93"  /* U+2713, the same tick the menus use */
+
+void widget_check(struct widget *w, int x, int y, int cols, const char *text,
+                  int on) {
+  memset(w, 0, sizeof(*w));
+  w->kind = W_CHECK;
+  w->x = x;
+  w->y = y;
+  w->w = cols;
+  w->h = 1;
+  w->role = ROLE_DIALOG;
+  w->text = text;
+  w->on = (unsigned char)(on != 0);
+}
+
+/* How wide a button with this label will be, so that a caller can lay two of them
+ * out side by side before it has either. */
+int widget_button_cols(const char *text) {
+  return utf8_str_cols(text != NULL ? text : "") + 4;
+}
+
+void widget_button(struct widget *w, int x, int y, const char *text,
+                   int is_default) {
+  memset(w, 0, sizeof(*w));
+  w->kind = W_BUTTON;
+  w->x = x;
+  w->y = y;
+  w->w = widget_button_cols(text);
+  w->h = 1;
+  w->role = ROLE_DIALOG;
+  w->text = text;
+  w->dflt = (unsigned char)(is_default != 0);
+}
+
+/* W_LABEL and W_TEXT are deliberately absent: a label has nothing to do with a
+ * keystroke, and the one scrolling text pane molly has is driven by its own modal
+ * loop rather than by a focus order. W_LIST is absent for the same reason -- the
+ * command palette moves its list directly -- and belongs here the moment a dialog
+ * has a list *and* something else to tab to. */
+int widget_can_focus(const struct widget *w) {
+  return w->kind == W_INPUT || w->kind == W_CHECK || w->kind == W_BUTTON;
+}
+
+/* Move the focus by delta, wrapping, skipping whatever cannot take it. */
+void dialog_focus_move(struct dialog *d, int delta) {
+  int n = d->nwidgets, k;
+
+  if (n <= 0 || delta == 0) return;
+  for (k = 1; k <= n; k++) {
+    int i = ((d->focus + delta * k) % n + n) % n;
+    if (widget_can_focus(&d->widgets[i])) {
+      d->focus = i;
+      return;
+    }
+  }
+}
+
+static void draw_check(const struct widget *w, int ox, int oy, int focused) {
+  char buf[256], cut[256];
+  int y = oy + w->y, x = ox + w->x, n;
+
+  grid_role(focused ? ROLE_FOCUS : w->role);
+  if (w->w > 0) grid_fill(y, x, w->w, ' ');
+  snprintf(buf, sizeof buf, "[%s] %s", w->on ? TICK : " ",
+           w->text != NULL ? w->text : "");
+  n = fit_cols(buf, w->w, cut, sizeof cut);
+  (void)n;
+  grid_puts(y, x, cut, (int)strlen(cut));
+}
+
+/* maxcols is what is left of the content area to the right of this button. A
+ * button is the one widget whose width comes from its label rather than from the
+ * caller, so it is also the one that can be wider than the room for it. */
+static void draw_button(const struct widget *w, int ox, int oy, int focused,
+                        int maxcols) {
+  char buf[256], cut[256];
+
+  snprintf(buf, sizeof buf, "[ %s ]", w->text != NULL ? w->text : "");
+  fit_cols(buf, maxcols, cut, sizeof cut);
+  grid_role(focused ? ROLE_FOCUS : ROLE_BUTTON);
+  /* The default button is the one Enter presses from anywhere, so it has to be
+   * tellable from the others while something else has the focus. */
+  if (w->dflt) grid_attrs(ATTR_BOLD);
+  grid_puts(oy + w->y, ox + w->x, cut, (int)strlen(cut));
+  grid_attrs(0);
 }
 
 void dialog_init(struct dialog *d, const char *title,
@@ -429,9 +533,20 @@ void dialog_draw(const struct layer *self) {
     grid_puts(y, tx + 1, buf, (int)strlen(buf));
   }
 
-  /* Widgets, positioned relative to the content area inside the frame. */
+  /* Widgets, positioned relative to the content area inside the frame.
+   *
+   * A widget whose row is outside that area is not drawn at all. The dialog is
+   * clamped to the terminal, so on a short one there are fewer content rows than
+   * the caller laid out for -- and a widget that drew anyway would draw over the
+   * bottom border and past it, which is what a six-row terminal used to get. A
+   * caller that would rather rearrange than lose a row can read d->rows after
+   * dialog_layout and move things; this is the backstop, not the plan. */
   for (i = 0; i < d->nwidgets; i++) {
     struct widget *wd = &d->widgets[i];
+    int focused = (i == d->focus);
+    int avail = d->cols - 2 * CONTENT_PAD - wd->x;
+    if (wd->y < 0 || wd->y >= d->rows) continue;
+    if (wd->x < 0 || avail <= 0) continue;
     switch (wd->kind) {
       case W_LABEL:
         draw_label(wd, x + FRAME_PAD + CONTENT_PAD, y + FRAME_PAD);
@@ -443,7 +558,14 @@ void dialog_draw(const struct layer *self) {
         draw_text(wd, x + FRAME_PAD + CONTENT_PAD, y + FRAME_PAD);
         break;
       case W_INPUT:
-        draw_input(wd, x + FRAME_PAD + CONTENT_PAD, y + FRAME_PAD);
+        draw_input(wd, x + FRAME_PAD + CONTENT_PAD, y + FRAME_PAD, focused);
+        break;
+      case W_CHECK:
+        draw_check(wd, x + FRAME_PAD + CONTENT_PAD, y + FRAME_PAD, focused);
+        break;
+      case W_BUTTON:
+        draw_button(wd, x + FRAME_PAD + CONTENT_PAD, y + FRAME_PAD, focused,
+                    avail);
         break;
       default: break;
     }
@@ -455,4 +577,96 @@ void dialog_draw(const struct layer *self) {
    * sight: a dialog with nothing to type into has no business parking a blinking
    * cursor in the text underneath it. */
   if (!grid_cursor_claimed()) grid_cursor_hide();
+}
+
+
+/* --- what a dialog does with a key, before its caller sees it ---------------
+ *
+ * Every modal loop in molly would otherwise repeat this, and they would drift:
+ * Tab would move the focus in one dialog and not in another, Enter would press
+ * the default button here and the focused one there. */
+int dialog_key(struct dialog *d, int c) {
+  struct widget *f = (d->focus >= 0 && d->focus < d->nwidgets)
+                   ? &d->widgets[d->focus] : NULL;
+  int i;
+
+  if (c == '\x1b' || c == CTRL_KEY('c')) return DIALOG_CANCEL;
+
+  if (c == '\t' || c == BACKTAB_KEY) {
+    dialog_focus_move(d, c == '\t' ? 1 : -1);
+    return DIALOG_HANDLED;
+  }
+
+  /* Enter presses the button that has the focus, or the default one from
+   * anywhere else -- which is what makes "type the term, press Enter" work
+   * without the field knowing that a button exists. */
+  if (c == '\r' || c == '\n') {
+    if (f != NULL && f->kind == W_BUTTON) {
+      d->pressed = d->focus;
+      return DIALOG_PRESSED;
+    }
+    for (i = 0; i < d->nwidgets; i++) {
+      if (d->widgets[i].kind == W_BUTTON && d->widgets[i].dflt) {
+        d->pressed = i;
+        return DIALOG_PRESSED;
+      }
+    }
+    return DIALOG_IGNORED;
+  }
+
+  if (f != NULL && c == ' ' && f->kind == W_CHECK) {
+    f->on = (unsigned char)!f->on;
+    return DIALOG_HANDLED;
+  }
+  if (f != NULL && c == ' ' && f->kind == W_BUTTON) {
+    d->pressed = d->focus;
+    return DIALOG_PRESSED;
+  }
+  /* The field first, so that it keeps the arrows, Home, End and everything
+   * printable; it says no to what it cannot use, and Up and Down fall through to
+   * the focus order below. */
+  if (f != NULL && f->kind == W_INPUT && widget_input_key(f, c))
+    return DIALOG_HANDLED;
+  if (c == ARROW_UP || c == ARROW_DOWN) {
+    dialog_focus_move(d, c == ARROW_UP ? -1 : 1);
+    return DIALOG_HANDLED;
+  }
+  return DIALOG_IGNORED;
+}
+
+/* Which widget is at this screen position, or -1. */
+int dialog_hit(const struct dialog *d, const struct layer *l, int row, int col) {
+  int ox = l->x + FRAME_PAD + CONTENT_PAD, oy = l->y + FRAME_PAD;
+  int i;
+
+  for (i = 0; i < d->nwidgets; i++) {
+    const struct widget *w = &d->widgets[i];
+    int wx = ox + w->x, wy = oy + w->y;
+    if (w->w <= 0 || w->h <= 0) continue;
+    if (row >= wy && row < wy + w->h && col >= wx && col < wx + w->w) return i;
+  }
+  return -1;
+}
+
+/* A click focuses what it landed on, and does the obvious thing as well: a
+ * checkbox is what you clicked because you wanted it ticked, and a button
+ * because you wanted it pressed. */
+int dialog_mouse(struct dialog *d, const struct layer *l,
+                 const struct mouse_event *ev) {
+  int i;
+
+  if (ev->type != MOUSE_PRESS || ev->button != MOUSE_BUTTON_LEFT)
+    return DIALOG_IGNORED;
+  i = dialog_hit(d, l, ev->y, ev->x);
+  if (i < 0 || !widget_can_focus(&d->widgets[i])) return DIALOG_IGNORED;
+  d->focus = i;
+  if (d->widgets[i].kind == W_CHECK) {
+    d->widgets[i].on = (unsigned char)!d->widgets[i].on;
+    return DIALOG_HANDLED;
+  }
+  if (d->widgets[i].kind == W_BUTTON) {
+    d->pressed = i;
+    return DIALOG_PRESSED;
+  }
+  return DIALOG_HANDLED;
 }

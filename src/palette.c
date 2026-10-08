@@ -308,6 +308,10 @@ int palette_open(void) {
     widget_list_clamp(&widgets[2]);
 
     dialog_init(&d, "Commands", widgets, 4, cols - 2, rows - 2);
+    /* The palette has one typing target and drives its list itself, so the focus
+     * never moves -- but it has to be *somewhere*, or the field would not claim
+     * the cursor. */
+    d.focus = 1;
     lp = layer_get(li);
     dialog_layout(&d, lp);
     editor_refresh_screen();

@@ -159,6 +159,11 @@ static int editor_read_key(void) {
       case 'D': return ARROW_LEFT;
       case 'H': return HOME_KEY;
       case 'F': return END_KEY;
+      /* Shift-Tab. Tab itself is a plain control byte, but its shifted form is a
+       * sequence of its own, and without this it fell through to Esc -- which in
+       * a dialog meant that going backwards through the focus order cancelled
+       * the dialog. */
+      case 'Z': return BACKTAB_KEY;
       /* F1-F4 also appear as CSI finals on some terminals, with modifiers
        * riding in the parameters exactly as they do for the arrows. */
       case 'P': return F1_KEY;

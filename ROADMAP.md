@@ -7,11 +7,13 @@ everything. Molly aims at that experience in C, keeping olly's zero runtime
 dependencies and instant start.
 
 **Current state:** Phases 0 and 1 are done, and Phase 2 has started: molly
-searches and replaces with regular expressions, on an engine of its own. Molly is
-8,438 lines across `src/molly.h` and twenty-three `.c` files, with a menu bar, a
-mouse, framed dialogs, a command palette and a keyboard reference generated from
-its own command table. 637 checks pass (397 pty, 33 golden screens, 207 unit) plus
-4,040 fuzz cases and the allocation-failure sweep, and every file is clean under
+searches and replaces with regular expressions, on an engine of its own, from a
+Find dialog. Molly is
+8,843 lines across `src/molly.h` and twenty-three `.c` files, with a menu bar, a
+mouse, framed dialogs that have buttons and checkboxes on them, a command palette
+and a keyboard reference generated from its own command table. 658 checks pass (415
+pty, 36 golden screens, 207 unit) plus 4,040 fuzz cases and the allocation-failure
+sweep, and every file is clean under
 `-Wall -Wextra -Wpedantic -Wshadow`. Still `0.1.0-dev`: the *interface* is
 molly's own, and the *editing* features are mostly still olly's.
 
@@ -270,7 +272,7 @@ loop.
   `CTRL_KEY(' ')` already produces, so it needs a spelling in the chord parser and
   nothing else.
 
-### 4. The widget toolkit — **done, less the two pieces Phase 2 needs**
+### 4. The widget toolkit — **done**
 
 Only what the ported UIs and the menus actually need, which is less than it looks:
 
@@ -286,13 +288,17 @@ Only what the ported UIs and the menus actually need, which is less than it look
   (accepted / cancelled / which button).
 
 Checkbox and radio group wait for the Find dialog in Phase 2 — including the
-"Match case" checkbox that replaces `Ctrl-T`.
+"Match case" checkbox that replaces `Ctrl-T`. (It did not replace it: the dialog's
+checkbox and the key are two ways to the same setting, and keeping the key means the
+setting can be changed without opening a dialog to do it.)
 
-**Landed:** frame with title and drop shadow, label, list box (the open-file dialog
-and the palette), text pane (the help screen) and input field (the prompt and the
-palette's filter). Still to come, deliberately: buttons, focus and tab order, and
-the checkbox and radio group — all four arrive with Phase 2's Find dialog, which is
-the first thing molly has with two widgets worth focusing between.
+**Landed in Phase 1:** frame with title and drop shadow, label, list box (the
+open-file dialog and the palette), text pane (the help screen) and input field (the
+prompt and the palette's filter). **Landed with Phase 2's Find dialog**, as planned:
+the button, the checkbox and the focus order, which is the first thing molly has
+with five widgets worth moving between. The radio group is still unbuilt, because
+nothing has yet needed one — a direction radio was considered for the Find dialog
+and dropped, since Find Next and Find Previous already are that choice.
 
 Two things the toolkit grew that the plan did not predict. A widget carries a
 **role**, rather than every widget assuming it is inside a dialog, which is what lets
@@ -596,6 +602,53 @@ iteration, so `^(ab)*$` matches over a thousand iterations and gives up over
 twenty thousand. Lifting that means replacing C recursion with an explicit
 backtrack stack, which is a rewrite of the matcher and is not worth it until
 something needs it.
+
+#### The Find dialog — **done**
+
+`Ctrl-F` opened a prompt on the message row, which can ask one thing at a time: the
+term, and nothing about how to look for it. The two settings that decide what the
+term *means* lived on `Ctrl-T` and `Alt-R`, where you had to know they were. The
+dialog puts all three in one place, which is most of the argument for having built a
+toolkit at all — and it brought the toolkit's last three pieces with it: a button, a
+checkbox, and a focus order.
+
+Decisions inside it, each the sort that only comes up once there is more than one
+thing on a screen:
+
+- **Focus is a role, not a marker.** Whichever control has the keyboard is drawn in
+  `ROLE_FOCUS`; the glyphs carry the state (`[ ]` against `[✓]`) and the colour
+  carries the focus, so neither has to be read to understand the other.
+- **The cursor belongs to the focused field only.** `widget_input_draw` used to
+  claim it unconditionally, which was right when the only field in molly was the
+  whole of the prompt. In a dialog it meant the cursor sat in the field while the
+  highlight was on a checkbox, and two controls each claimed to have the keyboard.
+- **Enter presses the default button from anywhere**, which is what lets "type the
+  term, press Enter" keep working without the field knowing a button exists.
+- **The settings are committed by Find, not by ticking.** Cancelling changes
+  nothing, and `Ctrl-T` and `Alt-R` stay as the way to change a mode without
+  searching.
+- **The field starts empty** rather than pre-filled with the last term. A dialog
+  that pre-fills normally selects what it pre-filled so that typing replaces it;
+  molly's field has no selection yet, so a pre-filled one would have to be cleared
+  by hand. Empty keeps the prompt's bargain — Enter on an empty field repeats the
+  last search — and the hint row names the term it would repeat, which is more than
+  the prompt ever did.
+
+Two bugs it found, both about what happens when a dialog does not fit:
+
+- **A widget whose row was outside the content area drew anyway**, over the bottom
+  border and past it, which is what a six-row terminal got. `dialog_draw` now skips
+  one, and the Find dialog drops the hint and then a checkbox rather than letting
+  them be dropped for it, so the buttons keep the last row.
+- **A button was the one widget whose width came from its label** rather than from
+  the caller, so it was the one that could be wider than the room for it: at twenty
+  columns the pair ran through the right frame. Buttons are clipped now, and the
+  dialog shows Find alone when the pair will not fit, since Esc cancels and a Cancel
+  button sawn off at the frame is worse than none.
+
+And one thing the input layer was missing: **Shift-Tab**, which arrives as a
+sequence of its own rather than as Tab with a modifier, and which fell through to
+Esc — so going backwards through the focus order closed the dialog.
 
 #### Find and replace, on patterns — **done**
 

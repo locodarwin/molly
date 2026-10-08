@@ -150,8 +150,20 @@ def main():
     check("help-wide", ["\x1f"], files={"sample.txt": THREE_LINES})
     check("help-narrow", ["\x1f"], cols=50, files={"sample.txt": THREE_LINES})
 
-    # Search: the prompt on the message line and the match the cursor lands on.
-    check("search-prompt", ["\x06", "b", "e"], files={"sample.txt": THREE_LINES})
+    # The Find dialog: a field, two checkboxes and two buttons, with the field
+    # holding the focus and the cursor, and the default button in bold.
+    check("find-dialog", ["\x06", "b", "e"], files={"sample.txt": THREE_LINES})
+    # The focus moved on to a checkbox and ticked it, which is the only way to see
+    # that a tick and the focus are two different things.
+    check("find-dialog-focus", ["\x06", "be", "\t", " "],
+          files={"sample.txt": THREE_LINES})
+    # At 256 colours: the field sunk, the buttons raised, the focus accented.
+    check("find-dialog-256", ["\x06", "be", "\t"], rows=20, cols=72,
+          files={"sample.txt": THREE_LINES},
+          env={"TERM": "xterm-256color"})
+    # Narrow enough that the hint line goes and the pair of buttons becomes one.
+    check("find-dialog-narrow", ["\x06"], rows=8, cols=24,
+          files={"sample.txt": THREE_LINES})
 
     # A small terminal, where the row budget is tightest.
     check("tiny-terminal", [], rows=6, cols=24, files={"sample.txt": THREE_LINES})
@@ -216,13 +228,14 @@ def main():
           files={"sample.txt": THREE_LINES},
           env={"TERM": "xterm-256color"})
 
-    # The prompt, which is an input field on the message row. An answer that fits is
-    # the line molly always drew; one that does not scrolls, and the hint stays on
-    # screen instead of being pushed off the edge.
-    check("prompt-scrolled", ["\x06"] + list("abcdefghijklmnopqrstuvwxyz0123456789"),
+    # The prompt, which is an input field on the message row -- reached through Go
+    # to line, now that Find is a dialog. An answer that fits is the line molly
+    # always drew; one that does not scrolls, and the hint stays on screen instead
+    # of being pushed off the edge.
+    check("prompt-scrolled", ["\x07"] + list("abcdefghijklmnopqrstuvwxyz0123456789"),
           rows=10, cols=50, files={"sample.txt": THREE_LINES})
     # Too narrow for both: the hint goes rather than the answer.
-    check("prompt-narrow", ["\x06", "abcdefgh"], rows=8, cols=20,
+    check("prompt-narrow", ["\x07", "abcdefgh"], rows=8, cols=20,
           files={"sample.txt": THREE_LINES})
 
     # Resizing: the grid is reallocated and the frame repainted in full. Shrinking

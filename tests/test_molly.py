@@ -355,6 +355,12 @@ def test_replace(tmpdir):
     check("ESC at the replacement prompt aborts, nothing replaced",
           edit(tmpdir, "cat\n", [REPLACE, "cat", "\r", "\x1b", SAVE]),
           "cat\n")
+    # Esc used to mean "next" here, which made the next-or-all prompt the one
+    # place in molly where cancelling did something.
+    check("ESC at the next-or-all prompt aborts too",
+          edit(tmpdir, "cat cat\n",
+               [REPLACE, "cat", "\r", "dog", "\r", "\x1b", 0.15, SAVE]),
+          "cat cat\n")
     check("replace-all is case-insensitive by default",
           edit(tmpdir, "Cat cat CAT\n",
                [REPLACE, "cat", "\r", "dog", "\r", "a", "\r", SAVE]),

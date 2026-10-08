@@ -421,8 +421,18 @@ void editor_replace(void) {
     return;
   }
 
-  char *mode = editor_prompt("Replace: (n)ext or (a)ll? %s", NULL);
-  int all = (mode != NULL && (mode[0] == 'a' || mode[0] == 'A'));
+  char *mode = editor_prompt("Replace: (n)ext or (a)ll? %s (ESC to cancel)",
+                             NULL);
+  /* Esc cancels, as it does at every other prompt. It used to mean "next",
+   * which made this the one place in molly where cancelling did something. */
+  if (mode == NULL) {
+    free(query);
+    free(repl);
+    regex_free(re);
+    editor_set_status_message("Replace aborted");
+    return;
+  }
+  int all = (mode[0] == 'a' || mode[0] == 'A');
   free(mode);
 
   int qlen = (int)strlen(query);

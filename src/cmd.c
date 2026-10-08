@@ -106,6 +106,7 @@ static int cmd_find(void) { editor_find(); return 0; }
 static int cmd_find_next(void) { editor_find_next(); return 0; }
 static int cmd_find_prev(void) { editor_find_prev(); return 0; }
 static int cmd_case_toggle(void) { editor_toggle_case_sensitive(); return 0; }
+static int cmd_regex_toggle(void) { editor_toggle_regex(); return 0; }
 static int cmd_replace(void) { editor_replace(); return 0; }
 static int cmd_goto_line(void) { editor_goto_line(); return 0; }
 static int cmd_help(void) { editor_help(); return 0; }
@@ -256,6 +257,9 @@ static const struct command commands[] = {
    .help = "Find previous", .group = "FIND & REPLACE", .run = cmd_find_prev, .enabled = search_has_query},
   {.name = "search.case", .label = "Match case",
    .help = "Case sensitivity", .group = "FIND & REPLACE", .run = cmd_case_toggle, .checked = search_case_is_on},
+  {.name = "search.regex", .label = "Regular expression",
+   .help = "Pattern search", .group = "FIND & REPLACE",
+   .run = cmd_regex_toggle, .checked = search_regex_is_on},
   {.name = "search.replace", .label = "Replace…",
    .help = "Find & replace", .group = "FIND & REPLACE", .run = cmd_replace},
 
@@ -457,6 +461,7 @@ static const struct binding default_bindings[] = {
   {"ctrl-n", "search.next"},
   {"ctrl-p", "search.prev"},
   {"ctrl-t", "search.case"},
+  {"alt-r",  "search.regex"},
   {"ctrl-r", "search.replace"},
   {"ctrl-g", "goto.line"},
 
@@ -647,6 +652,7 @@ static const struct help_entry help_entries[] = {
   {NULL,             NULL, NULL, "search.next"},
   {NULL,             NULL, NULL, "search.prev"},
   {NULL,             NULL, NULL, "search.case"},
+  {NULL,             NULL, NULL, "search.regex"},
   {NULL,             NULL, NULL, "search.replace"},
 
   {"CLIPBOARD", NULL, NULL, "edit.copy"},

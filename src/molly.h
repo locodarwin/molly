@@ -600,12 +600,14 @@ void screen_sync_size(void);
 /* search.c */
 int search_case_is_on(void);
 int search_has_query(void);
+int search_regex_is_on(void);
 void editor_find(void);
 void editor_find_next(void);
 void editor_find_prev(void);
 void editor_goto_line(void);
 void editor_replace(void);
 void editor_toggle_case_sensitive(void);
+void editor_toggle_regex(void);
 void search_cleanup(void);
 
 /* select.c */

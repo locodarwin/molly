@@ -6,15 +6,14 @@ behaves like a GUI one: menu bar, mouse, dialogs, splits, discoverable
 everything. Molly aims at that experience in C, keeping olly's zero runtime
 dependencies and instant start.
 
-**Current state:** Phases 0 and 1 are done, and Phase 2 has started with the
-regular-expression engine — which is written and tested but not yet reachable
-from the editor. Molly is 8,253 lines across `src/molly.h` and twenty-three `.c`
-files, with a menu bar, a mouse, framed dialogs, a command palette and a keyboard
-reference generated from its own command table. 611 checks pass (371 pty, 33
-golden screens, 207 unit) plus 4,040 fuzz cases and the allocation-failure sweep,
-and every file is clean under `-Wall -Wextra -Wpedantic -Wshadow`. Still
-`0.1.0-dev`: the *interface* is molly's own now, and the *editing* features are
-still olly's.
+**Current state:** Phases 0 and 1 are done, and Phase 2 has started: molly
+searches and replaces with regular expressions, on an engine of its own. Molly is
+8,484 lines across `src/molly.h` and twenty-three `.c` files, with a menu bar, a
+mouse, framed dialogs, a command palette and a keyboard reference generated from
+its own command table. 636 checks pass (396 pty, 33 golden screens, 207 unit) plus
+4,040 fuzz cases and the allocation-failure sweep, and every file is clean under
+`-Wall -Wextra -Wpedantic -Wshadow`. Still `0.1.0-dev`: the *interface* is
+molly's own, and the *editing* features are mostly still olly's.
 
 **Reaching commands:** Ctrl keys *and* Alt keys, plus a menu system on Alt.
 That decision is settled and it drives Phases 0-1 below.
@@ -540,7 +539,7 @@ Grouped by where they live:
   fuzz target from day one, in the spirit of the existing replace-all fuzz.
 - Capture groups in replacements (`\1`).
 
-#### The engine — **done**, and not yet wired to anything
+#### The engine — **done**
 
 `src/regex.c`, 1,143 lines. It takes a pointer and a length rather than a row, so
 it is testable without a terminal and reusable on a selection or a filename
@@ -597,6 +596,48 @@ iteration, so `^(ab)*$` matches over a thousand iterations and gives up over
 twenty thousand. Lifting that means replacing C recursion with an explicit
 backtrack stack, which is a rewrite of the matcher and is not worth it until
 something needs it.
+
+#### Find and replace, on patterns — **done**
+
+Regex is a *mode*, not a second set of commands: `Alt-R` switches it, the Search
+menu ticks it, `search.regex` is the name a config file will set, and Ctrl-F,
+Ctrl-N, Ctrl-P and Ctrl-R all read the query as a pattern while it is on. The
+prompt says `Pattern:` instead of `Search:` so the mode is visible where it
+matters. `\1` to `\9` and `\0` work in a replacement.
+
+**A pattern matches the row as it is stored; a plain search matches the row as it
+is drawn.** olly searched the tab-expanded render buffer, which is why searching
+for eight spaces finds a tab — and why searching for a tab is impossible. A
+pattern works on the stored bytes instead, so `\t` finds a tab and `.` is one
+character whatever width it is drawn at. That also means a match offset *is* a
+cursor position, with no render mapping in between, and that the match length
+needs no conversion before a replace deletes it. The inconsistency between the
+two modes is deliberate for now and is in §8.
+
+**Three things only a pattern can do to a sweep**, each of which needed its own
+handling:
+
+- **A pattern can match nothing.** `x*` matches between every pair of
+  characters, so a replace-all has to step over a character after an empty match
+  or it inserts at the same place for ever — the same failure the replace-all
+  fuzz was written for, arriving by a new route. Replacing `x*` with `-` in `abc`
+  gives `-a-b-c-`, which is what sed does.
+- **Searching backward cannot run backward.** The engine answers leftmost, so
+  "the last match starting at or before here" is found by enumerating forward and
+  keeping the last one — stepping one character past each match's *start* rather
+  than its end, so that two overlapping matches are both seen.
+- **A sweep can be told "I don't know".** The step budget running out is not
+  "not found", and a sweep that read it as "not found" would go on to ask the
+  same impossible question of every remaining row in the file. It stops, says
+  `Pattern too complex. Try a simpler one`, and leaves the cursor alone; a
+  replace-all that gets partway says how many it managed, and one Ctrl-Z undoes
+  all of them.
+
+Half of `tests/fuzz_replace.py` now runs in pattern mode against `re.sub`
+applied line by line, which is what checks the empty-match rule across a
+multi-row buffer: `b?` against a six-line file is 57 matches and both engines
+agree on every one. Its termination witness is unchanged and still the point —
+molly runs under `ulimit -v` and has to reach a clean quit.
 
 ### Multiple buffers and tabs — **IN**
 
@@ -858,6 +899,12 @@ where they are free, instead of being carved out later.
 
 ## 8. Still open
 
+- **Should a plain search move to the stored bytes too?** It matches the drawn
+  row today, inherited from olly, which is why eight spaces find a tab and a tab
+  cannot be searched for at all. Regex matches the stored bytes. Making both the
+  same would fix that, would delete the render↔cursor mapping from the search
+  path, and would let `tests/fuzz_replace.py` stop avoiding tabs — at the cost of
+  changing behavior molly has shipped with. A decision, not a bug.
 - **Phase 2 ordering** beyond "regex first".
 - **Which languages** ship with syntax definitions initially.
 - **Config file syntax** — it has to be machine-writable, since the Options

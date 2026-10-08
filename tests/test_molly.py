@@ -32,6 +32,7 @@ UNDO = "\x1a"
 REDO = "\x19"
 GOTO = "\x07"
 TOGGLE_CASE = "\x14"
+REGEX = "\x1br"  # Alt-R: read the query as a pattern
 REPLACE = "\x12"
 FAILURES = []
 PASSED = 0
@@ -417,6 +418,120 @@ def test_replace(tmpdir):
 
 
 # ---------------------------------------------------------------- save ----
+
+def test_regex_search(tmpdir):
+    print("\nsearch: Alt-R reads the query as a regular expression")
+    path = os.path.join(tmpdir, "rx.txt")
+
+    def go(body, keys):
+        """The last message, and where the cursor ended up."""
+        with open(path, "w") as fh:
+            fh.write(body)
+        out = run([MOLLY, path], keys)
+        msg = (status_lines(out) or [""])[-1]
+        pos = re.findall(r"Ln (\d+), Col (\d+)", out.decode("utf-8", "replace"))
+        return msg, (pos[-1] if pos else None)
+
+    check("the toggle says which mode it is now in",
+          go("abc\n", [REGEX])[0], "Search is now a regular expression")
+    check("and toggling again goes back",
+          go("abc\n", [REGEX, REGEX])[0], "Search is now plain text")
+
+    # The whole point: a query that is not the text being looked for.
+    check("a shorthand class finds the digits",
+          go("foo 123 bar\n", [REGEX, "\x06", r"\d+", "\r"]),
+          ("Found", ("1", "5")))
+    check("^ is the start of a row, not of the file",
+          go("ab\nbc\n", [REGEX, "\x06", "^b", "\r"])[1], ("2", "1"))
+    check("$ is the end of a row",
+          go("ab\nxb\n", [REGEX, "\x06", "a$", "\r"])[0].startswith("Not found"),
+          True)
+    check("a pattern that is nowhere reports not found",
+          go("foo\n", [REGEX, "\x06", r"\d+", "\r"])[0].startswith("Not found"),
+          True)
+    check("Ctrl-N steps to the next match",
+          go("x1x2x3\n", [REGEX, "\x06", r"\d", "\r", "\x0e"])[1], ("1", "4"))
+    check("Ctrl-P steps back to the previous one",
+          go("x1x2x3\n",
+             [REGEX, "\x06", r"\d", "\r", "\x0e", "\x0e", "\x10"])[1],
+          ("1", "4"))
+    check("a pattern matches regardless of case by default",
+          go("ABC\n", [REGEX, "\x06", "[a-z]+", "\r"])[0], "Found")
+    check("and Ctrl-T applies to a pattern too",
+          go("ABC\n", [REGEX, TOGGLE_CASE, "\x06", "[a-z]+", "\r"])[0]
+          .startswith("Not found"), True)
+
+    # A pattern matches the row as it is stored; a plain search matches the row
+    # as it is drawn. That is why \t finds a tab and spaces do not, and why
+    # eight spaces find a tab in plain mode. Both are in the manual.
+    check(r"\t finds a tab, which a plain search cannot look for",
+          go("a\tb\n", [REGEX, "\x06", r"a\tb", "\r"])[0], "Found")
+    # The tab after the a reaches the next stop at column 8, so the drawn row is
+    # an a, seven spaces and a b -- which a plain search finds and a pattern does
+    # not, because the pattern is looking at what is stored.
+    check("a pattern does not see the tab as spaces",
+          go("a\tb\n", [REGEX, "\x06", "a" + " " * 7 + "b", "\r"])[0]
+          .startswith("Not found"), True)
+    check("a plain search does see it as spaces",
+          go("a\tb\n", ["\x06", "a" + " " * 7 + "b", "\r"])[0], "Found")
+
+    check("a pattern that does not compile says why",
+          go("abc\n", [REGEX, "\x06", "a(", "\r"])[0],
+          "Bad pattern: missing ) in pattern")
+    check("and so does one that cannot be given a straight answer",
+          go("a" * 30 + "b\n", [REGEX, "\x06", "(a+)+$", "\r"])[0],
+          "Pattern too complex. Try a simpler one")
+    check("with the mode off the query is text again",
+          go("a.c\nabc\n", [REGEX, REGEX, "\x06", "a.c", "\r"])[1], ("1", "1"))
+
+
+def test_regex_replace(tmpdir):
+    print("\nreplace: patterns, and \\1 for a group")
+
+    check("groups come back in the replacement",
+          edit(tmpdir, "k=v\n",
+               [REGEX, REPLACE, r"(\w+)=(\w+)", "\r", r"\2=\1", "\r", "a",
+                "\r", SAVE]),
+          "v=k\n")
+    check("replace-all over a class",
+          edit(tmpdir, "a1 b22 c333\n",
+               [REGEX, REPLACE, r"\d+", "\r", "N", "\r", "a", "\r", SAVE]),
+          "aN bN cN\n")
+    check("$ is every row's end",
+          edit(tmpdir, "ab\ncd\n",
+               [REGEX, REPLACE, "$", "\r", "!", "\r", "a", "\r", SAVE]),
+          "ab!\ncd!\n")
+    # . is one character, not one byte, so this replaces two accented letters
+    # with two dashes rather than four.
+    check(". consumes a whole character",
+          edit(tmpdir, "\u00e9\u00e0\n",
+               [REGEX, REPLACE, ".", "\r", "-", "\r", "a", "\r", SAVE]),
+          "--\n")
+    # A pattern can match nothing at all, and then the sweep has to step over a
+    # character or it would insert at the same place for ever. sed puts a dash
+    # before every character and one at the end; so does molly.
+    check("a pattern that matches nothing still terminates",
+          edit(tmpdir, "abc\n",
+               [REGEX, REPLACE, "x*", "\r", "-", "\r", "a", "\r", SAVE]),
+          "-a-b-c-\n")
+    check("one undo puts a regex replace-all back",
+          edit(tmpdir, "a1 b2 c3\n",
+               [REGEX, REPLACE, r"\d", "\r", "N", "\r", "a", "\r", UNDO,
+                SAVE]),
+          "a1 b2 c3\n")
+    check("a group number the pattern does not have changes nothing",
+          edit(tmpdir, "a\n",
+               [REGEX, REPLACE, "(a)", "\r", r"\2", "\r", "a", "\r", SAVE]),
+          "a\n")
+    check("and neither does a pattern that will not compile",
+          edit(tmpdir, "abc\n", [REGEX, REPLACE, "a(", "\r", SAVE]),
+          "abc\n")
+    check("with the mode off, . is a dot again",
+          edit(tmpdir, "a.c\n",
+               [REGEX, REGEX, REPLACE, ".", "\r", "-", "\r", "a", "\r",
+                SAVE]),
+          "a-c\n")
+
 
 def test_save(tmpdir):
     print("\nsave: naming")
@@ -1833,9 +1948,11 @@ def main():
         test_help(tmpdir)
         test_search(tmpdir)
         test_case_sensitive_search(tmpdir)
+        test_regex_search(tmpdir)
         test_char_aligned_search(tmpdir)
         test_goto_line(tmpdir)
         test_replace(tmpdir)
+        test_regex_replace(tmpdir)
         test_save(tmpdir)
         test_external_change(tmpdir)
         test_line_endings(tmpdir)

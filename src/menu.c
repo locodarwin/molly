@@ -50,7 +50,7 @@ static const struct menu_item edit_items[] = {
 };
 static const struct menu_item search_items[] = {
   {"search.find", 0}, {"search.next", 5}, {"search.prev", 5},
-  {"search.case", 6}, SEP, {"search.replace", 0},
+  {"search.case", 6}, {"search.regex", 2}, SEP, {"search.replace", 0},
 };
 static const struct menu_item view_items[] = {
   {"app.palette", 0}, SEP,

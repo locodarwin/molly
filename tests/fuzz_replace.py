@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Differential fuzz of replace-all against Python's str.replace.
+"""Differential fuzz of replace-all against Python's str.replace and re.sub.
 
 Run with:  make test    (standalone: python3 tests/fuzz_replace.py ./molly)
 
@@ -15,11 +15,22 @@ containing the search term, which under a wrapping sweep re-matched its own
 output forever. Every molly here runs under `ulimit -v`, so a regression
 turns into a fast, loud mismatch instead of a melted machine.
 
+Half the cases run in pattern mode (Alt-R), against re.sub applied line by line
+-- line by line because molly matches one row at a time, so a Python pattern let
+loose on the whole buffer would match across line endings where molly cannot.
+Those cases are what guards the part of the sweep a pattern made new: a pattern
+can match *nothing*, and then the replace has to step over a character or insert
+at the same place for ever. They use an ASCII vocabulary, because molly counts
+every byte above ASCII as a word character and Python's \\w does not -- a
+difference that belongs to the matcher, which tests/fuzz_regex.py compares
+against re on hundreds of thousands of patterns, rather than to the sweep this
+file is about.
+
 Deterministic: case i draws from random.Random(SEED * 1000 + i), so a
 failure reproduces with the printed command. Set MOLLY_FUZZ_SEED to explore
 elsewhere and MOLLY_FUZZ_N for more iterations. Tabs are deliberately absent
-from the generated text: search matches the tab-expanded render buffer, and
-modeling that mapping in Python would duplicate the code under test.
+from the generated text: a plain search matches the tab-expanded render buffer,
+and modeling that mapping in Python would duplicate the code under test.
 """
 
 import os
@@ -37,6 +48,7 @@ SAVE = "\x13"
 QUIT = "\x11"
 TOGGLE_CASE = "\x14"
 REPLACE = "\x12"
+REGEX = "\x1br"
 
 # Accented words exercise the ASCII-only fold (neither str.replace nor Molly
 # folds them, but the bytes must still survive the round trip); CJK words
@@ -45,6 +57,44 @@ VOCAB = ["alpha", "beta", "gamma", "delta", "Cat", "dog", "pea", "Pea",
          "install", "Install", "cafe", "café", "naïve", "über",
          "日", "本", "木", "a", "ab"]
 SELF_REFERENTIAL = ["{q}", "{q}{q}", "x{q}", "{q}x"]
+
+# For the pattern half. Small on purpose: x* and a* are the ones that matter,
+# because they match nothing at all and nothing is where a sweep gets stuck.
+ASCII_VOCAB = ["alpha", "beta", "gamma", "cat", "Cat", "dog", "a", "ab", "x1",
+               "22", "a_b"]
+PATTERNS = [r"\w+", r"\d+", r"[a-z]+", r"[A-Z]", r"a.c", r"\s+", r"^\w+",
+            r"\w+$", r"(\w+) (\w+)", r"(a)|(b)", r"x*", r"a*", r"(a+)",
+            r"\ba\b", r"[^ ]+", r"a{2,}", r"(?:ab)+", r"(a)(b)?", r"b?"]
+
+
+def gen_regex_case(rng):
+    """A pattern case: the text, the pattern, the replacement, case sensitivity."""
+    lines = []
+    for _ in range(rng.randint(1, 6)):
+        lines.append(" ".join(rng.choice(ASCII_VOCAB)
+                              for _ in range(rng.randint(1, 5))))
+    text = "\n".join(lines) + "\n"
+    pat = rng.choice(PATTERNS)
+    ngroups = re.compile(pat).groups
+    # \2 only where there is a group 2: asking for a group the pattern does not
+    # have is an error in molly and an exception in Python, and the unit tests
+    # already pin what molly says about it.
+    repls = ["", "Z", "z-"]
+    if ngroups >= 1:
+        repls += [r"\1", r"[\1]", r"\1\1"]
+    if ngroups >= 2:
+        repls += [r"\2-\1"]
+    return text, pat, rng.choice(repls), rng.random() < 0.4
+
+
+def expected_regex(text, pat, repl, case_sensitive):
+    """re.sub, one line at a time, which is the unit molly matches in."""
+    flags = 0 if case_sensitive else (re.IGNORECASE | re.ASCII)
+    rx = re.compile(pat, flags)
+    final = text.endswith("\n")
+    body = text[:-1] if final else text
+    out = "\n".join(rx.sub(repl, line) for line in body.split("\n"))
+    return out + ("\n" if final else "")
 
 
 def gen_case(rng):
@@ -103,15 +153,24 @@ def main():
 
     for i in range(N):
         rng = random.Random(SEED * 1000 + i)
-        text, q, repl, case_sensitive = gen_case(rng)
-        want = expected(text, q, repl, case_sensitive)
-        hits = len(re.findall(re.escape(q), text,
-                              0 if case_sensitive else
-                              (re.IGNORECASE | re.ASCII)))
+        regex = (i % 2 == 1)
+        if regex:
+            text, q, repl, case_sensitive = gen_regex_case(rng)
+            want = expected_regex(text, q, repl, case_sensitive)
+            hits = sum(len(re.findall(q, line, 0 if case_sensitive else
+                                      (re.IGNORECASE | re.ASCII)))
+                       for line in text.rstrip("\n").split("\n"))
+        else:
+            text, q, repl, case_sensitive = gen_case(rng)
+            want = expected(text, q, repl, case_sensitive)
+            hits = len(re.findall(re.escape(q), text,
+                                  0 if case_sensitive else
+                                  (re.IGNORECASE | re.ASCII)))
 
         with open(path, "w") as fh:
             fh.write(text)
-        keys = ([TOGGLE_CASE] if case_sensitive else []) + \
+        keys = ([REGEX] if regex else []) + \
+               ([TOGGLE_CASE] if case_sensitive else []) + \
                [REPLACE, q, "\r", repl, "\r", "a", "\r", SAVE, QUIT]
         # The ulimit is the safety net: a looping replace-all must die in
         # its tracks rather than eat the machine it fails on.
@@ -134,14 +193,16 @@ def main():
             failures += 1
             print("  FAIL  case %d (seed %d): %s"
                   % (i, SEED * 1000 + i, "; ".join(problems)))
-            print("          text: %r\n          query: %r  repl: %r  "
-                  "case-sensitive: %s" % (text, q, repl, case_sensitive))
+            print("          text: %r\n          %s: %r  repl: %r  "
+                  "case-sensitive: %s"
+                  % (text, "pattern" if regex else "query", q, repl,
+                     case_sensitive))
             print("          reproduce: MOLLY_FUZZ_SEED=%d "
                   "python3 tests/fuzz_replace.py %s" % (SEED, molly))
         else:
-            print("  pass  case %d: %d match(es), repl %r%s"
-                  % (i, hits, repl, "" if case_sensitive else
-                     ", case-insensitive"))
+            print("  pass  case %d: %s %r, %d match(es), repl %r%s"
+                  % (i, "pattern" if regex else "query", q, hits, repl,
+                     "" if case_sensitive else ", case-insensitive"))
 
     print("\n%d cases, %d failed (seed %d)" % (N, failures, SEED))
     return 1 if failures else 0

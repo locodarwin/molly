@@ -1,14 +1,14 @@
 --- screen ---
  File  Edit  Search  View  Go  Help
-alpha       ┌─────────────────────────┐
-beta        │  Find…           Ctrl-F │
-gamma       │  Find next       Ctrl-N │
-~           │  Find previous   Ctrl-P │
-~           │  Match case      Ctrl-T │
-~           ├─────────────────────────┤
-~           │  Replace…        Ctrl-R │
-~           └─────────────────────────┘
-~
+alpha       ┌──────────────────────────────┐
+beta        │  Find…                Ctrl-F │
+gamma       │  Find next            Ctrl-N │
+~           │  Find previous        Ctrl-P │
+~           │  Match case           Ctrl-T │
+~           │  Regular expression    Alt-R │
+~           ├──────────────────────────────┤
+~           │  Replace…             Ctrl-R │
+~           └──────────────────────────────┘
 ~
 ~
 ~
@@ -17,16 +17,16 @@ sample.txt - 3 lines                                 Ln 1, Col 1
 HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | Ctrl-N = n
 --- attrs ---
 gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-............ggggggggggggggggggggggggggg
-............ggggggggggggggggggggggggggggg
-............ggggggggggggggggggggggggggggg
-g...........ggggggggggggggggggggggggggggg
-g...........ggggggggggggggggggggggggggggg
-g...........ggggggggggggggggggggggggggggg
-g...........ggggggggggggggggggggggggggggg
-g...........ggggggggggggggggggggggggggggg
-g.............ggggggggggggggggggggggggggg
-g
+............gggggggggggggggggggggggggggggggg
+............gggggggggggggggggggggggggggggggggg
+............gggggggggggggggggggggggggggggggggg
+g...........gggggggggggggggggggggggggggggggggg
+g...........gggggggggggggggggggggggggggggggggg
+g...........gggggggggggggggggggggggggggggggggg
+g...........gggggggggggggggggggggggggggggggggg
+g...........gggggggggggggggggggggggggggggggggg
+g...........gggggggggggggggggggggggggggggggggg
+g.............gggggggggggggggggggggggggggggggg
 g
 g
 g
@@ -34,16 +34,16 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 
 --- colors ---
 1: 0-11 252/235  12-19 234/110  20-63 252/235
-2: 12-38 245/238
-3: 12-12 245/238  13-37 234/110  38-38 245/238  39-40 240/234
-4: 12-12 245/238  13-37 243/238  38-38 245/238  39-40 240/234
-5: 0-0 8/-  12-12 245/238  13-37 243/238  38-38 245/238  39-40 240/234
-6: 0-0 8/-  12-12 245/238  13-37 252/238  38-38 245/238  39-40 240/234
-7: 0-0 8/-  12-38 245/238  39-40 240/234
-8: 0-0 8/-  12-12 245/238  13-37 252/238  38-38 245/238  39-40 240/234
-9: 0-0 8/-  12-38 245/238  39-40 240/234
-10: 0-0 8/-  14-40 240/234
-11: 0-0 8/-
+2: 12-43 245/238
+3: 12-12 245/238  13-42 234/110  43-43 245/238  44-45 240/234
+4: 12-12 245/238  13-42 243/238  43-43 245/238  44-45 240/234
+5: 0-0 8/-  12-12 245/238  13-42 243/238  43-43 245/238  44-45 240/234
+6: 0-0 8/-  12-12 245/238  13-42 252/238  43-43 245/238  44-45 240/234
+7: 0-0 8/-  12-12 245/238  13-42 252/238  43-43 245/238  44-45 240/234
+8: 0-0 8/-  12-43 245/238  44-45 240/234
+9: 0-0 8/-  12-12 245/238  13-42 252/238  43-43 245/238  44-45 240/234
+10: 0-0 8/-  12-43 245/238  44-45 240/234
+11: 0-0 8/-  14-45 240/234
 12: 0-0 8/-
 13: 0-0 8/-
 14: 0-0 8/-
@@ -51,6 +51,7 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u
 3: 15-15 u
 6: 21-21 u
-8: 15-15 u
+7: 17-17 u
+9: 15-15 u
 --- cursor ---
 row 2 col 1 visible 0

@@ -31,6 +31,7 @@ and a searchable label, so nothing is reachable only by knowing a secret key.
 - [Line Numbers](#line-numbers)
 - [Selecting Text](#selecting-text)
 - [Searching](#searching)
+- [Regular Expressions](#regular-expressions)
 - [Search and Replace](#search-and-replace)
 - [Undo and Redo](#undo-and-redo)
 - [Opening Another File](#opening-another-file)
@@ -360,6 +361,7 @@ end of the file, Molly just keeps going.
 | `Ctrl-N` | Find the next instance of the search term |
 | `Ctrl-P` | Find the previous instance of the search term |
 | `Ctrl-T` | Toggle case-sensitive search |
+| `Alt-R` | Toggle regular-expression search |
 | `Esc` | Cancel the search prompt |
 
 The same term is remembered for the whole session, so you can keep tapping
@@ -375,6 +377,66 @@ letters match only themselves. A match always spans whole characters: a
 query that would begin or end inside a UTF-8 character never matches, which
 also guarantees a replace can never splice a character in half.
 
+## Regular Expressions
+
+`Alt-R` switches the search between plain text and a regular expression, and the
+status bar says which mode it is now in. The mode sticks until you switch it
+back, and it applies to `Ctrl-F`, `Ctrl-N`, `Ctrl-P` and `Ctrl-R` alike — the
+prompt says `Pattern:` rather than `Search:` so you can tell at a glance. It is
+also in the Search menu, with a tick when it is on.
+
+### What Molly understands
+
+| | |
+| --- | --- |
+| `.` | any one character |
+| `[abc]` `[^abc]` `[a-z]` | a character class, or anything but one |
+| `\d` `\w` `\s` | a digit, a word character, a space — and `\D` `\W` `\S` for the opposite |
+| `*` `+` `?` | none or more, one or more, none or one |
+| `{2}` `{2,}` `{2,5}` `{,5}` | a count, a floor, a range |
+| `*?` `+?` `{2,5}?` | the lazy form of any of them: as few as will do |
+| `(…)` | a group, which `\1` can refer to in a replacement |
+| `(?:…)` | a group that is only for grouping |
+| `\|` | either side |
+| `^` `$` | the start and the end of the line |
+| `\b` `\B` | a word boundary, or anywhere that is not one |
+| `\t` `\.` `\*` `\\` | a tab, and a backslash in front of anything with a meaning |
+
+Not understood, and reported rather than ignored: lookaround (`(?=…)`),
+backreferences inside the pattern itself, named groups, possessive quantifiers,
+`\x41`-style escapes and POSIX `[:alpha:]` classes. A pattern Molly cannot read
+is refused with the reason — `Bad pattern: missing ) in pattern` — and nothing
+is searched or changed.
+
+Everything above ASCII is a word character, so `\w` and `\b` work on `café` and
+on `naïve`. Case folding is still ASCII-only, exactly as it is for a plain
+search, so `[a-z]` finds `A` but `é` never matches `É`.
+
+### A pattern sees the file; a plain search sees the screen
+
+A plain search matches the line as it is *drawn*, with tabs expanded into
+spaces, which is why searching for eight spaces finds a tab. A pattern matches
+the line as it is *stored*, so `\t` finds a tab and `.` is one character
+whatever its width. Searching for an actual tab is something only a pattern can
+do.
+
+`.` never matches a line ending, and `^` and `$` are the ends of a line rather
+than of the file, because Molly matches one line at a time. A pattern cannot
+match across a line break.
+
+### Patterns that cannot be answered quickly
+
+Some patterns take exponential time to decide — `(a+)+$` against a long run of
+`a`s is the classic — and an editor that went away to think about one would be
+worse than useless. Molly gives each line a budget, and when a pattern runs
+through it says **`Pattern too complex. Try a simpler one`** and leaves
+everything where it was. A replace-all that runs out partway says how many
+replacements it had already made; one `Ctrl-Z` undoes all of them.
+
+This is a budget rather than a refusal, so the same pattern may well be fine on
+a shorter line. Making the pattern more specific — a literal character it must
+contain, a narrower class — is usually all it takes.
+
 ## Search and Replace
 
 `Ctrl-R` prompts for a search term, then a replacement, then asks whether to
@@ -387,7 +449,26 @@ replace just the next match (`n`) or every match in the file (`a`).
 
 A replace-all undoes and redoes as a single step, no matter how many
 occurrences it touched — one `Ctrl-Z` puts the whole file back exactly as it
-was. Replacement respects the current case-sensitivity setting (`Ctrl-T`).
+was. Replacement respects the current case-sensitivity setting (`Ctrl-T`) and
+the current pattern setting (`Alt-R`).
+
+### Groups in the replacement
+
+With `Alt-R` on, `\1` to `\9` in the replacement stand for what the
+correspondingly numbered group matched, and `\0` for the whole match. Searching
+for `(\w+)=(\w+)` and replacing with `\2=\1` turns `key=value` into
+`value=key`. A group that did not take part — the other side of a `|`, say —
+substitutes as nothing. `\\` is a backslash, `\t` is a tab, and a backslash in
+front of anything else is that character.
+
+A replacement cannot contain a newline, because a line is Molly's unit and
+splicing one in would make two; `\n` is refused with
+`Bad replacement: a replacement cannot contain a newline`.
+
+A pattern can match *nothing at all* — `x*` matches between every pair of
+characters — and a replace-all then inserts at every one of those places and
+steps over a character each time, exactly as `sed` does: replacing `x*` with `-`
+in `abc` gives `-a-b-c-`. Nothing loops, and nothing is replaced twice.
 
 ## Undo and Redo
 
@@ -525,6 +606,7 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     Ctrl-N   Find next instance of the search
     Ctrl-P   Find previous instance of the search
     Ctrl-T   Toggle case-sensitive search
+    Alt-R    Toggle regular-expression search
     Ctrl-R   Search and replace (next or all)
     Ctrl-G   Go to line
     Ctrl-C   Copy the selection

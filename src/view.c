@@ -52,7 +52,7 @@ int editor_row_cx_to_rx(erow *row, int cx) {
   int rx = 0, j = 0;
   while (j < cx) {
     if (row->chars[j] == '\t') {
-      rx += KILO_TAB_STOP - (rx % KILO_TAB_STOP);
+      rx += tab_width() - (rx % tab_width());
       j++;
     } else {
       int nb;
@@ -82,7 +82,7 @@ int editor_row_rx_to_cx(erow *row, int rx) {
   while (j < row->size) {
     int w, nb;
     if (row->chars[j] == '\t') {
-      w = KILO_TAB_STOP - (cur % KILO_TAB_STOP);
+      w = tab_width() - (cur % tab_width());
       nb = 1;
     } else {
       w = utf8_char_cols(row->chars, row->size, j, &nb);

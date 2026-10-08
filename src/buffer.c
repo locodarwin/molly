@@ -98,6 +98,26 @@ void write_recovery_file(void) {
 }
 
 
+/* How many columns a tab occupies. A variable rather than KILO_TAB_STOP because
+ * `[editor] tab width` is configurable, and it lives here because this is where
+ * the render string that depends on it is built.
+ *
+ * Changing it re-renders every row, so the Options dialog can change it on a live
+ * buffer and see the result, rather than it taking effect at the next start. That
+ * is O(bytes in the buffer) for a setting nobody changes twice -- cheaper than
+ * the alternative, which is a stale `render` that disagrees with the cursor
+ * arithmetic measured against the new width. */
+static int tabw = KILO_TAB_STOP;
+
+int tab_width(void) { return tabw; }
+
+void tab_width_set(int n) {
+  int i;
+  if (n < 1 || n > 16 || n == tabw) return;
+  tabw = n;
+  for (i = 0; i < B.numrows; i++) editor_update_row(&B.row[i]);
+}
+
 void editor_update_row(erow *row) {
   int tabs = 0;
   int j;
@@ -120,7 +140,7 @@ void editor_update_row(erow *row) {
 
   if (row->rcap == 0) row->render = NULL;
   {
-    int need = row->size + tabs * (KILO_TAB_STOP - 1) + 1;
+    int need = row->size + tabs * (tabw - 1) + 1;
     if (row->rcap < need) {
       row->render = xrealloc(row->render, (size_t)need);
       row->rcap = need;
@@ -131,7 +151,7 @@ void editor_update_row(erow *row) {
   for (j = 0; j < row->size; j++) {
     if (row->chars[j] == '\t') {
       row->render[idx++] = ' ';
-      while (idx % KILO_TAB_STOP != 0) row->render[idx++] = ' ';
+      while (idx % tabw != 0) row->render[idx++] = ' ';
     } else {
       row->render[idx++] = row->chars[j];
     }

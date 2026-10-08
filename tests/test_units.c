@@ -829,6 +829,451 @@ static void test_regex_expand(void) {
   rx_sub("a", "a", "trailing\\", "E:the replacement ends with a backslash");
 }
 
+/* ---- chords -------------------------------------------------------------- */
+
+/* chord_parse and chord_name are a pair, and the config file depends on both: it
+ * writes what chord_name prints and reads it back through chord_parse. The
+ * default keymap already proves the round trip for everything it binds (that is
+ * what MOLLY_DUMP_KEYMAP is for); what is tested here is the rest -- the Shift
+ * forms, and the chords that must be *refused* rather than bound to something
+ * that could never fire. */
+static void check_chord(const char *text, int want) {
+  char label[96];
+  snprintf(label, sizeof(label), "chord_parse(\"%s\")", text);
+  check(label, chord_parse(text), want);
+}
+
+static void check_chord_name(int key, const char *want) {
+  char label[96];
+  char got[32];
+  chord_name(key, got, sizeof(got));
+  snprintf(label, sizeof(label), "chord_name(%#x)", (unsigned)key);
+  check_str(label, got, want);
+}
+
+static void test_chords(void) {
+  printf("\nchords: parsing, printing and what is refused\n");
+
+  check_chord("ctrl-s", CTRL_KEY('S'));
+  check_chord("Ctrl-S", CTRL_KEY('S'));
+  check_chord("ctrl-?", CTRL_KEY('?'));
+  check_chord("ctrl-space", CTRL_KEY(' '));
+  check_chord("alt-x", ALT_KEY('x'));
+  check_chord("f10", F1_KEY + 9);
+  check_chord("F12", F1_KEY + 11);
+  check_chord("pageup", PAGE_UP);
+  check_chord("PgUp", PAGE_UP);
+  check_chord("shift-tab", BACKTAB_KEY);
+  check_chord("a", 'a');
+
+  /* Shift, on the keys that report it. */
+  check_chord("shift-f3", (F1_KEY + 2) | KEY_SHIFT);
+  check_chord("Shift-F3", (F1_KEY + 2) | KEY_SHIFT);
+  check_chord("shift-right", ARROW_RIGHT | KEY_SHIFT);
+  check_chord("shift-pagedown", PAGE_DOWN | KEY_SHIFT);
+  /* Modifiers in either order, since a hand-written file may use either. */
+  check_chord("shift-f5", (F1_KEY + 4) | KEY_SHIFT);
+
+  /* And the refusals. Each of these is a chord a terminal cannot deliver
+   * distinguishably, so binding it would be a line in a config file that
+   * silently never fires. */
+  check_chord("shift-a", -1);
+  check_chord("shift-ctrl-l", -1);
+  check_chord("ctrl-shift-l", -1);
+  check_chord("ctrl-alt-x", -1);
+  check_chord("shift-enter", -1);
+  check_chord("ctrl-", -1);
+  check_chord("shift-", -1);
+  check_chord("", -1);
+  check_chord("f13", -1);
+  check_chord("f0", -1);
+  check_chord("f1x", -1);
+  check_chord("ctrl-ss", -1);
+  check_chord("nonsense", -1);
+
+  /* Printing. Shift is a prefix on whatever the key is otherwise called. */
+  check_chord_name(CTRL_KEY('S'), "Ctrl-S");
+  check_chord_name(CTRL_KEY('?'), "Ctrl-?");
+  check_chord_name(CTRL_KEY(' '), "Ctrl-Space");
+  check_chord_name(ALT_KEY('x'), "Alt-X");
+  check_chord_name(F1_KEY + 9, "F10");
+  check_chord_name(PAGE_UP, "PgUp");
+  check_chord_name(BACKTAB_KEY, "Shift-Tab");
+  check_chord_name((F1_KEY + 2) | KEY_SHIFT, "Shift-F3");
+  check_chord_name(ARROW_RIGHT | KEY_SHIFT, "Shift-Right");
+
+  /* The round trip, for every chord the printer can produce from a shifted key:
+   * what chord_name prints is what chord_parse has to accept, because that is
+   * exactly what config_write puts in the file. */
+  {
+    int keys[] = {ARROW_LEFT, ARROW_RIGHT, ARROW_UP, ARROW_DOWN, HOME_KEY,
+                  END_KEY, PAGE_UP, PAGE_DOWN, DEL_KEY, F1_KEY, F1_KEY + 11};
+    int i, bad = 0;
+    for (i = 0; i < (int)(sizeof(keys) / sizeof(keys[0])); i++) {
+      char text[32];
+      int shifted = keys[i] | KEY_SHIFT;
+      chord_name(shifted, text, sizeof(text));
+      if (chord_parse(text) != shifted) bad++;
+    }
+    check("every shifted key round-trips through its printed name", bad, 0);
+  }
+}
+
+/* ---- the configuration file ---------------------------------------------- */
+
+/* A clean slate: config_parse_text adds to whatever is already there, which is
+ * what a caller parsing one file wants and not what a second test wants. */
+static void config_fresh(void) {
+  config_cleanup();
+  config_defaults();
+}
+
+static void test_config_parse(void) {
+  printf("\nconfig: parsing settings\n");
+
+  config_fresh();
+  check("a setting with no file is its default", setting_get("editor", "tab width"), 8);
+  check("and so is the menu bar", setting_get("view", "menu bar"), 1);
+  check("and line numbers are off", setting_get("view", "line numbers"), 0);
+
+  config_fresh();
+  config_parse_text(
+      "# a comment\n"
+      "; and another\n"
+      "\n"
+      "[editor]\n"
+      "tab width = 4\n"
+      "\n"
+      "[view]\n"
+      "line numbers = on\n"
+      "menu bar = off\n"
+      "[input]\n"
+      "mouse = no\n",
+      "<test>");
+  check("no warnings from a good file", config_error_count(), 0);
+  check("tab width = 4", setting_get("editor", "tab width"), 4);
+  check("line numbers = on", setting_get("view", "line numbers"), 1);
+  check("menu bar = off", setting_get("view", "menu bar"), 0);
+  check("mouse = no", setting_get("input", "mouse"), 0);
+
+  /* Spellings. A key is matched on its words, so dashes, underscores, extra
+   * spaces and capitals all reach the same setting; the canonical form is what
+   * config_write emits. */
+  config_fresh();
+  config_parse_text("[view]\nLine-Numbers = TRUE\n", "<test>");
+  check("Line-Numbers reaches line numbers", setting_get("view", "line numbers"), 1);
+  check("and warns about nothing", config_error_count(), 0);
+
+  config_fresh();
+  config_parse_text("[ View ]\nline_numbers = yes\n", "<test>");
+  check("line_numbers too", setting_get("view", "line numbers"), 1);
+  check("and the section tolerates spaces", config_error_count(), 0);
+
+  config_fresh();
+  config_parse_text("[view]\nline   numbers = 1\n", "<test>");
+  check("a run of spaces collapses", setting_get("view", "line numbers"), 1);
+
+  /* A file with no trailing newline is still a file. */
+  config_fresh();
+  config_parse_text("[editor]\ntab width = 2", "<test>");
+  check("the last line counts without a newline", setting_get("editor", "tab width"), 2);
+  check("and warns about nothing", config_error_count(), 0);
+
+  printf("\nconfig: what a bad line does\n");
+
+  config_fresh();
+  config_parse_text("[view]\nline numbers = maybe\n", "<test>");
+  check("a flag that is not on or off warns", config_error_count(), 1);
+  check("and leaves the setting alone", setting_get("view", "line numbers"), 0);
+  check_str("with a message naming the line", config_error_at(0),
+            "<test>:2: line numbers wants on or off, not \"maybe\"");
+
+  config_fresh();
+  config_parse_text("[editor]\ntab width = 99\n", "<test>");
+  check("an out-of-range number warns", config_error_count(), 1);
+  check("and leaves the setting alone", setting_get("editor", "tab width"), 8);
+  check_str("saying what the range is", config_error_at(0),
+            "<test>:2: tab width must be 1 to 16, not 99");
+
+  config_fresh();
+  config_parse_text("[editor]\ntab width = wide\n", "<test>");
+  check_str("a number that is not one", config_error_at(0),
+            "<test>:2: tab width wants a number, not \"wide\"");
+
+  config_fresh();
+  config_parse_text("[nowhere]\nthing = 1\n", "<test>");
+  check("an unknown section warns once", config_error_count(), 1);
+  check_str("naming the section", config_error_at(0),
+            "<test>:1: unknown section: [nowhere]");
+
+  config_fresh();
+  config_parse_text("[view]\nnot a setting = on\n", "<test>");
+  check_str("an unknown key names itself", config_error_at(0),
+            "<test>:2: unknown setting: [view] not a setting");
+
+  config_fresh();
+  config_parse_text("line numbers = on\n", "<test>");
+  check_str("a key before any section", config_error_at(0),
+            "<test>:1: line numbers is outside any section");
+
+  config_fresh();
+  config_parse_text("[view]\nline numbers\n", "<test>");
+  check_str("a line with no =", config_error_at(0),
+            "<test>:2: expected key = value");
+
+  config_fresh();
+  config_parse_text("[view\nline numbers = on\n", "<test>");
+  check_str("a section with no ]", config_error_at(0),
+            "<test>:1: section is missing its ]");
+
+  /* Carrying on is the point: one bad line must not cost the good ones. */
+  config_fresh();
+  config_parse_text(
+      "[editor]\n"
+      "tab width = nonsense\n"
+      "undo steps = 10\n"
+      "[view]\n"
+      "line numbers = on\n",
+      "<test>");
+  check("one bad line, one warning", config_error_count(), 1);
+  check("the line after it still took", setting_get("editor", "undo steps"), 10);
+  check("and so did the next section", setting_get("view", "line numbers"), 1);
+
+  /* The warning list is capped; the count is not. */
+  config_fresh();
+  {
+    char big[4096];
+    int i;
+    size_t o = (size_t)snprintf(big, sizeof(big), "[view]\n");
+    for (i = 0; i < 40; i++)
+      o += (size_t)snprintf(big + o, sizeof(big) - o, "bogus%d = on\n", i);
+    config_parse_text(big, "<test>");
+    check("every bad line is counted", config_error_count(), 40);
+    check("but only the first few are kept", config_error_at(16) == NULL, 1);
+    check("and the kept ones are there", config_error_at(15) != NULL, 1);
+  }
+
+  config_fresh();
+}
+
+static void test_config_keys(void) {
+  printf("\nconfig: the [keys] section\n");
+
+  config_fresh();
+  config_parse_text("[keys]\nf9 = file.save\n", "<test>");
+  check("a good binding warns about nothing", config_error_count(), 0);
+
+  keymap_init();
+  config_apply_keys();
+  check("F9 is bound to what the file said",
+        keymap_lookup(F1_KEY + 8) == cmd_find_by_name("file.save"), 1);
+  check("and Ctrl-S still is too",
+        keymap_lookup(CTRL_KEY('S')) == cmd_find_by_name("file.save"), 1);
+  {
+    char chord[32];
+    cmd_shortcut("file.save", chord, sizeof(chord));
+    check_str("the menu shows the binding from the file", chord, "F9");
+  }
+
+  /* Replacing a chord that is already bound, rather than adding a second
+   * meaning to it. */
+  config_fresh();
+  config_parse_text("[keys]\nctrl-s = file.quit\n", "<test>");
+  keymap_init();
+  config_apply_keys();
+  check("rebinding a default chord replaces it",
+        keymap_lookup(CTRL_KEY('S')) == cmd_find_by_name("file.quit"), 1);
+
+  /* Unbinding. */
+  config_fresh();
+  config_parse_text("[keys]\nctrl-s = none\n", "<test>");
+  keymap_init();
+  config_apply_keys();
+  check("= none leaves the chord unbound", keymap_lookup(CTRL_KEY('S')) == NULL, 1);
+  check("and the rest of the keymap survives",
+        keymap_lookup(CTRL_KEY('Q')) == cmd_find_by_name("file.quit"), 1);
+
+  /* A shifted binding, which is the whole reason Shift became nameable. */
+  config_fresh();
+  config_parse_text("[keys]\nshift-f3 = search.prev\n", "<test>");
+  keymap_init();
+  config_apply_keys();
+  check("Shift-F3 binds without touching F3",
+        keymap_lookup((F1_KEY + 2) | KEY_SHIFT) == cmd_find_by_name("search.prev"), 1);
+
+  /* What is refused. */
+  config_fresh();
+  config_parse_text("[keys]\nctrl-s = no.such.command\n", "<test>");
+  check_str("an unknown command names itself", config_error_at(0),
+            "<test>:2: no such command: no.such.command");
+
+  config_fresh();
+  config_parse_text("[keys]\nnonsense = file.save\n", "<test>");
+  check_str("so does a chord that is not one", config_error_at(0),
+            "<test>:2: not a key: nonsense");
+
+  config_fresh();
+  config_parse_text("[keys]\nalt-f = file.save\n", "<test>");
+  keymap_init();
+  config_apply_keys();
+  check("the menu bar's Alt letters are refused", config_error_count(), 1);
+  check("and Alt-F still opens the File menu",
+        keymap_lookup(ALT_KEY('f')) == cmd_find_by_name("menu.file"), 1);
+
+  config_fresh();
+  keymap_init();
+}
+
+static void test_config_write(void) {
+  char path[256];
+  printf("\nconfig: writing it back\n");
+
+  snprintf(path, sizeof(path), "/tmp/molly_cfg_%d/sub/mollyrc", (int)getpid());
+
+  config_fresh();
+  keymap_init();
+  config_parse_text(
+      "[editor]\ntab width = 3\n"
+      "[view]\nline numbers = on\n"
+      "[keys]\nf9 = file.save\nctrl-s = none\n",
+      "<test>");
+  config_apply_keys();
+
+  /* What gets written is what the editor is *doing*, not what the file said --
+   * that is the whole point of a settings file an Options dialog can save, and
+   * it is why each setting may name a function to read its live value back. So
+   * the live state is what this sets up, and the file below is checked against
+   * it rather than against the text parsed above. Ctrl-U changes V.linenum
+   * without going anywhere near the settings table; the table finds out by
+   * asking. */
+  tab_width_set(3);
+  V.linenum = 1;
+  /* The editor normally has the bar on; screen_init_layers is what turns it on
+   * and no unit test runs it, so say so here rather than let this read as a
+   * default. */
+  V.menubar = 1;
+
+  {
+    const char *err = NULL;
+    check("writing creates the directories it needs",
+          config_write(path, &err), 0);
+    if (err != NULL) printf("          (%s)\n", err);
+  }
+
+  /* Read it back through the parser. A written file that the parser rejects is
+   * the failure this whole test exists to catch: the two halves have to agree on
+   * the canonical spelling of every name and value. */
+  {
+    FILE *fp = fopen(path, "r");
+    char text[8192];
+    size_t n = 0;
+    check("and the file is there", fp != NULL, 1);
+    if (fp != NULL) {
+      n = fread(text, 1, sizeof(text) - 1, fp);
+      fclose(fp);
+    }
+    text[n] = '\0';
+
+    config_fresh();
+    keymap_init();
+    config_parse_text(text, path);
+    check("what molly writes, molly reads without a warning",
+          config_error_count(), 0);
+    check("the values survive the round trip",
+          setting_get("editor", "tab width"), 3);
+    check("including the flags", setting_get("view", "line numbers"), 1);
+    check("and a setting the file never mentioned is written from the editor",
+          setting_get("view", "menu bar"), 1);
+
+    config_apply_keys();
+    check("and so does a changed binding",
+          keymap_lookup(F1_KEY + 8) == cmd_find_by_name("file.save"), 1);
+    check("and an unbound chord stays unbound",
+          keymap_lookup(CTRL_KEY('S')) == NULL, 1);
+  }
+
+  /* The surprising half, stated on its own: a setting changed since the file was
+   * read is written as it is now. Without this, "turn the gutter off, then save
+   * settings" would write the gutter back on. */
+  {
+    const char *err = NULL;
+    FILE *fp;
+    char text[8192];
+    size_t n = 0;
+    V.linenum = 0;
+    tab_width_set(8);
+    check("writing again succeeds", config_write(path, &err), 0);
+    fp = fopen(path, "r");
+    if (fp != NULL) {
+      n = fread(text, 1, sizeof(text) - 1, fp);
+      fclose(fp);
+    }
+    text[n] = '\0';
+    config_fresh();
+    config_parse_text(text, path);
+    check("a setting changed since the file was read is written as it is now",
+          setting_get("view", "line numbers"), 0);
+    check("and so is a number", setting_get("editor", "tab width"), 8);
+  }
+
+  /* Tidy up: this is a test, so the directory is ours to remove. */
+  {
+    char dir[256];
+    unlink(path);
+    snprintf(dir, sizeof(dir), "/tmp/molly_cfg_%d/sub", (int)getpid());
+    rmdir(dir);
+    snprintf(dir, sizeof(dir), "/tmp/molly_cfg_%d", (int)getpid());
+    rmdir(dir);
+  }
+
+  config_fresh();
+  keymap_init();
+  V.linenum = 0;
+  tab_width_set(KILO_TAB_STOP);
+}
+
+static void test_mkdir_p(void) {
+  char base[256], deep[320];
+  printf("\nsys: mkdir -p\n");
+
+  snprintf(base, sizeof(base), "/tmp/molly_mkdir_%d", (int)getpid());
+  snprintf(deep, sizeof(deep), "%s/a/b/c", base);
+
+  check("a path three levels deep is created", mkdir_p(deep), 0);
+  check("and again is still success", mkdir_p(deep), 0);
+  {
+    struct stat st;
+    check("and it really is a directory",
+          stat(deep, &st) == 0 && S_ISDIR(st.st_mode), 1);
+  }
+
+  /* A file where a directory should go is an error rather than a surprise. */
+  {
+    char blocked[384];
+    char file[320];
+    FILE *fp;
+    snprintf(file, sizeof(file), "%s/afile", base);
+    fp = fopen(file, "w");
+    if (fp != NULL) fclose(fp);
+    snprintf(blocked, sizeof(blocked), "%s/under", file);
+    check("a file in the way is refused", mkdir_p(blocked) == -1, 1);
+    unlink(file);
+  }
+
+  check("and an empty path is refused", mkdir_p("") == -1, 1);
+
+  {
+    char p[320];
+    snprintf(p, sizeof(p), "%s/a/b/c", base);
+    rmdir(p);
+    snprintf(p, sizeof(p), "%s/a/b", base);
+    rmdir(p);
+    snprintf(p, sizeof(p), "%s/a", base);
+    rmdir(p);
+    rmdir(base);
+  }
+}
+
 int main(void) {
   test_loop_sources();
   test_wait_key_services_sources();
@@ -843,6 +1288,11 @@ int main(void) {
   test_regex_corners();
   test_regex_limits();
   test_regex_expand();
+  test_chords();
+  test_config_parse();
+  test_config_keys();
+  test_config_write();
+  test_mkdir_p();
 
   printf("\n%s\n", failures ? "FAILED" : "ok");
   return failures ? 1 : 0;

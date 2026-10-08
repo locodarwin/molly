@@ -27,7 +27,7 @@ struct uchange *uc_new(int kind, int row, int at, const char *text, size_t len) 
  * MOLLY_UNDO_STEPS for testing. */
 #define UNDO_MAX_STEPS 32768
 #define UNDO_MAX_BYTES (16 * 1024 * 1024)
-static int undo_max_steps = UNDO_MAX_STEPS;
+static int undo_max_steps_v = UNDO_MAX_STEPS;
 
 static void undo_stack_trim(struct uchange **s, int *n, size_t *bytes);
 void uc_free(struct uchange *u);
@@ -44,8 +44,10 @@ int undo_can_redo(void) {
 
 /* Lower the step cap, so that history eviction is reachable in a test without
  * editing for an hour. Only ever shrinks it. */
+int undo_max_steps(void) { return undo_max_steps_v; }
+
 void undo_set_max_steps(int n) {
-  if (n > 0) undo_max_steps = n;
+  if (n > 0) undo_max_steps_v = n;
 }
 
 void undo_push(struct uchange *u) {
@@ -133,7 +135,7 @@ void uc_free(struct uchange *u) {
  * group); the group walk on undo already stops at the stack bottom, so a
  * truncated group simply undoes fewer changes and stays consistent. */
 static void undo_stack_trim(struct uchange **s, int *n, size_t *bytes) {
-  while (*n > 1 && (*n > undo_max_steps || *bytes > UNDO_MAX_BYTES)) {
+  while (*n > 1 && (*n > undo_max_steps_v || *bytes > UNDO_MAX_BYTES)) {
     *bytes -= s[0]->len + sizeof(struct uchange);
     uc_free(s[0]);
     memmove(s, s + 1, sizeof(struct uchange *) * (size_t)(*n - 1));

@@ -329,6 +329,21 @@ static int item_for_mnemonic(const struct menu *m, int ch) {
   return -1;
 }
 
+/* How many menus the bar has, and the character each one's Alt shortcut uses.
+ * Read by cmd.c, which refuses to let the configuration file rebind them: the bar
+ * underlines the letter whether or not it still opens the menu, so a rebinding
+ * would make the menu bar lie. Returns 0 for a menu with no mnemonic. */
+int menu_count(void) {
+  return COUNT(menus);
+}
+
+int menu_mnemonic_char(int i) {
+  int off;
+  if (i < 0 || i >= COUNT(menus) || menus[i].mnemonic < 0) return 0;
+  off = utf8_col_to_byte(menus[i].title, menus[i].mnemonic);
+  return (unsigned char)menus[i].title[off];
+}
+
 /* The menu whose title mnemonic is `ch`, or -1. */
 int menu_for_mnemonic(int ch) {
   int i;

@@ -13,12 +13,23 @@
  * is the same path a config file will take, so the parser is exercised every run
  * rather than waiting for the feature that needs it.
  *
- * What is not here yet: Shift as part of a chord. Shift arrives out of band from
- * the input layer (see input_last_key_had_shift) because it modifies movement
- * rather than selecting a different command, and folding it into the key code is
- * a change to the input layer's contract that belongs with the remappable keymap
- * rather than with this table. So "shift-right" is not parseable, and the help
- * screen still names the shifted movements literally. */
+ * Shift is half in and half out, and deliberately so. It still arrives out of
+ * band from the input layer (see input_last_key_had_shift), because a shifted
+ * *movement* extends a selection rather than running a different command, and
+ * that is true of every movement at once rather than being a binding. But a
+ * chord may now name it -- "shift-f3" -- and the dispatcher composes the two by
+ * looking up `key | KEY_SHIFT` first and the bare key second. So Shift-Right
+ * still extends a selection (nothing binds "shift-right", so it falls through to
+ * move.right with the flag set) while Shift-F3 is a binding of its own.
+ *
+ * Shift is accepted only on the keys where a terminal actually reports it: the
+ * function keys and the navigation keys. "shift-a" and "ctrl-shift-l" are
+ * refused, because a terminal sends plain 'A' for the first and the same single
+ * byte for the second as it does for Ctrl-L -- a binding that could never fire is
+ * worse than an error message.
+ *
+ * What is still not here: multi-key sequences ("ctrl-k ctrl-f"). Nothing needs
+ * one yet, and the chord type would have to become a list for it. */
 
 #include "molly.h"
 
@@ -339,6 +350,11 @@ static const struct named_key named_keys[] = {
   {'\r',        "Enter",     "return"},
   {'\t',        "Tab",       "tab"},
   {'\x1b',      "Esc",       "escape"},
+  /* Shift-Tab has its own key code rather than Tab plus the Shift bit, because
+   * that is how it arrives -- as its own escape sequence. So it is a named key
+   * here, and "shift-tab" is parsed by this table rather than by the modifier
+   * loop below. */
+  {BACKTAB_KEY, "Shift-Tab", "shift-tab"},
   {WINCH_KEY,   "Resize",    "resize"},
   /* Ctrl-Space arrives as NUL, which is what CTRL_KEY(' ') produces. It is named here
    * rather than handled in the "ctrl-" branch below so that one entry covers both
@@ -357,48 +373,108 @@ static int ieq(const char *a, const char *b) {
   return *a == '\0' && *b == '\0';
 }
 
-/* Parse a chord: "ctrl-s", "alt-x", "f10", "left", "enter", or a bare character.
- * Returns the key code, or -1 if it means nothing. Case-insensitive, so a config
- * file may write "Ctrl-S" or "ctrl-s". */
+/* Whether Shift on this key reaches molly as something of its own.
+ *
+ * The CSI form carries a modifier parameter for the function keys and the
+ * navigation keys ("\x1b[1;2C" is Shift-Right), so those can be bound shifted. A
+ * letter cannot: Shift-A *is* 'A'. Nor can Ctrl plus Shift, because Ctrl-L and
+ * Ctrl-Shift-L are the same byte on the wire -- which is why the roadmap's
+ * suggestion of moving repaint to Ctrl-Shift-L could not be taken. */
+static int shift_is_distinguishable(int key) {
+  switch (key) {
+    case ARROW_LEFT: case ARROW_RIGHT: case ARROW_UP: case ARROW_DOWN:
+    case HOME_KEY: case END_KEY: case PAGE_UP: case PAGE_DOWN: case DEL_KEY:
+      return 1;
+    default:
+      return key >= F1_KEY && key <= F12_KEY;
+  }
+}
+
+/* Parse a chord: "ctrl-s", "alt-x", "shift-f3", "f10", "left", "enter", or a
+ * bare character. Returns the key code -- with KEY_SHIFT set if the chord named
+ * Shift -- or -1 if it means nothing.
+ *
+ * Case-insensitive, and the modifiers may be written in any order, so a config
+ * file may say "Ctrl-S", "ctrl-s" or "shift-ctrl-f3". */
 int chord_parse(const char *s) {
   int i;
+  int ctrl = 0, alt = 0, shift = 0;
+  int key;
+
   if (s == NULL || *s == '\0') return -1;
 
-  /* Named keys first, because one of them is spelled "ctrl-space" and the modifier
-   * prefix below would otherwise claim it and then reject it for having more than one
-   * character after the dash. No other name begins with a modifier prefix. */
+  /* Named keys first, because two of them are spelled with a modifier prefix --
+   * "ctrl-space" and "shift-tab" -- and the loop below would otherwise claim them
+   * and then reject what was left. No other name begins with one. */
   for (i = 0; i < NNAMED; i++)
     if (ieq(s, named_keys[i].name) || ieq(s, named_keys[i].alias))
       return named_keys[i].key;
 
+  /* Ctrl-? is spelled out because '?' is not a letter and the Ctrl branch below
+   * only accepts letters. It is 0x1f, which is also Ctrl-_. */
   if (ieq(s, "ctrl-?")) return CTRL_KEY('?');
-  if (strncasecmp(s, "ctrl-", 5) == 0) {
-    const char *rest = s + 5;
-    if (rest[0] == '\0' || rest[1] != '\0') return -1;
-    unsigned char c = (unsigned char)toupper((unsigned char)rest[0]);
-    if (c < 'A' || c > 'Z') return -1;
-    return CTRL_KEY(c);
+
+  for (;;) {
+    if (strncasecmp(s, "ctrl-", 5) == 0) { ctrl = 1; s += 5; continue; }
+    if (strncasecmp(s, "alt-", 4) == 0) { alt = 1; s += 4; continue; }
+    if (strncasecmp(s, "shift-", 6) == 0) { shift = 1; s += 6; continue; }
+    break;
   }
-  if (strncasecmp(s, "alt-", 4) == 0) {
-    const char *rest = s + 4;
-    if (rest[0] == '\0' || rest[1] != '\0') return -1;
-    if ((unsigned char)rest[0] < 0x20 || (unsigned char)rest[0] > 0x7e) return -1;
-    return ALT_KEY(rest[0]);
+  if (*s == '\0') return -1;          /* modifiers with nothing to modify */
+  if (ctrl && alt) return -1;         /* not reported distinguishably either */
+
+  /* The base key. A named key may appear here too, so "shift-pageup" works. */
+  key = -1;
+  for (i = 0; i < NNAMED; i++) {
+    if (ieq(s, named_keys[i].name) || ieq(s, named_keys[i].alias)) {
+      key = named_keys[i].key;
+      break;
+    }
   }
-  if ((s[0] == 'f' || s[0] == 'F') && isdigit((unsigned char)s[1])) {
+  if (key < 0 && (s[0] == 'f' || s[0] == 'F') && isdigit((unsigned char)s[1])) {
     int n = atoi(s + 1);
-    if (n >= 1 && n <= 12) return F1_KEY + (n - 1);
+    char tail[8];
+    snprintf(tail, sizeof(tail), "%d", n);
+    /* "f1x" is not F1: the digits have to be the whole of it. */
+    if (n >= 1 && n <= 12 && strcasecmp(s + 1, tail) == 0) key = F1_KEY + (n - 1);
   }
-  /* A bare printable character binds itself. */
-  if (s[1] == '\0' && (unsigned char)s[0] >= 0x20 && (unsigned char)s[0] <= 0x7e)
-    return (unsigned char)s[0];
-  return -1;
+  if (key < 0 && s[1] == '\0' && (unsigned char)s[0] >= 0x20 &&
+      (unsigned char)s[0] <= 0x7e)
+    key = (unsigned char)s[0];
+  if (key < 0) return -1;
+
+  if (ctrl) {
+    unsigned char c = (unsigned char)toupper((unsigned char)s[0]);
+    if (s[1] != '\0' || c < 'A' || c > 'Z') return -1;
+    key = CTRL_KEY(c);
+  }
+  if (alt) {
+    if (s[1] != '\0' || (unsigned char)s[0] < 0x20 || (unsigned char)s[0] > 0x7e)
+      return -1;
+    key = ALT_KEY(s[0]);
+  }
+  if (shift) {
+    if (!shift_is_distinguishable(key)) return -1;
+    key |= KEY_SHIFT;
+  }
+  return key;
 }
 
 /* The display form of a chord: "Ctrl-S", "Alt-X", "F10", "PgUp". This is what the
  * help screen prints and what the menu bar will print down its right-hand side. */
 void chord_name(int key, char *dst, size_t n) {
   int i;
+
+  /* Shift is a prefix on whatever the rest of the key is called, so it is peeled
+   * off and the bare key named by the code below -- which is also what keeps
+   * "Shift-" out of every branch of it. */
+  if (key & KEY_SHIFT) {
+    char base[32];
+    chord_name(KEY_BASE(key), base, sizeof(base));
+    snprintf(dst, n, "Shift-%s", base);
+    return;
+  }
+
   for (i = 0; i < NNAMED; i++) {
     if (named_keys[i].key == key) {
       snprintf(dst, n, "%s", named_keys[i].name);
@@ -499,20 +575,41 @@ static const struct binding default_bindings[] = {
 
 #define NBINDINGS ((int)(sizeof(default_bindings) / sizeof(default_bindings[0])))
 
-/* The live keymap. A linear scan over thirty-odd entries, once per keystroke,
- * at human typing speed; when a config file can add bindings this becomes a
- * growable array, and it still will not need to be a hash table. */
+/* The live keymap: a growable array, because the configuration file adds to it.
+ * A linear scan over forty-odd entries, once per keystroke, at human typing
+ * speed -- it still does not need to be a hash table, and saying so here is
+ * cheaper than someone later wondering whether it does.
+ *
+ * One entry per key, never two: binding a chord that is already bound replaces
+ * it, which is what makes "user config beats the built-in keymap" a property of
+ * the structure rather than of the lookup order. `user` records which bindings
+ * came from the file, so that write-back can put back exactly what the user
+ * asked for and nothing else. */
 static struct keybind {
   int key;
   const struct command *cmd;
-} keymap[NBINDINGS];
+  int user;
+} *keymap;
 
-static int keymap_n;
+static int keymap_n, keymap_cap;
+
+static void keymap_grow(void) {
+  if (keymap_n < keymap_cap) return;
+  keymap_cap = keymap_cap ? keymap_cap * 2 : NBINDINGS + 16;
+  keymap = xrealloc(keymap, (size_t)keymap_cap * sizeof(*keymap));
+}
+
+static int keymap_index_of(int key) {
+  int i;
+  for (i = 0; i < keymap_n; i++)
+    if (keymap[i].key == key) return i;
+  return -1;
+}
 
 /* Parse the default bindings into the keymap. A bad chord or an unknown command
  * is a programming error in the table above, so it exits rather than silently
- * dropping the binding -- when a config file supplies these, it will warn and
- * carry on instead. */
+ * dropping the binding; a binding that comes from the config file warns and
+ * carries on instead, which is keymap_bind's job below. */
 void keymap_init(void) {
   int i;
   keymap_n = 0;
@@ -520,10 +617,114 @@ void keymap_init(void) {
     int key = chord_parse(default_bindings[i].chord);
     const struct command *cmd = cmd_find_by_name(default_bindings[i].cmd);
     if (key < 0 || cmd == NULL) die("keymap_init: bad default binding");
+    keymap_grow();
     keymap[keymap_n].key = key;
     keymap[keymap_n].cmd = cmd;
+    keymap[keymap_n].user = 0;
     keymap_n++;
   }
+}
+
+void keymap_cleanup(void) {
+  free(keymap);
+  keymap = NULL;
+  keymap_n = 0;
+  keymap_cap = 0;
+}
+
+/* Is this chord one of the Alt letters the menu bar owns?
+ *
+ * Those eight are the one thing the roadmap says is not remappable, because they
+ * are structural: the bar draws F as the mnemonic of "File" whether or not Alt-F
+ * still opens it, so a rebinding would make the menu bar lie about itself. The
+ * set is read off the menu table rather than written out here, so adding a menu
+ * reserves its letter without anyone remembering to. */
+static int chord_is_reserved(int key) {
+  int i;
+  if (!IS_ALT_KEY(key)) return 0;
+  for (i = 0; i < menu_count(); i++) {
+    int ch = menu_mnemonic_char(i);
+    if (ch > 0 && tolower(ch) == tolower(ALT_KEY_CHAR(key))) return 1;
+  }
+  return 0;
+}
+
+/* Bind a chord to a command, or to "none" to leave it unbound. Returns 1 on
+ * success, or 0 with *err set to something worth printing.
+ *
+ * This is the configuration file's way in, so every refusal here is a line in a
+ * file somebody wrote by hand. The messages say what is wrong with the line
+ * rather than what the code expected. */
+int keymap_bind(const char *chord, const char *cmdname, const char **err) {
+  int key = chord_parse(chord);
+  int at;
+
+  if (key < 0) {
+    if (err) *err = "not a key";
+    return 0;
+  }
+  if (chord_is_reserved(key)) {
+    if (err) *err = "reserved by the menu bar";
+    return 0;
+  }
+
+  at = keymap_index_of(key);
+
+  if (strcasecmp(cmdname, "none") == 0) {
+    if (at >= 0) {
+      /* Order is not meaningful -- lookup is a scan -- so closing the gap with
+       * the last entry beats moving everything after it. */
+      keymap[at] = keymap[keymap_n - 1];
+      keymap_n--;
+    }
+    return 1;
+  }
+
+  const struct command *cmd = cmd_find_by_name(cmdname);
+  if (cmd == NULL) {
+    if (err) *err = "no such command";
+    return 0;
+  }
+
+  if (at >= 0) {
+    keymap[at].cmd = cmd;
+    keymap[at].user = 1;
+  } else {
+    keymap_grow();
+    keymap[keymap_n].key = key;
+    keymap[keymap_n].cmd = cmd;
+    keymap[keymap_n].user = 1;
+    keymap_n++;
+  }
+  return 1;
+}
+
+/* The `[keys]` section of a written configuration file: the bindings that differ
+ * from the defaults, and nothing else.
+ *
+ * Writing all forty would pin the user to this version's defaults -- a later
+ * molly that moves a key could never move it for anyone who had ever saved their
+ * settings. So a changed chord is written as itself, and a default chord that is
+ * now bound to nothing is written as "none". */
+void keymap_write_changes(FILE *out) {
+  int i;
+  char chord[32];
+  int wrote = 0;
+
+  for (i = 0; i < keymap_n; i++) {
+    if (!keymap[i].user) continue;
+    chord_name(keymap[i].key, chord, sizeof(chord));
+    fprintf(out, "%s = %s\n", chord, keymap[i].cmd->name);
+    wrote++;
+  }
+  for (i = 0; i < NBINDINGS; i++) {
+    int key = chord_parse(default_bindings[i].chord);
+    if (key < 0 || keymap_index_of(key) >= 0) continue;
+    chord_name(key, chord, sizeof(chord));
+    fprintf(out, "%s = none\n", chord);
+    wrote++;
+  }
+  if (!wrote) fprintf(out, "\n# (none; molly's defaults are all in use)\n");
 }
 
 /* Print the parsed keymap as "chord<TAB>command" lines.
@@ -552,11 +753,18 @@ const struct command *keymap_lookup(int key) {
  * column. The first binding wins, which is why Backspace is listed before
  * Ctrl-H above. Returns 0 and leaves dst empty when nothing is bound. */
 int cmd_shortcut(const char *name, char *dst, size_t n) {
-  int i;
-  for (i = 0; i < keymap_n; i++) {
-    if (strcmp(keymap[i].cmd->name, name) == 0) {
-      chord_name(keymap[i].key, dst, n);
-      return 1;
+  int pass, i;
+  /* A binding from the configuration file is shown in preference to a default
+   * one, so a user who moved Save to F9 reads "F9" in the File menu even while
+   * Ctrl-S still works. Within a pass the first match wins, which is why
+   * Backspace is listed before Ctrl-H in the defaults. */
+  for (pass = 1; pass >= 0; pass--) {
+    for (i = 0; i < keymap_n; i++) {
+      if (keymap[i].user != pass) continue;
+      if (strcmp(keymap[i].cmd->name, name) == 0) {
+        chord_name(keymap[i].key, dst, n);
+        return 1;
+      }
     }
   }
   if (n) dst[0] = '\0';
@@ -582,7 +790,13 @@ void editor_process_key(int c) {
     return;
   }
 
-  const struct command *cmd = keymap_lookup(c);
+  /* A shifted key gets one chance at a binding of its own before falling back to
+   * the unshifted one. Nothing binds "shift-right", so Shift-Right lands on
+   * move.right with `shift` still set and extends the selection below; "shift-f3"
+   * is bound, so Shift-F3 never reaches search.next. */
+  const struct command *cmd = NULL;
+  if (shift) cmd = keymap_lookup(c | KEY_SHIFT);
+  if (cmd == NULL) cmd = keymap_lookup(c);
   int sel_move = (cmd != NULL && (cmd->flags & CMD_MOVEMENT));
   int res = 0;
 

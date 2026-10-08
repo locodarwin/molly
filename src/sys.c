@@ -19,6 +19,36 @@ void *xrealloc(void *p, size_t n) {
   return np;
 }
 
+/* mkdir -p: create `path` and any missing parent of it, 0700 for a directory
+ * molly makes on the user's behalf under their home. Returns 0 on success, or -1
+ * with errno set by whichever mkdir failed. An existing directory is success,
+ * which is the whole point of the -p; an existing *file* in the way is not, and
+ * comes back as EEXIST from the mkdir that found it.
+ *
+ * Writes into a copy, so the caller's string is not mutated -- a caller whose
+ * path is a string literal would otherwise be a crash rather than a bug. */
+int mkdir_p(const char *path) {
+  char buf[4096];
+  char *p;
+  if (path == NULL || *path == '\0') {
+    errno = EINVAL;
+    return -1;
+  }
+  if (snprintf(buf, sizeof(buf), "%s", path) >= (int)sizeof(buf)) {
+    errno = ENAMETOOLONG;
+    return -1;
+  }
+  /* Skip the leading slash so an absolute path does not try to mkdir "". */
+  for (p = buf + 1; *p != '\0'; p++) {
+    if (*p != '/') continue;
+    *p = '\0';
+    if (mkdir(buf, 0700) != 0 && errno != EEXIST) return -1;
+    *p = '/';
+  }
+  if (mkdir(buf, 0700) != 0 && errno != EEXIST) return -1;
+  return 0;
+}
+
 char *xstrdup(const char *s) {
   char *p = strdup(s);
   if (p == NULL) die("strdup");

@@ -37,6 +37,12 @@ int search_regex_is_on(void) {
   return search_use_regex;
 }
 
+/* The two search flags, set rather than toggled. The configuration file and the
+ * Find dialog's checkboxes both want to say what the flag *is* rather than flip
+ * it, and nothing outside this file should be reaching into the statics. */
+void search_set_case(int on) { search_case_sensitive = on ? 1 : 0; }
+void search_set_regex(int on) { search_use_regex = on ? 1 : 0; }
+
 void editor_toggle_regex(void) {
   search_use_regex = !search_use_regex;
   editor_set_status_message("Search is now %s", search_use_regex
@@ -413,8 +419,8 @@ static char *find_dialog(void) {
 
     if (d.pressed == FIND_FIND) {
       answer = xstrdup(widget_input_text(&w[FIND_FIELD]));
-      search_case_sensitive = w[FIND_CASE].on;
-      search_use_regex = w[FIND_REGEX].on;
+      search_set_case(w[FIND_CASE].on);
+      search_set_regex(w[FIND_REGEX].on);
     }
     done = 1;
   }

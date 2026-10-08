@@ -118,8 +118,25 @@ void enable_raw_mode(void) {
    * reflex of swiping text and middle-clicking it elsewhere stops working, because
    * molly receives those events instead. Most terminals still pass the gesture
    * through when Shift is held, which is the escape hatch, and the help screen says
-   * so. It becomes a setting when there is a configuration file to put it in. */
-  write_all(STDOUT_FILENO, "\x1b[?1002h\x1b[?1006h", 16);
+   * so. Which is also why it is a setting -- `[input] mouse = off` in mollyrc hands
+   * the gesture back to the terminal for good.
+   *
+   * Enabled here so that raw mode on its own still behaves as it always did; the
+   * configuration file turns it off afterwards if that is what it says. */
+  term_mouse_set(1);
+}
+
+/* Mouse reporting, on or off. Separate from raw mode because it is the one part
+ * of the terminal's state that a user gets to choose: see `[input] mouse`. */
+static int mouse_on;
+
+int term_mouse_is_on(void) { return mouse_on; }
+
+void term_mouse_set(int on) {
+  if (on == mouse_on) return;
+  mouse_on = on ? 1 : 0;
+  if (mouse_on) write_all(STDOUT_FILENO, "\x1b[?1002h\x1b[?1006h", 16);
+  else write_all(STDOUT_FILENO, "\x1b[?1006l\x1b[?1002l", 16);
 }
 
 int read_byte(unsigned char *c) {

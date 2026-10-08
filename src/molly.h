@@ -99,6 +99,22 @@ struct mouse_event {
 #define IS_ALT_KEY(k)    ((k) > ALT_KEY_BASE && (k) < ALT_KEY_BASE + 128)
 #define ALT_KEY_CHAR(k)  ((k) - ALT_KEY_BASE)
 
+/* Shift, as a bit on a key code, so that "shift-f3" is a chord the keymap can
+ * bind. It is a flag rather than a block of its own codes because Shift is only
+ * *distinguishable* on some keys: a terminal sends plain 'A' for Shift-A and the
+ * same byte for Ctrl-L and Ctrl-Shift-L, so there is nothing to bind there. The
+ * keys where it does arrive separately are the function keys and the navigation
+ * keys, and chord_parse refuses it anywhere else rather than accepting a binding
+ * that could never fire.
+ *
+ * Nothing in the input layer returns this bit. Shift still arrives out of band
+ * (input_last_key_had_shift), because a shifted *movement* extends a selection
+ * rather than running a different command; the dispatcher composes the two, by
+ * trying `key | KEY_SHIFT` first and the bare key second. That fallback is what
+ * keeps Shift-Right extending a selection while Shift-F3 is its own binding. */
+#define KEY_SHIFT        0x4000
+#define KEY_BASE(k)      ((k) & ~KEY_SHIFT)
+
 typedef struct erow {
   int size;
   int rsize;
@@ -519,6 +535,8 @@ void editor_row_insert_char(erow *row, int at, int c);
 void editor_row_insert_n(erow *row, int at, const char *s, size_t n);
 void editor_save(void);
 void editor_update_row(erow *row);
+int tab_width(void);
+void tab_width_set(int n);
 void saved_snapshot_free(void);
 void saved_snapshot_take(void);
 void write_recovery_file(void);
@@ -531,11 +549,29 @@ int chord_parse(const char *s);
 int cmd_count(void);
 int cmd_shortcut(const char *name, char *dst, size_t n);
 int help_entry_count(void);
+int keymap_bind(const char *chord, const char *cmdname, const char **err);
 void chord_name(int key, char *dst, size_t n);
 void editor_process_key(int c);
 void help_entry_at(int i, const char **group, char *key, size_t keysz, const char **desc);
+void keymap_cleanup(void);
 void keymap_dump(FILE *out);
 void keymap_init(void);
+void keymap_write_changes(FILE *out);
+
+/* config.c */
+const char *config_error_at(int i);
+const char *config_path(void);
+int config_error_count(void);
+int config_load(void);
+int config_write(const char *path, const char **err);
+int setting_count(void);
+int setting_get(const char *section, const char *name);
+void config_apply(void);
+void config_apply_keys(void);
+void config_cleanup(void);
+void config_defaults(void);
+void config_dump(FILE *out);
+void config_parse_text(const char *text, const char *origin);
 
 /* edit.c */
 void editor_del_char(void);
@@ -591,7 +627,9 @@ void init_editor(void);
 
 /* menu.c */
 int menu_bar_mouse(const struct layer *self, const struct mouse_event *ev);
+int menu_count(void);
 int menu_for_mnemonic(int ch);
+int menu_mnemonic_char(int i);
 int menu_is_open(void);
 int menu_open(int index);
 void menu_bar_draw(const struct layer *self);
@@ -625,6 +663,8 @@ void screen_sync_size(void);
 int search_case_is_on(void);
 int search_has_query(void);
 int search_regex_is_on(void);
+void search_set_case(int on);
+void search_set_regex(int on);
 void editor_find(void);
 void editor_find_next(void);
 void editor_find_prev(void);
@@ -646,6 +686,7 @@ void selection_row_rx(int filerow, int *out0, int *out1);
 
 /* sys.c */
 char *xstrdup(const char *s);
+int mkdir_p(const char *path);
 int write_all(int fd, const void *p0, size_t n);
 mode_t default_file_mode(void);
 void *xmalloc(size_t n);
@@ -657,7 +698,9 @@ _Noreturn void die(const char *s);
 int get_cursor_position(int *rows, int *cols);
 int get_window_size(int *rows, int *cols);
 int read_byte(unsigned char *c);
+int term_mouse_is_on(void);
 int term_take_winch(void);
+void term_mouse_set(int on);
 void disable_raw_mode(void);
 void enable_raw_mode(void);
 
@@ -697,6 +740,7 @@ void uc_free(struct uchange *u);
 void undo_group_begin(void);
 void undo_group_end(void);
 void undo_push(struct uchange *u);
+int undo_max_steps(void);
 void undo_set_max_steps(int n);
 
 /* utf8.c */

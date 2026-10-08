@@ -5,23 +5,18 @@
 #include "molly.h"
 
 void editor_cleanup(void) {
-  int i;
-  for (i = 0; i < row_count(); i++) editor_free_row(row_at(i));
-  free(B.row);
-  B.row = NULL;
-  B.numrows = 0;
-  B.rowcap = 0;
   free(E.clipboard);
   E.clipboard = NULL;
   E.clipsize = 0;
-  saved_snapshot_free();
   screen_cleanup();
   search_cleanup();
-  editor_free_undo_redo();
-  free(B.filename);
-  B.filename = NULL;
   keymap_cleanup();
   config_cleanup();
+  /* Every open buffer, with its rows, its saved snapshot and its undo history --
+   * which is what this function used to do by hand for the one buffer there was.
+   * After the frees above rather than before, because several of them still read
+   * through B, and B is the current view's buffer. */
+  buflist_cleanup();
   free(V.cursors);
   V.cursors = NULL;
   V.ncursors = 0;
@@ -30,26 +25,21 @@ void editor_cleanup(void) {
 }
 
 void init_editor(void) {
-  /* One view onto one buffer. Everything that reads rows goes through the view
-   * from here on, so a second buffer is a matter of pointing V.buf elsewhere. */
-  V.buf = &B;
+  /* The buffer list first, because it is what gives the view something to point
+   * at -- and B *is* the view's buffer, so until this runs there is no B to
+   * initialise. buf_new() sets a buffer's starting state, which is why the
+   * per-buffer assignments that used to be here are gone. */
+  buflist_init();
   theme_init();
   screen_init_layers();
   keymap_init();
   cursors_init();
   V.drowoff = 0;
   V.coloff = 0;
-  B.numrows = 0;
-  B.rowcap = 0;
-  B.row = NULL;
-  B.filename = NULL;
   E.statusmsg[0] = '\0';
   E.statusmsg_time = 0;
-  B.dirty = 0;
   E.clipboard = NULL;
   E.clipsize = 0;
-  B.eol_crlf = 0;
-  B.final_newline = 1;
   build_recovery_path();
 
   screen_init_size();

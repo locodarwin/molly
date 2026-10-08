@@ -1318,6 +1318,187 @@ static void test_mkdir_p(void) {
   }
 }
 
+/* ---- the buffer list ----------------------------------------------------- */
+
+/* The list is testable without a terminal because nothing in it draws: what it
+ * does is hold buffers, say which is current, and keep `V.buf` valid across
+ * every rearrangement. That last part is the whole risk in the design, and it
+ * is what most of these check -- a view pointing at freed or moved memory would
+ * not show up as a failed assertion in the editor, it would show up as a crash
+ * or as the wrong file's text, days later.
+ */
+static void test_buflist(void) {
+  printf("\nbuffers: the list\n");
+
+  buflist_init();
+  cursors_init();
+
+  check("a fresh editor has exactly one buffer", buf_count(), 1);
+  check("and the view is looking at it", V.buf == buf_at(0), 1);
+  check("which is the current one", buf_current(), 0);
+  check("it is unnamed", buf_at(0)->filename == NULL, 1);
+  check("and clean", buf_at(0)->dirty, 0);
+  /* A new file gets Unix endings and a trailing newline, so neither is the
+   * zero a memset would leave. */
+  check("a new buffer writes LF endings", buf_at(0)->eol_crlf, 0);
+  check("and ends with a newline", buf_at(0)->final_newline, 1);
+
+  /* Growing past the initial capacity is where an array of structs would have
+   * moved every buffer and left V.buf dangling. With pointers the address the
+   * view holds has to survive it, so the list is grown well past its first
+   * allocation and the pointer checked afterwards. */
+  {
+    struct buffer *first = buf_at(0);
+    int i;
+    for (i = 0; i < 40; i++) buf_new();
+    check("the list grows", buf_count(), 41);
+    check("and the first buffer has not moved", buf_at(0) == first, 1);
+    check("so the view still points at it", V.buf == first, 1);
+    check("and it is still the current one", buf_current(), 0);
+  }
+
+  /* Ids are unique and are not list indices. */
+  {
+    int i, clash = 0;
+    int j;
+    for (i = 0; i < buf_count(); i++)
+      for (j = i + 1; j < buf_count(); j++)
+        if (buf_at(i)->id == buf_at(j)->id) clash++;
+    check("every buffer has its own id", clash, 0);
+  }
+
+  buflist_cleanup();
+  check("cleanup empties the list", buf_count(), 0);
+  check("and leaves no view buffer", V.buf == NULL, 1);
+
+  printf("\nbuffers: closing\n");
+
+  /* Closing one that is not current must not disturb which buffer is current,
+   * even though the list shifts under it. */
+  buflist_init();
+  buf_new();
+  buf_new();
+  buf_show(1);
+  check("three buffers, the middle one current", buf_current(), 1);
+  {
+    struct buffer *mid = buf_at(1);
+    buf_close(0);
+    check("closing an earlier one leaves two", buf_count(), 2);
+    check("the current buffer is the same buffer", V.buf == mid, 1);
+    check("at its new index", buf_current(), 0);
+  }
+  buflist_cleanup();
+
+  /* Closing the current one moves to the next along. */
+  buflist_init();
+  buf_new();
+  buf_new();
+  buf_show(1);
+  {
+    struct buffer *third = buf_at(2);
+    buf_close(1);
+    check("closing the current one leaves two", buf_count(), 2);
+    check("and moves to the next along", V.buf == third, 1);
+    check("which is now the second", buf_current(), 1);
+  }
+  buflist_cleanup();
+
+  /* Closing the last one in the list has no next, so it moves back. */
+  buflist_init();
+  buf_new();
+  buf_show(1);
+  {
+    struct buffer *first = buf_at(0);
+    buf_close(1);
+    check("closing the last one moves back", V.buf == first, 1);
+    check("leaving one buffer", buf_count(), 1);
+  }
+  buflist_cleanup();
+
+  /* The only buffer is emptied rather than closed, because an editor with no
+   * buffer has nothing to draw and every caller would need a null check for a
+   * state the user cannot usefully be in. */
+  buflist_init();
+  {
+    char *name = xstrdup("/tmp/whatever.txt");
+    buf_at(0)->filename = name;
+    buf_at(0)->dirty = 1;
+    editor_insert_row(0, "some text", 9);
+    check("the only buffer has content", row_count(), 1);
+    buf_close(0);
+    check("closing it leaves one buffer, not none", buf_count(), 1);
+    check("the view still has somewhere to look", V.buf != NULL, 1);
+    check("it is empty", row_count(), 0);
+    check("unnamed", buf_at(0)->filename == NULL, 1);
+    check("and clean", buf_at(0)->dirty, 0);
+  }
+  buflist_cleanup();
+
+  /* An index nobody has is a no-op rather than a crash: the tab bar and the
+   * mouse both compute one, and a stale click should do nothing. */
+  buflist_init();
+  check("closing a buffer that does not exist is harmless",
+        buf_close(7), 0);
+  check("as is showing one", (buf_show(7), buf_current()), 0);
+  check("and asking for one", buf_at(-1) == NULL, 1);
+  buflist_cleanup();
+
+  printf("\nbuffers: finding and counting\n");
+
+  buflist_init();
+  buf_new();
+  buf_at(0)->filename = xstrdup("/tmp/one.txt");
+  buf_at(1)->filename = xstrdup("/tmp/two.txt");
+  check("a path that is open is found", buf_find_path("/tmp/two.txt"), 1);
+  check("one that is not is not", buf_find_path("/tmp/three.txt"), -1);
+  check("and neither is nothing", buf_find_path(NULL), -1);
+  check("no buffer is dirty yet", buf_dirty_count(), 0);
+  buf_at(1)->dirty = 1;
+  check("one is now", buf_dirty_count(), 1);
+  buf_at(0)->dirty = 1;
+  check("and then both", buf_dirty_count(), 2);
+  buflist_cleanup();
+
+  printf("\nbuffers: the remembered position\n");
+
+  /* Switching away and back returns to where the cursor was, which is the whole
+   * reason the position is kept on the buffer at all. */
+  buflist_init();
+  cursors_init();
+  buf_new();
+  buf_show(0);
+  editor_insert_row(0, "one", 3);
+  editor_insert_row(1, "two", 3);
+  editor_insert_row(2, "three", 5);
+  CUR.cy = 2;
+  CUR.cx = 4;
+  buf_show(1);
+  check("a buffer switched to starts at the top", CUR.cy, 0);
+  buf_show(0);
+  check("and switching back returns to the row", CUR.cy, 2);
+  check("and to the column", CUR.cx, 4);
+
+  /* Clamped on arrival, because the buffer can be edited or reloaded shorter
+   * while it is not the one being shown. */
+  buf_show(1);
+  while (row_count() > 0) editor_delete_row(0);
+  buf_show(0);
+  editor_delete_row(2);
+  editor_delete_row(1);
+  buf_show(1);
+  buf_show(0);
+  check("a remembered row past the end clamps", CUR.cy <= row_count(), 1);
+  check("and so does the column",
+        CUR.cy < row_count() ? CUR.cx <= row_at(CUR.cy)->size : CUR.cx == 0, 1);
+
+  buflist_cleanup();
+
+  /* Leave one buffer behind, because every test after this one expects an
+   * editor with somewhere to put text. */
+  buflist_init();
+  cursors_init();
+}
+
 int main(void) {
   test_loop_sources();
   test_wait_key_services_sources();
@@ -1333,6 +1514,7 @@ int main(void) {
   test_regex_limits();
   test_regex_expand();
   test_fit_cols();
+  test_buflist();
   test_chords();
   test_config_parse();
   test_config_keys();

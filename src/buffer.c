@@ -72,18 +72,33 @@ void editor_recompute_dirty(void) {
 
 
 void build_recovery_path(void) {
-  if (B.filename != NULL)
+  if (B.filename != NULL) {
     snprintf(B.recovery_path, sizeof(B.recovery_path), "%s.molly-recover",
         B.filename);
-  else
+  } else if (B.id == 0) {
     snprintf(B.recovery_path, sizeof(B.recovery_path), "molly-recover.%ld",
         (long)getpid());
+  } else {
+    /* An unnamed buffer has nothing to name its recovery file after but the
+     * process, and with more than one open that is no longer unique -- two
+     * scratch buffers would have written over each other's recovery data. The
+     * first keeps the plain name, which is what MANUAL.md documents and what a
+     * user who has only ever had one will see; the rest take their buffer id. */
+    snprintf(B.recovery_path, sizeof(B.recovery_path), "molly-recover.%ld-%d",
+        (long)getpid(), B.id);
+  }
 }
 
 /* Best effort, and safe to call from a signal handler: only open/write/fsync/
  * close and plain memory reads. Reading B.row while it is mid-mutation can at
  * worst drop or duplicate a few bytes, which beats losing the whole buffer. */
 void write_recovery_file(void) {
+  /* There may be no buffer at all yet. die() calls this on its way out, and an
+   * allocation failure while the buffer list itself is being built is exactly a
+   * case where it is reached before there is a buffer to recover -- B is the
+   * view's buffer, so reading it then dereferences NULL. The allocation-failure
+   * sweep caught this as a SIGSEGV on the first two allocations molly makes. */
+  if (V.buf == NULL) return;
   if (!B.dirty || B.recovery_path[0] == '\0') return;
   int fd = open(B.recovery_path,
       O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0600);

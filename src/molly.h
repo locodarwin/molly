@@ -199,6 +199,21 @@ struct buffer {
   int have_disk_mtime;
 
   char recovery_path[4096];
+
+  /* Small integer, unique among the buffers open at the time it was made. It is
+   * what keeps two unnamed buffers from sharing one recovery file, and it is not
+   * a list index: closing a buffer does not renumber the others. */
+  int id;
+
+  /* Where the cursor and the scroll were when this buffer was last shown, so
+   * that switching away and back returns to where you were rather than to the
+   * top of the file.
+   *
+   * View state kept on the buffer, which is the wrong home in principle and the
+   * right one in practice: it is a *remembered* position rather than a live
+   * view's, and when splits arrive each view keeps its own live position while
+   * this stays as what a view that opens the buffer fresh should start from. */
+  int last_cx, last_cy, last_drowoff, last_coloff;
 };
 
 /* One window onto a buffer. */
@@ -224,14 +239,41 @@ struct editorConfig {
   char statusmsg[128];
   time_t statusmsg_time;
   struct termios orig_termios;
+
+  /* The open buffers. See buflist.c.
+   *
+   * An array of *pointers* rather than of structs, and that is the one design
+   * decision in this list worth arguing: struct view holds a struct buffer *, so
+   * an array of structs would invalidate every view's pointer the moment the
+   * list grew past its capacity. With pointers a buffer's address is fixed for
+   * as long as it is open, closing one is a memmove of pointers rather than of
+   * buffers, and a view that is looking at a buffer keeps looking at it however
+   * the list is rearranged around it. */
+  struct buffer **bufs;
+  int nbufs, bufcap;
+  int next_buf_id;    /* the id the next buffer made will take */
 };
 
 
-/* The editor's state. One buffer and one view for now; the types are shaped so
- * that becomes a list without the rest of molly noticing. */
+/* The editor's state. One view for now; struct view is shaped so that becomes a
+ * list without the rest of molly noticing. */
 extern struct editorConfig E;
-extern struct buffer B;
 extern struct view V;
+
+/* The current buffer: whichever one the current view is looking at.
+ *
+ * This was a global struct of its own, and nearly two hundred references to
+ * `B.something` across the editor assumed there was only one. Making it the
+ * view's buffer rather than a buffer of its own is what let those references
+ * stay exactly as they were while the number of buffers stopped being one --
+ * and it is the correct definition for splits too, where "the current buffer"
+ * can only ever mean "the current view's".
+ *
+ * Code that owns the row array -- insert, delete, load, save -- still writes
+ * through this rather than taking a buffer argument. That is the same bet
+ * row_at() documents below: those are the functions the planned piece-table
+ * rewrite replaces anyway. */
+#define B (*V.buf)
 
 /* The cursor that scrolls the view and owns the status-bar position. Every
  * single-cursor code path uses this; a path that must act on all of them loops
@@ -517,6 +559,19 @@ struct abuf {
 #define ABUF_INIT {NULL, 0, 0}
 
 /* --- what each module offers the others ---------------------------- */
+
+/* buflist.c */
+int buf_close(int i);
+int buf_count(void);
+int buf_current(void);
+int buf_dirty_count(void);
+int buf_index_of(const struct buffer *b);
+int buf_find_path(const char *path);
+struct buffer *buf_at(int i);
+struct buffer *buf_new(void);
+void buf_show(int i);
+void buflist_cleanup(void);
+void buflist_init(void);
 
 /* buffer.c */
 int editor_fill_rows(FILE *fp);

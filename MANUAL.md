@@ -114,11 +114,13 @@ also on `F10` and in the menus, so nothing is lost either way.
 terminals send and a few swallow. `Alt-X` opens the command palette too, for
 exactly that reason.
 
-**The keymap is not configurable yet.** Every binding is already a line of text
-parsed at startup — which is the groundwork for a configuration file — but the
-file itself does not exist, so for now the bindings are what they are. `Ctrl-L`
-still repaints the screen and `Ctrl-T` still toggles case-sensitive search; the
-roadmap moves both to the CUA meanings when configuration arrives.
+**Every binding is remappable**, in the `[keys]` section of your
+[configuration](#configuration) file, except the eight `Alt`-letter menu titles.
+The bindings below are CUA, which is what most editors written in the last
+thirty years use: `Ctrl-A` selects everything, `Ctrl-L` selects the line,
+`Ctrl-T` transposes the two characters at the cursor, `F1` is help and
+`F3`/`Shift-F3` step through matches. If you have olly's keys in your fingers,
+`Ctrl-L = view.repaint` puts repaint back.
 
 ## The Menu Bar
 
@@ -273,7 +275,7 @@ end of a line joins the next line onto it.
 | `End` | Go to the end of the line |
 | `PgUp` / `PgDn` | Move up / down a screenful |
 | `Ctrl-G` | Go to a line number |
-| `Ctrl-L` | Repaint the screen |
+| `F5` | Repaint the screen |
 | `Ctrl-U` | Toggle the line-number gutter |
 
 Hold `Shift` while using the arrows, `Home`/`End`, or `PgUp`/`PgDn` to move the
@@ -289,7 +291,8 @@ adjusts to the new size as it happens, without needing a keypress first.
 
 ## Help Screen
 
-`Ctrl-?` opens a keyboard reference, in a framed dialog over the editor. It lays
+`F1` — or `Ctrl-?`, which still works — opens a keyboard reference, in a framed
+dialog over the editor. It lays
 out in two columns on a wide terminal and drops to a single column when the
 window is narrower, scrolling with the arrows, `PgUp`/`PgDn`, `Home`/`End` when
 the content is taller than the screen — which at 24 rows it now is, so expect to
@@ -369,7 +372,7 @@ around the end of the file, Molly just keeps going.
 `Space` ticks the checkbox that has the keyboard, or presses the button that has
 it. `Esc` closes the dialog without searching, and a click does whatever you
 clicked on. The checkboxes start from the current settings and are applied when
-you press Find, so cancelling changes nothing — `Ctrl-T` and `Alt-R` remain the
+you press Find, so cancelling changes nothing — `Search ▸ Match case` and `Alt-R` remain the
 way to change a setting without searching.
 
 Leaving the field empty and pressing Find repeats the last search, and the
@@ -383,20 +386,21 @@ row.
 | `Ctrl-F` `Enter` (empty field) | Repeat the last search forward |
 | `Tab` / `Shift-Tab` | Move between the field, the checkboxes and the buttons |
 | `Space` | Tick the checkbox, or press the button, that has the keyboard |
-| `Ctrl-N` | Find the next instance of the search term |
-| `Ctrl-P` | Find the previous instance of the search term |
-| `Ctrl-T` | Toggle case-sensitive search |
+| `F3` | Find the next instance of the search term |
+| `Shift-F3` | Find the previous instance of the search term |
+| `Ctrl-N` / `Ctrl-P` | The same two, for fingers that already know them |
 | `Alt-R` | Toggle regular-expression search |
 | `Esc` | Cancel the search prompt |
 
 The same term is remembered for the whole session, so you can keep tapping
-`Ctrl-N` / `Ctrl-P` to step through every occurrence. If there is no previous
+`F3` / `Shift-F3` to step through every occurrence. If there is no previous
 search, Molly tells you and asks you to press `Ctrl-F` again.
 
-Matching is case-insensitive by default. `Ctrl-T` toggles case-sensitive
+Matching is case-insensitive by default. The Find dialog's **Match case**
+checkbox — or `Search ▸ Match case` — turns on case-sensitive
 matching on or off at any time (not just while a search prompt is open); the
 status bar reports which mode is now active. The setting applies to `Ctrl-F`,
-`Ctrl-N`, `Ctrl-P`, and search-and-replace alike. The case-insensitive fold
+`F3`, `Shift-F3`, and search-and-replace alike. The case-insensitive fold
 covers ASCII `a`-`z` only — every other byte is compared as-is, so accented
 letters match only themselves. A match always spans whole characters: a
 query that would begin or end inside a UTF-8 character never matches, which
@@ -410,7 +414,7 @@ spaces never matches a tab. (To match a tab, use `\t` with `Alt-R` on — see
 
 `Alt-R` switches the search between plain text and a regular expression, and the
 status bar says which mode it is now in. The mode sticks until you switch it
-back, and it applies to `Ctrl-F`, `Ctrl-N`, `Ctrl-P` and `Ctrl-R` alike — the
+back, and it applies to `Ctrl-F`, `F3`, `Shift-F3` and `Ctrl-R` alike — the
 prompt says `Pattern:` rather than `Search:` so you can tell at a glance. It is
 also in the Search menu, with a tick when it is on.
 
@@ -477,7 +481,7 @@ replace just the next match (`n`) or every match in the file (`a`).
 
 A replace-all undoes and redoes as a single step, no matter how many
 occurrences it touched — one `Ctrl-Z` puts the whole file back exactly as it
-was. Replacement respects the current case-sensitivity setting (`Ctrl-T`) and
+was. Replacement respects the current case-sensitivity setting (**Match case**) and
 the current pattern setting (`Alt-R`).
 
 ### Groups in the replacement
@@ -631,19 +635,22 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     Ctrl-O   Open a file (directory browser)
     Ctrl-Q   Quit (asks several times if there are unsaved changes)
     Ctrl-F   Open the Find dialog (case-insensitive by default)
-    Ctrl-N   Find next instance of the search
-    Ctrl-P   Find previous instance of the search
-    Ctrl-T   Toggle case-sensitive search
+    F3       Find next instance of the search
+    Shift-F3 Find previous instance of the search
+    Ctrl-N/P The same two, for fingers that already know them
     Alt-R    Toggle regular-expression search
     Ctrl-R   Search and replace (next or all)
     Ctrl-G   Go to line
+    Ctrl-A   Select everything
+    Ctrl-L   Select the current line
     Ctrl-C   Copy the selection
     Ctrl-X   Cut the selection
     Ctrl-V   Paste the clipboard at the cursor
+    Ctrl-T   Swap the two characters at the cursor
     Ctrl-Z   Undo the last change
     Ctrl-Y   Redo an undone change
-    Ctrl-?   Show this help screen
-    Ctrl-L   Repaint the screen
+    F1       Show this help screen (Ctrl-? does the same)
+    F5       Repaint the screen
     Ctrl-U   Toggle the line-number gutter
     Tab      In a dialog: move to the next field, checkbox or button
     Shift-Tab  In a dialog: move back to the previous one

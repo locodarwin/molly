@@ -6,7 +6,7 @@ gamm║ ›                                                            ║
 ~   ║ Save                                                  Ctrl-S ║
 ~   ║ Open…                                                 Ctrl-O ║
 ~   ║ Quit                                                  Ctrl-Q ║
-~   ║ Keyboard help                                         Ctrl-? ║
+~   ║ Keyboard help                                             F1 ║
 ~   ║ Page up                                                 PgUp ║
 ~   ║ Page down                                               PgDn ║
 ~   ║ Left                                                    Left ║
@@ -18,7 +18,7 @@ gamm║ ›                                                            ║
 ~   ║ ↑↓ choose   Enter run   Esc cancel                           ║
 ~   ╚══════════════════════════════════════════════════════════════╝
 sample.txt - 3 lines                                         Ln 1, Col 1
-HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | Ctrl-N = next | Ct
+HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | F3 = next | F1 = h
 --- attrs ---
 gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 

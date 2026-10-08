@@ -1,14 +1,14 @@
 --- screen ---
  File  Edit  Search  View  Go  Help
-alpha       ┌──────────────────────────────┐
-beta        │  Find…                Ctrl-F │
-gamma       │  Find next            Ctrl-N │
-~           │  Find previous        Ctrl-P │
-~           │  Match case           Ctrl-T │
-~           │  Regular expression    Alt-R │
-~           ├──────────────────────────────┤
-~           │  Replace…             Ctrl-R │
-~           └──────────────────────────────┘
+alpha       ┌────────────────────────────────┐
+beta        │  Find…                  Ctrl-F │
+gamma       │  Find next                  F3 │
+~           │  Find previous        Shift-F3 │
+~           │  Match case                    │
+~           │  Regular expression      Alt-R │
+~           ├────────────────────────────────┤
+~           │  Replace…               Ctrl-R │
+~           └────────────────────────────────┘
 ~
 ~
 ~
@@ -17,16 +17,16 @@ sample.txt - 3 lines                                 Ln 2, Col 1
 Found
 --- attrs ---
 gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-............gggggggggggggggggggggggggggggggg
 ............gggggggggggggggggggggggggggggggggg
-............gggggggggggggggggggggggggggggggggg
-g...........gggggggggggggggggggggggggggggggggg
-g...........gggggggggggggggggggggggggggggggggg
-g...........gggggggggggggggggggggggggggggggggg
-g...........gggggggggggggggggggggggggggggggggg
-g...........gggggggggggggggggggggggggggggggggg
-g...........gggggggggggggggggggggggggggggggggg
-g.............gggggggggggggggggggggggggggggggg
+............gggggggggggggggggggggggggggggggggggg
+............gggggggggggggggggggggggggggggggggggg
+g...........gggggggggggggggggggggggggggggggggggg
+g...........gggggggggggggggggggggggggggggggggggg
+g...........gggggggggggggggggggggggggggggggggggg
+g...........gggggggggggggggggggggggggggggggggggg
+g...........gggggggggggggggggggggggggggggggggggg
+g...........gggggggggggggggggggggggggggggggggggg
+g.............gggggggggggggggggggggggggggggggggg
 g
 g
 g
@@ -34,16 +34,16 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 
 --- colors ---
 1: 0-11 7/0  12-19 15/4  20-63 7/0
-2: 12-43 7/8
-3: 12-12 7/8  13-42 15/4  43-43 7/8  44-45 8/0
-4: 12-12 7/8  13-42 15/8  43-43 7/8  44-45 8/0
-5: 0-0 8/-  12-12 7/8  13-42 15/8  43-43 7/8  44-45 8/0
-6: 0-0 8/-  12-12 7/8  13-42 15/8  43-43 7/8  44-45 8/0
-7: 0-0 8/-  12-12 7/8  13-42 15/8  43-43 7/8  44-45 8/0
-8: 0-0 8/-  12-43 7/8  44-45 8/0
-9: 0-0 8/-  12-12 7/8  13-42 15/8  43-43 7/8  44-45 8/0
-10: 0-0 8/-  12-43 7/8  44-45 8/0
-11: 0-0 8/-  14-45 8/0
+2: 12-45 7/8
+3: 12-12 7/8  13-44 15/4  45-45 7/8  46-47 8/0
+4: 12-12 7/8  13-44 15/8  45-45 7/8  46-47 8/0
+5: 0-0 8/-  12-12 7/8  13-44 15/8  45-45 7/8  46-47 8/0
+6: 0-0 8/-  12-12 7/8  13-44 15/8  45-45 7/8  46-47 8/0
+7: 0-0 8/-  12-12 7/8  13-44 15/8  45-45 7/8  46-47 8/0
+8: 0-0 8/-  12-45 7/8  46-47 8/0
+9: 0-0 8/-  12-12 7/8  13-44 15/8  45-45 7/8  46-47 8/0
+10: 0-0 8/-  12-45 7/8  46-47 8/0
+11: 0-0 8/-  14-47 8/0
 12: 0-0 8/-
 13: 0-0 8/-
 14: 0-0 8/-

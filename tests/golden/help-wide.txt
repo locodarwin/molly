@@ -6,13 +6,13 @@ ga║ FILES                                 EDITING                            �
 ~ ║   Ctrl-S         Save file              Enter          Insert new line   ║
 ~ ║   Ctrl-O         Open a file            Tab            Insert tab        ║
 ~ ║   Ctrl-Q         Quit                   Bksp/Ctrl-H    Delete before     ║
-~ ║   Ctrl-?         This help screen       Del            Delete at cursor  ║
-~ ║                                                                          ║
-~ ║ MENUS                                 FIND & REPLACE                     ║
-~ ║   F10            Open the menu bar      Ctrl-F         Find forward      ║
-~ ║   Alt-letter     Open that menu         Ctrl-N         Find next         ║
-~ ║   Ctrl-Space     Command palette        Ctrl-P         Find previous     ║
-~ ║   Shift+drag     Select with the t      Ctrl-T         Case sensitivity  ║
+~ ║   F1             This help screen       Del            Delete at cursor  ║
+~ ║                                         Ctrl-T         Swap characters   ║
+~ ║ MENUS                                                                    ║
+~ ║   F10            Open the menu bar    FIND & REPLACE                     ║
+~ ║   Alt-letter     Open that menu         Ctrl-F         Find forward      ║
+~ ║   Ctrl-Space     Command palette        F3             Find next         ║
+~ ║   Shift+drag     Select with the t      Shift-F3       Find previous     ║
 ~ ║                                         Alt-R          Pattern search    ║
 ~ ║ MOVEMENT                                Ctrl-R         Find & replace    ║
 ~ ║   Arrows         Move cursor                                             ║
@@ -22,7 +22,7 @@ ga║ FILES                                 EDITING                            �
 ~ ║ PgUp/PgDn scroll   any other key returns                                 ║
 ~ ╚══════════════════════════════════════════════════════════════════════════╝
 sample.txt - 3 lines                                                 Ln 1, Col 1
-HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | Ctrl-N = next | Ctrl-? = h
+HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | F3 = next | F1 = help
 --- attrs ---
 gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 

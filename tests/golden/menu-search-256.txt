@@ -1,32 +1,32 @@
 --- screen ---
  File  Edit  Search  View  Go  Help
-alpha       ┌──────────────────────────────┐
-beta        │  Find…                Ctrl-F │
-gamma       │  Find next            Ctrl-N │
-~           │  Find previous        Ctrl-P │
-~           │  Match case           Ctrl-T │
-~           │  Regular expression    Alt-R │
-~           ├──────────────────────────────┤
-~           │  Replace…             Ctrl-R │
-~           └──────────────────────────────┘
+alpha       ┌────────────────────────────────┐
+beta        │  Find…                  Ctrl-F │
+gamma       │  Find next                  F3 │
+~           │  Find previous        Shift-F3 │
+~           │  Match case                    │
+~           │  Regular expression      Alt-R │
+~           ├────────────────────────────────┤
+~           │  Replace…               Ctrl-R │
+~           └────────────────────────────────┘
 ~
 ~
 ~
 ~
 sample.txt - 3 lines                                 Ln 1, Col 1
-HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | Ctrl-N = n
+HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | F3 = next
 --- attrs ---
 gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-............gggggggggggggggggggggggggggggggg
 ............gggggggggggggggggggggggggggggggggg
-............gggggggggggggggggggggggggggggggggg
-g...........gggggggggggggggggggggggggggggggggg
-g...........gggggggggggggggggggggggggggggggggg
-g...........gggggggggggggggggggggggggggggggggg
-g...........gggggggggggggggggggggggggggggggggg
-g...........gggggggggggggggggggggggggggggggggg
-g...........gggggggggggggggggggggggggggggggggg
-g.............gggggggggggggggggggggggggggggggg
+............gggggggggggggggggggggggggggggggggggg
+............gggggggggggggggggggggggggggggggggggg
+g...........gggggggggggggggggggggggggggggggggggg
+g...........gggggggggggggggggggggggggggggggggggg
+g...........gggggggggggggggggggggggggggggggggggg
+g...........gggggggggggggggggggggggggggggggggggg
+g...........gggggggggggggggggggggggggggggggggggg
+g...........gggggggggggggggggggggggggggggggggggg
+g.............gggggggggggggggggggggggggggggggggg
 g
 g
 g
@@ -34,16 +34,16 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 
 --- colors ---
 1: 0-11 252/235  12-19 234/110  20-63 252/235
-2: 12-43 245/238
-3: 12-12 245/238  13-42 234/110  43-43 245/238  44-45 240/234
-4: 12-12 245/238  13-42 243/238  43-43 245/238  44-45 240/234
-5: 0-0 8/-  12-12 245/238  13-42 243/238  43-43 245/238  44-45 240/234
-6: 0-0 8/-  12-12 245/238  13-42 252/238  43-43 245/238  44-45 240/234
-7: 0-0 8/-  12-12 245/238  13-42 252/238  43-43 245/238  44-45 240/234
-8: 0-0 8/-  12-43 245/238  44-45 240/234
-9: 0-0 8/-  12-12 245/238  13-42 252/238  43-43 245/238  44-45 240/234
-10: 0-0 8/-  12-43 245/238  44-45 240/234
-11: 0-0 8/-  14-45 240/234
+2: 12-45 245/238
+3: 12-12 245/238  13-44 234/110  45-45 245/238  46-47 240/234
+4: 12-12 245/238  13-44 243/238  45-45 245/238  46-47 240/234
+5: 0-0 8/-  12-12 245/238  13-44 243/238  45-45 245/238  46-47 240/234
+6: 0-0 8/-  12-12 245/238  13-44 252/238  45-45 245/238  46-47 240/234
+7: 0-0 8/-  12-12 245/238  13-44 252/238  45-45 245/238  46-47 240/234
+8: 0-0 8/-  12-45 245/238  46-47 240/234
+9: 0-0 8/-  12-12 245/238  13-44 252/238  45-45 245/238  46-47 240/234
+10: 0-0 8/-  12-45 245/238  46-47 240/234
+11: 0-0 8/-  14-47 240/234
 12: 0-0 8/-
 13: 0-0 8/-
 14: 0-0 8/-

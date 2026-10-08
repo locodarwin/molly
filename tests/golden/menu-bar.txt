@@ -14,7 +14,7 @@ gamma
 ~
 ~
 sample.txt - 3 lines                                 Ln 1, Col 1
-HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | Ctrl-N = n
+HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | F3 = next
 --- attrs ---
 gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 

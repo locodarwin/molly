@@ -206,6 +206,23 @@ def main():
           files={"sample.txt": THREE_LINES})
     check("menu-bar-hidden-open", ["\x1bv", "m", "\x1b[21~"], rows=16, cols=64,
           files={"sample.txt": THREE_LINES})
+    # The Edit menu, which Select all and Select line joined. Nothing had
+    # captured it either -- the same gap the View menu had, and the reason both
+    # are here now: Cut and Copy are greyed out without a selection, so the
+    # dimming and the separator placement are only provable by snapshot.
+    check("menu-edit", ["\x1be"], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES})
+    # With a selection, so the three items that depend on one are live. This is
+    # the pair menu-search-disabled / menu-search-enabled already makes for the
+    # Search menu.
+    check("menu-edit-selected", ["\x1b[1;2C", "\x1b[1;2C", "\x1be"],
+          rows=16, cols=64, files={"sample.txt": THREE_LINES})
+    check("menu-edit-narrow", ["\x1be"], rows=12, cols=28,
+          files={"sample.txt": THREE_LINES})
+    check("menu-edit-256", ["\x1be"], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES},
+          env={"TERM": "xterm-256color"})
+
     # The View menu, which is where the ticks and Save Settings live: two checked
     # items whose state shows as a tick rather than as text, a separator above
     # and below Redraw, and an item that writes a file. Nothing captured this menu

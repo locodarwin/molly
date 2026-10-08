@@ -734,6 +734,16 @@ molly runs under `ulimit -v` and has to reach a clean quit.
   attached, and "molly behaves the same on every machine" is over. Mitigation:
   ship defaults that match today's behavior exactly, and make the file
   machine-writable from the Options dialogs rather than hand-edited.
+- **Landed:** the file, the parser, the settings table, write-back and the
+  `[keys]` section. Seven settings so far — tab width, undo steps, line numbers,
+  menu bar, mouse, match case, regular expression — each with its default in the
+  table and nowhere else, which is what made the menu bar and the mouse stop
+  declaring theirs twice. The test harness pins `MOLLY_CONFIG` empty so the
+  suite does not read the developer's own file.
+- **Still to come:** auto-indent and per-filetype defaults, which need
+  filetypes, and the Options dialogs, which are what write-back was built for.
+  Tabs-versus-spaces is not a setting yet: molly inserts a literal tab, and
+  "insert spaces instead" is an editing change rather than a rendering one.
 
 ### Shell filter — **IN**
 
@@ -879,7 +889,7 @@ F/R/G/Z/Y/C/X/V`, Shift-arrow selection). Four genuine conflicts:
 
 | Key | olly today | Fresh | Suggested resolution |
 | --- | --- | --- | --- |
-| `Ctrl-L` | repaint | select current line | Fresh wins; repaint → View menu / `Ctrl-Shift-L` |
+| `Ctrl-L` | repaint | select current line | Fresh wins; repaint → View menu / `F5` (see below) |
 | `Ctrl-T` | toggle case-sensitive search | transpose characters | Fresh wins; case becomes a **checkbox in the Find dialog**, which is better UI than a hidden toggle |
 | `Ctrl-N` | find next | — (`F3`) | `F3`/`Shift-F3` primary, keep `Ctrl-N/P` as aliases |
 | `Ctrl-?` | help | `F1` | `F1` primary, keep `Ctrl-?` |
@@ -892,6 +902,25 @@ Note that two of these resolutions *improve* the UI rather than trading it away
 — a Find dialog with a visible "Match case" checkbox is strictly better than
 `Ctrl-T` with a status-bar message.
 
+**`Ctrl-Shift-L` was not available**, which this table originally assumed it
+was. A terminal sends the same single byte for `Ctrl-Shift-L` as it does for
+`Ctrl-L`: the modifier parameter that carries Shift only rides on the CSI forms,
+which is the function keys and the navigation keys. So repaint went to `F5`
+instead — what every browser and file manager has used for "refresh" since the
+nineties — and keeps its View menu entry.
+
+The same limit decides where Shift can appear in a chord at all. `shift-f3` and
+`shift-right` are bindable; `shift-a` and `ctrl-shift-l` are refused at parse
+time rather than accepted and silently never fired. This is also why Shift stays
+out of band for movement: a shifted *movement* extends the selection, which is
+true of every movement at once rather than being a binding, so the dispatcher
+tries `key | KEY_SHIFT` first and the bare key second.
+
+Of the chords Fresh newly claims, only `Ctrl-A` (select all) is bound so far.
+`Ctrl-W` (select word), `Ctrl-K` (delete to end of line) and `Ctrl-/` (toggle
+comment) need commands that do not exist yet, and a chord bound before there is
+something to bind it to is how a keymap acquires entries nobody can explain.
+
 **Every binding is remappable**, and that is a requirement rather than a feature,
 because it decides the shape of the keymap code. It means:
 
@@ -901,13 +930,16 @@ because it decides the shape of the keymap code. It means:
   there is exactly one place a binding exists.
 - A chord needs a real representation — modifiers plus a key, including `F1`-`F12`,
   Alt-letter, and multi-key sequences like `Ctrl-K Ctrl-F` — with a parser and a
-  printer, because the config file writes them as text (`ctrl-shift-l`) and the
-  menus display them.
+  printer, because the config file writes them as text (`shift-f3`) and the
+  menus display them. **Done, except the multi-key sequences**, which would make
+  a chord a list rather than an int; nothing needs one yet.
 - Conflicts are data, not bugs: two commands can want one chord, so binding
   resolution needs a defined precedence (user config beats the built-in keymap)
   and the keybinding dialog has to show and resolve collisions.
 - Named keymaps, so an olly-compatible set can ship alongside the CUA default
-  and olly muscle memory is a config line rather than a fork.
+  and olly muscle memory is a config line rather than a fork. **Not done**, and
+  less urgent than it looked: `[keys]` in `mollyrc` makes olly's four keys four
+  lines, so a named set is a convenience rather than the only way back.
 
 The one thing *not* remappable is the eight Alt-letter menu titles, since those
 are structural to the menu bar.

@@ -27,10 +27,10 @@ Everything olly does, molly does. These all work today:
 - **Modeless editing**: type to insert, arrow keys to move, `Ctrl` keys act.
 - **Search, with a case-sensitivity toggle**, that wraps around the file and
   remembers the last term:
-  - `Ctrl-F` search, `Ctrl-N` next match, `Ctrl-P` previous match, or just
+  - `Ctrl-F` search, `F3` next match, `Shift-F3` previous match, or just
     press `Ctrl-F` again with an empty query to repeat.
-  - `Ctrl-T` toggles between case-insensitive (the default) and
-    case-sensitive matching.
+  - The Find dialog's **Match case** checkbox switches between
+    case-insensitive (the default) and case-sensitive matching.
 - **Search and replace**: `Ctrl-R` replaces the next match or every match,
   and a whole replace-all undoes or redoes as one step.
 - **Go to line**: `Ctrl-G` jumps straight to a line number.
@@ -63,7 +63,9 @@ Everything olly does, molly does. These all work today:
   changes are refused first).
 - **Dirty-quit protection**: when there are unsaved changes, `Ctrl-Q` asks
   several times before exiting (counted down in the status bar).
-- **Keyboard reference built in**: press `Ctrl-?` at any time.
+- **Keyboard reference built in**: press `F1` at any time.
+- **Configurable**: `~/.config/molly/mollyrc` holds the settings and the
+  keymap, and `View ▸ Save Settings` writes it for you.
 - No runtime dependencies. Compiles with any C11 compiler.
 
 ## Install
@@ -98,7 +100,7 @@ molly --version       # print the version and exit
 
 Edit immediately. Every key you type is inserted at the cursor. Save with
 `Ctrl-S`, search with `Ctrl-F`, select with `Shift` + the arrows, and press
-`Ctrl-?` for a key reference. Keep an eye on the status bar: it shows the file
+`F1` for a key reference. Keep an eye on the status bar: it shows the file
 name, line count, modified state, and the cursor as `Ln <line>, Col <column>`
 (plus a `Sel <bytes>` count while text is selected). The display — including the
 help screen, which reflows between one and two columns — resizes live as you
@@ -112,18 +114,19 @@ resize the terminal window.
 | `Ctrl-O` | Open a file (directory browser) |
 | `Ctrl-Q` | Quit (asks several times with unsaved changes) |
 | `Ctrl-F` | Search forward |
-| `Ctrl-N` | Find next match |
-| `Ctrl-P` | Find previous match |
-| `Ctrl-T` | Toggle case-sensitive search |
+| `F3` / `Shift-F3` | Find next / previous match (`Ctrl-N` / `Ctrl-P` too) |
 | `Ctrl-R` | Search and replace (next or all) |
 | `Ctrl-G` | Go to line |
+| `Ctrl-A` | Select everything |
+| `Ctrl-L` | Select the current line |
 | `Ctrl-C` | Copy selection |
 | `Ctrl-X` | Cut selection |
 | `Ctrl-V` | Paste at the cursor |
+| `Ctrl-T` | Swap the two characters at the cursor |
 | `Ctrl-Z` | Undo |
 | `Ctrl-Y` | Redo |
-| `Ctrl-?` | Help screen |
-| `Ctrl-L` | Repaint |
+| `F1` | Help screen (`Ctrl-?` too) |
+| `F5` | Repaint |
 | `Ctrl-U` | Toggle line-number gutter |
 | `Esc` | Cancel a prompt |
 | Arrows / `Home` / `End` / `PgUp` / `PgDn` | Move around |

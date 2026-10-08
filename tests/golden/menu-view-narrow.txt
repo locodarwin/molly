@@ -6,7 +6,7 @@
 │  Line numbers Ctrl-U │
 │✓ Menu bar            │
 ├──────────────────────┤
-│  Redraw       Ctrl-L │
+│  Redraw           F5 │
 ├──────────────────────┤
 │  Save settings       │
 └──────────────────────┘

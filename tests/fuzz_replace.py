@@ -48,7 +48,7 @@ N = int(os.environ.get("MOLLY_FUZZ_N", "40"))
 SEED = int(os.environ.get("MOLLY_FUZZ_SEED", "42"))
 SAVE = "\x13"
 QUIT = "\x11"
-TOGGLE_CASE = "\x14"
+TOGGLE_CASE = "\x1bsc"  # Search > Match case: the chord went to transpose
 REPLACE = "\x12"
 REGEX = "\x1br"
 

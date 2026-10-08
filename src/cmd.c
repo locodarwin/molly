@@ -132,6 +132,81 @@ static int cmd_line_end(void) {
   return 0;
 }
 
+/* Select the whole buffer. Every selection in molly is an anchor plus the live
+ * cursor, so this is two assignments and not a mode. */
+static int cmd_select_all(void) {
+  if (row_count() == 0) return 0;
+  CUR.sy = 0;
+  CUR.sx = 0;
+  CUR.cy = row_count() - 1;
+  CUR.cx = row_at(CUR.cy)->size;
+  CUR.sel_active = 1;
+  /* Without this the dispatcher clears the selection the moment this returns,
+   * which is what it does for every command that is not a movement. */
+  return CMD_KEEP_SELECTION;
+}
+
+/* Select the line the cursor is on, end to end. It does not take the newline
+ * with it, so Ctrl-L then Ctrl-X leaves an empty line rather than closing the
+ * gap -- which is what makes it useful for replacing a line's contents, and is
+ * the behaviour to revisit if "select line, extend by line" arrives. */
+static int cmd_select_line(void) {
+  if (CUR.cy >= row_count()) return 0;
+  CUR.sy = CUR.cy;
+  CUR.sx = 0;
+  CUR.cx = row_at(CUR.cy)->size;
+  CUR.sel_active = 1;
+  return CMD_KEEP_SELECTION;
+}
+
+/* Swap the character before the cursor with the one at it, and leave the cursor
+ * after both -- the transpose that Ctrl-T has meant for decades. At the end of a
+ * line there is nothing at the cursor, so it swaps the two characters before it
+ * instead, which is what makes it useful for the typo you have just finished
+ * typing.
+ *
+ * Built from the ordinary edit operations rather than from row surgery, so it
+ * gets their UTF-8 handling and their undo records for free; the group is what
+ * makes one Ctrl-Z undo the whole swap. A multibyte character is re-inserted a
+ * byte at a time, which the insert path coalesces back into one record. */
+static int cmd_transpose(void) {
+  erow *row;
+  int a, b, e, alen, slen, i;
+  char first[8];
+
+  if (CUR.cy >= row_count()) return 0;
+  row = row_at(CUR.cy);
+
+  if (CUR.cx >= row->size) {
+    if (row->size == 0) return 0;
+    b = utf8_prev(row->chars, row->size);
+    if (b == 0) return 0;            /* one character on the line: nothing to swap */
+    a = utf8_prev(row->chars, b);
+  } else {
+    if (CUR.cx == 0) return 0;       /* nothing before the cursor */
+    a = utf8_prev(row->chars, CUR.cx);
+    b = CUR.cx;
+  }
+  alen = b - a;
+  slen = utf8_char_bytes(row->chars, row->size, b);
+  e = b + slen;
+  if (alen <= 0 || alen > (int)sizeof(first)) return 0;
+  memcpy(first, row->chars + a, (size_t)alen);
+
+  undo_group_begin();
+  /* Locked so the delete cannot coalesce into whatever the last edit was and
+   * drag an unrelated keystroke into this group. */
+  B.undo.locked = 1;
+  CUR.cx = b;
+  editor_delete_char();              /* removes [a, b), leaving the cursor at a */
+  /* The second character now sits at a, so the first goes back in after it. */
+  CUR.cx = a + slen;
+  for (i = 0; i < alen; i++) editor_insert_char((unsigned char)first[i]);
+  undo_group_end();
+  (void)e;
+  return 0;
+}
+
 static int cmd_delete_back(void) {
   if (CUR.sel_active) selection_delete();
   else editor_delete_char();
@@ -239,6 +314,8 @@ static int cmd_resize(void) {
 
 static int have_selection(void) { return CUR.sel_active; }
 static int have_clipboard(void) { return E.clipboard != NULL && E.clipsize > 0; }
+static int have_rows(void) { return row_count() > 0; }
+static int on_a_row(void) { return CUR.cy < row_count(); }
 static int linenumbers_on(void) { return V.linenum; }
 static int menubar_on(void) { return V.menubar; }
 
@@ -276,6 +353,19 @@ static const struct command commands[] = {
   {.name = "edit.delete-forward", .label = "Delete",
    .help = "Delete at cursor", .group = "EDITING", .run = cmd_delete_forward},
   {.name = "edit.delete-back", .label = "Backspace", .run = cmd_delete_back},
+  {.name = "edit.transpose", .label = "Transpose characters",
+   /* The help column is 17 columns and truncates in silence, so this is written
+    * to fit it. "Swap the two characters at the cursor" came out as "Swap the
+    * two char". */
+   .help = "Swap characters", .group = "EDITING",
+   .run = cmd_transpose, .enabled = on_a_row},
+
+  {.name = "edit.select-all", .label = "Select all",
+   .help = "Select everything", .group = "SELECTION",
+   .run = cmd_select_all, .enabled = have_rows},
+  {.name = "edit.select-line", .label = "Select line",
+   .help = "Select this line", .group = "SELECTION",
+   .run = cmd_select_line, .enabled = on_a_row},
 
   {.name = "search.find", .label = "Find…",
    .help = "Find forward", .group = "FIND & REPLACE", .run = cmd_find},
@@ -532,17 +622,39 @@ void chord_name(int key, char *dst, size_t n) {
 /* ---- the keymap ---------------------------------------------------------- */
 
 /* The default bindings, as text, parsed at startup. Several chords may share one
- * command: Backspace and Ctrl-H both delete backwards.
+ * command: Backspace and Ctrl-H both delete backwards, and where that happens the
+ * first one listed is the one the menus and the help screen print.
  *
- * These are olly's bindings unchanged. The CUA moves the roadmap settles on --
- * Ctrl-L for select-line, Ctrl-T for transpose, match-case as a checkbox in the
- * Find dialog -- are feature work, not Phase 0. */
+ * CUA, which resolves the four places olly disagreed with it:
+ *
+ *   Ctrl-L  was repaint, is select-line. Repaint keeps the View menu and gains
+ *           F5, which is what every browser and file manager has used for
+ *           "refresh" since the nineties.
+ *   Ctrl-T  was toggle-case-sensitive, is transpose. Case is a checkbox in the
+ *           Find dialog now, which is better UI than a hidden toggle with a
+ *           status-bar message, so the command keeps its menu entry and loses
+ *           its chord.
+ *   Ctrl-N  was find-next, still is; F3 and Shift-F3 become the primary pair and
+ *           Ctrl-N / Ctrl-P stay as aliases.
+ *   Ctrl-?  was help, still is; F1 becomes primary.
+ *
+ * The roadmap suggested moving repaint to Ctrl-Shift-L. That is not available:
+ * a terminal sends the same single byte for Ctrl-Shift-L as for Ctrl-L, so the
+ * binding could never have fired. F5 instead -- see ROADMAP.md section 6.
+ *
+ * Ctrl-A for select-all is the one CUA binding whose absence would have been
+ * conspicuous. Ctrl-W (select word), Ctrl-K (delete to end of line) and Ctrl-/
+ * (toggle comment) are free and still unbound: they need commands that do not
+ * exist yet, and binding a chord before there is something to bind it to is how
+ * a keymap acquires entries nobody can explain. */
 struct binding { const char *chord; const char *cmd; };
 
 static const struct binding default_bindings[] = {
   {"ctrl-s", "file.save"},
   {"ctrl-o", "file.open"},
   {"ctrl-q", "file.quit"},
+  /* F1 first, so it is the one the menus and the help screen print. */
+  {"f1",     "view.help"},
   {"ctrl-?", "view.help"},
 
   {"enter",  "edit.newline"},
@@ -555,11 +667,17 @@ static const struct binding default_bindings[] = {
   {"ctrl-c", "edit.copy"},
   {"ctrl-x", "edit.cut"},
   {"ctrl-v", "edit.paste"},
+  {"ctrl-a", "edit.select-all"},
+  {"ctrl-l", "edit.select-line"},
+  {"ctrl-t", "edit.transpose"},
 
   {"ctrl-f", "search.find"},
-  {"ctrl-n", "search.next"},
-  {"ctrl-p", "search.prev"},
-  {"ctrl-t", "search.case"},
+  /* F3 first for the same reason F1 is: it is what gets printed. Shift-F3 is the
+   * binding that the Shift-in-a-chord work was for. */
+  {"f3",       "search.next"},
+  {"shift-f3", "search.prev"},
+  {"ctrl-n",   "search.next"},
+  {"ctrl-p",   "search.prev"},
   {"alt-r",  "search.regex"},
   {"ctrl-r", "search.replace"},
   {"ctrl-g", "goto.line"},
@@ -573,7 +691,7 @@ static const struct binding default_bindings[] = {
   {"pageup", "move.page-up"},
   {"pagedown", "move.page-down"},
 
-  {"ctrl-l", "view.repaint"},
+  {"f5",     "view.repaint"},
   {"ctrl-u", "view.line-numbers"},
 
   /* The palette, on two chords. Ctrl-Space is the one the roadmap settles on, and
@@ -879,16 +997,22 @@ static const struct help_entry help_entries[] = {
   {"SELECTION",  "Shift+Arrows",   "Extend selection", NULL},
   {NULL,         "Shift+Home/End", "To line edge",     NULL},
   {NULL,         "Shift+PgUp/Dn",  "Extend by page",   NULL},
+  {NULL,         NULL,             NULL,               "edit.select-all"},
+  {NULL,         NULL,             NULL,               "edit.select-line"},
 
   {"EDITING",    NULL,          NULL,           "edit.newline"},
   {NULL,         "Tab",         "Insert tab",   NULL},
   {NULL,         "Bksp/Ctrl-H", "Delete before", NULL},
   {NULL,         NULL,          NULL,           "edit.delete-forward"},
+  {NULL,         NULL,          NULL,           "edit.transpose"},
 
   {"FIND & REPLACE", NULL, NULL, "search.find"},
   {NULL,             NULL, NULL, "search.next"},
   {NULL,             NULL, NULL, "search.prev"},
-  {NULL,             NULL, NULL, "search.case"},
+  /* Match case is not here any more. It lost its chord to transpose, and it is a
+   * checkbox in the Find dialog now -- so on a screen whose left column is a key,
+   * it rendered as a blank key beside a description, which reads as a bug. It is
+   * still in the Search menu and in the palette. */
   {NULL,             NULL, NULL, "search.regex"},
   {NULL,             NULL, NULL, "search.replace"},
 

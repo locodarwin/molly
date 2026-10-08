@@ -6,7 +6,7 @@ ga║ FILES                                      ║
 ~ ║   Ctrl-S         Save file                 ║
 ~ ║   Ctrl-O         Open a file               ║
 ~ ║   Ctrl-Q         Quit                      ║
-~ ║   Ctrl-?         This help screen          ║
+~ ║   F1             This help screen          ║
 ~ ║                                            ║
 ~ ║ MENUS                                      ║
 ~ ║   F10            Open the menu bar         ║

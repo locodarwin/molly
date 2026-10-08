@@ -31,7 +31,7 @@ SAVE = "\x13"
 UNDO = "\x1a"
 REDO = "\x19"
 GOTO = "\x07"
-TOGGLE_CASE = "\x14"
+TOGGLE_CASE = "\x1bsc"  # Search > Match case: the chord went to transpose
 REGEX = "\x1br"  # Alt-R: read the query as a pattern
 REPLACE = "\x12"
 FAILURES = []
@@ -246,7 +246,7 @@ def test_search(tmpdir):
 
 
 def test_case_sensitive_search(tmpdir):
-    print("\nsearch: Ctrl-T toggles case-sensitive matching")
+    print("\nsearch: Search > Match case toggles case-sensitive matching")
     path = os.path.join(tmpdir, "cs.txt")
 
     def find(body, keys):
@@ -365,7 +365,7 @@ def test_replace(tmpdir):
           edit(tmpdir, "Cat cat CAT\n",
                [REPLACE, "cat", "\r", "dog", "\r", "a", "\r", SAVE]),
           "dog dog dog\n")
-    check("the Ctrl-T case-sensitivity toggle is honored by replace",
+    check("the case-sensitivity setting is honored by replace",
           edit(tmpdir, "Cat cat CAT\n",
                [TOGGLE_CASE, REPLACE, "cat", "\r", "dog", "\r", "a", "\r",
                 SAVE]),
@@ -464,7 +464,7 @@ def test_regex_search(tmpdir):
           ("1", "4"))
     check("a pattern matches regardless of case by default",
           go("ABC\n", [REGEX, "\x06", "[a-z]+", "\r"])[0], "Found")
-    check("and Ctrl-T applies to a pattern too",
+    check("and Match case applies to a pattern too",
           go("ABC\n", [REGEX, TOGGLE_CASE, "\x06", "[a-z]+", "\r"])[0]
           .startswith("Not found"), True)
 
@@ -586,12 +586,12 @@ def test_find_dialog(tmpdir):
           False)
 
     # Tab moves the focus, Space ticks what it lands on, and Find commits both
-    # settings -- which is checked by asking Ctrl-T afterwards what it toggled
+    # settings -- which is checked by toggling afterwards and reading what it said
     # *from*.
     check("Tab and Space tick Match case, and Find commits it",
           go("ALPHA\n", ["\x06", "alpha", "\t", " ", "\r"])[0]
           .startswith("Not found"), True)
-    check("which Ctrl-T then toggles back off",
+    check("which the menu item then toggles back off",
           go("ALPHA\n", ["\x06", "alpha", "\t", " ", "\r", TOGGLE_CASE])[0],
           "Search is now case-insensitive")
     check("cancelling commits nothing",
@@ -1037,7 +1037,7 @@ def test_selection_highlight(tmpdir):
           "\x1b[7mabc\x1b[27md" in sel, True)
 
     # With no selection there is no reverse-video reset anywhere in the stream.
-    plain = raw("abcd\n", ["\x0c"])  # Ctrl-L = full repaint
+    plain = raw("abcd\n", ["\x1b[15~"])  # F5 = full repaint (Ctrl-L selects a line now)
     check("no highlight without a selection", "\x1b[27m" in plain, False)
 
     # A multi-line selection highlights the top row's tail and the next row's
@@ -1208,11 +1208,18 @@ def test_help(tmpdir):
     wide = out(cols=80)
     check("help has a title", "Keyboard Reference" in wide, True)
     # Every keybinding and group heading must be documented somewhere.
+    #
+    # The chords listed are the ones the help screen *prints*, which is the first
+    # binding of each command -- so F1 rather than Ctrl-?, and F3 / Shift-F3
+    # rather than Ctrl-N / Ctrl-P. Those three still work; they are aliases, and
+    # a key reference that showed every alias would be twice as long for no
+    # extra information.
     for token in ["FILES", "MOVEMENT", "SELECTION", "EDITING",
                   "FIND & REPLACE", "CLIPBOARD", "HISTORY", "VIEW",
-                  "Ctrl-S", "Ctrl-Q", "Ctrl-?", "Ctrl-G", "Ctrl-F", "Ctrl-N",
-                  "Ctrl-P", "Ctrl-T", "Ctrl-R", "Ctrl-Z", "Ctrl-Y", "Ctrl-C",
-                  "Ctrl-X", "Ctrl-V", "Ctrl-L", "Ctrl-U", "Shift+Arrows", "PgUp/PgDn",
+                  "Ctrl-S", "Ctrl-Q", "F1", "Ctrl-G", "Ctrl-F", "F3",
+                  "Shift-F3", "Ctrl-T", "Ctrl-R", "Ctrl-Z", "Ctrl-Y", "Ctrl-C",
+                  "Ctrl-X", "Ctrl-V", "Ctrl-A", "Ctrl-L", "F5", "Ctrl-U",
+                  "Shift+Arrows", "PgUp/PgDn",
                   "Home/End", "Bksp/Ctrl-H", "Enter accepts", "Esc cancels"]:
         check("help lists %s" % token, token in wide, True)
 
@@ -2044,7 +2051,7 @@ def test_command_table(tmpdir):
 
     shown = help_text(["\x1f"]) + help_text(["\x1f", "\x1b[6~"])
     check("help shows the bound chord for save", "Ctrl-S" in shown, True)
-    check("help shows the bound chord for help", "Ctrl-?" in shown, True)
+    check("help shows the bound chord for help", "F1" in shown, True)
     check("help shows the bound chord for go to line", "Ctrl-G" in shown, True)
     check("help shows the bound chord for the palette",
           "Ctrl-Space" in shown, True)
@@ -2281,6 +2288,152 @@ def test_save_settings(tmpdir):
           any("Could not save settings" in m for m in status_lines(out)), True)
 
 
+# ----------------------------------------------------------- CUA keymap ----
+
+def test_cua_keymap(tmpdir):
+    """The four bindings olly disagreed with CUA on, and the three commands the
+    resolutions needed.
+
+    Each of these is a key that used to do something else, so each one is two
+    checks: that the new meaning works, and that the old meaning has gone from
+    that key rather than lingering alongside it.
+    """
+    print("\nCUA keymap: the keys that moved")
+
+    body = "alpha\nbeta\ngamma\n"
+    path = os.path.join(tmpdir, "cua.txt")
+    with open(path, "w") as fh:
+        fh.write(body)
+
+    def screen_of(out, rows=24, cols=80):
+        scr = Screen(rows, cols)
+        scr.feed(out)
+        return scr.text()
+
+    def status_row(out, rows=24, cols=80):
+        return screen_of(out, rows, cols)[rows - 2]
+
+    # F1 is help now; Ctrl-? still is.
+    out = run([MOLLY, path], ["\x1b[11~"])
+    check("F1 opens the help screen",
+          any("Keyboard" in line or "FILES" in line for line in screen_of(out)),
+          True)
+    out = run([MOLLY, path], ["\x1f"])
+    check("and Ctrl-? still does",
+          any("Keyboard" in line or "FILES" in line for line in screen_of(out)),
+          True)
+    check("with F1 the key the help screen prints",
+          any(re.search(r"\bF1\b", line) for line in screen_of(out)), True)
+
+    # F3 and Shift-F3 are find next and previous. The file is one match per
+    # line on purpose: searching a file where a letter appears twice on one line
+    # makes "the next match" a statement about columns rather than about the
+    # binding, which is not what is being tested here.
+    marks = os.path.join(tmpdir, "marks.txt")
+    with open(marks, "w") as fh:
+        fh.write("x one\nx two\nx three\n")
+
+    def find_then(keys):
+        return run([MOLLY, marks], ["\x06", "x", "\r"] + keys)
+
+    out = find_then([])
+    check("a search lands on the first match", "Ln 1" in status_row(out), True)
+    out = find_then(["\x1b[13~"])
+    check("F3 finds the next match", "Ln 2" in status_row(out), True)
+    out = find_then(["\x1b[13~", "\x1b[13~"])
+    check("and again the one after that", "Ln 3" in status_row(out), True)
+    out = find_then(["\x1b[13~", "\x1b[1;2R"])
+    check("Shift-F3 finds the previous one", "Ln 1" in status_row(out), True)
+    out = find_then(["\x0e"])
+    check("Ctrl-N is still an alias for next", "Ln 2" in status_row(out), True)
+    out = find_then(["\x1b[13~", "\x10"])
+    check("and Ctrl-P for previous", "Ln 1" in status_row(out), True)
+
+    # F5 is repaint, which Ctrl-L used to be. A repaint is invisible by nature,
+    # so what is checked is that the binding reached the command: the View menu
+    # prints the chord for view.repaint down its right-hand side, and it has to
+    # be F5 now. (The help screen would do too, but VIEW is below the fold at 24
+    # rows, and scrolling it here would be testing the help screen.)
+    out = run([MOLLY, path], ["\x1bv"])
+    check("the View menu prints F5 for Redraw",
+          any("Redraw" in line and "F5" in line for line in screen_of(out)),
+          True)
+    check("and no longer Ctrl-L",
+          any("Redraw" in line and "Ctrl-L" in line
+              for line in screen_of(out)), False)
+
+    print("\nCUA keymap: select all, select line, transpose")
+
+    # Ctrl-A selects the whole buffer: 17 bytes of text plus the two internal
+    # line breaks that selection_bytes counts.
+    # 16, not 17: the three rows are 14 characters and the two line breaks
+    # between them count one each, but the newline that ends the file is past
+    # the end of the last row and so is not inside the selection.
+    out = run([MOLLY, path], ["\x01"])
+    check("Ctrl-A selects the whole file", "Sel 16" in status_row(out), True)
+    check("and leaves the cursor at the end", "Ln 3, Col 6" in status_row(out),
+          True)
+
+    # Ctrl-L selects the line, which is what it does instead of repainting.
+    out = run([MOLLY, path], ["\x1b[B", "\x0c"])
+    check("Ctrl-L selects the current line", "Sel 4" in status_row(out), True)
+    check("and the cursor lands at the end of it",
+          "Ln 2, Col 5" in status_row(out), True)
+
+    # Selecting then cutting is the point of both, so check one end to end.
+    # A newline, not nothing: the same fact as the 16 above. The selection stops
+    # at the end of the last row, so what is left is one empty line, and molly
+    # preserves the trailing newline the file was loaded with.
+    check("Ctrl-A then Ctrl-X empties the file",
+          edit(tmpdir, body, ["\x01", "\x18", SAVE], name="cut-all.txt"), "\n")
+    check("Ctrl-L then Ctrl-X empties the line",
+          edit(tmpdir, body, ["\x0c", "\x18", SAVE], name="cut-line.txt"),
+          "\nbeta\ngamma\n")
+
+    # Ctrl-T transposes, which is what it does instead of toggling case
+    # sensitivity -- that is a checkbox in the Find dialog now.
+    check("Ctrl-T swaps the characters around the cursor",
+          edit(tmpdir, "ab\n", ["\x1b[C", "\x14", SAVE], name="t1.txt"), "ba\n")
+    check("at the end of a line it swaps the last two",
+          edit(tmpdir, "ab\n", ["\x1b[F", "\x14", SAVE], name="t2.txt"), "ba\n")
+    check("in the middle of a word it swaps across the cursor",
+          edit(tmpdir, "abcd\n", ["\x1b[C", "\x1b[C", "\x14", SAVE], name="t3.txt"),
+          "acbd\n")
+    check("and leaves the cursor after both",
+          edit(tmpdir, "abcd\n", ["\x1b[C", "\x1b[C", "\x14", "X", SAVE],
+               name="t4.txt"), "acbXd\n")
+    check("at the start of a line it does nothing",
+          edit(tmpdir, "ab\n", ["\x14", SAVE], name="t5.txt"), "ab\n")
+    check("on a one-character line it does nothing",
+          edit(tmpdir, "a\n", ["\x1b[F", "\x14", SAVE], name="t6.txt"), "a\n")
+    check("on the phantom row past the end it does nothing",
+          edit(tmpdir, "ab\n", ["\x1b[B", "\x14", SAVE], name="t7.txt"), "ab\n")
+    check("one Ctrl-Z undoes the whole swap",
+          edit(tmpdir, "abcd\n", ["\x1b[C", "\x14", "\x1a", SAVE], name="t8.txt"),
+          "abcd\n")
+    check("a multibyte character transposes whole",
+          edit_bytes(tmpdir, b"a\xc3\xa9b\n", ["\x1b[C", "\x14", SAVE],
+                     name="t9.txt"), b"\xc3\xa9ab\n")
+    check("and so does one on the other side of the cursor",
+          edit_bytes(tmpdir, b"\xc3\xa9ab\n", ["\x1b[C", "\x14", SAVE],
+                     name="t10.txt"), b"a\xc3\xa9b\n")
+
+    # Ctrl-T must no longer toggle the search's case sensitivity. If it still
+    # did, this would say so on the message bar.
+    out = run([MOLLY, path], ["\x14"])
+    check("Ctrl-T no longer toggles case sensitivity",
+          any("case" in m.lower() for m in status_lines(out)), False)
+
+    # Match case keeps its menu entry and its checkbox; only the chord went.
+    out = run([MOLLY, path], ["\x1bs"])
+    check("Match case is still in the Search menu",
+          any("Match case" in line for line in screen_of(out)), True)
+    out = run([MOLLY, path], ["\x1bs"])
+    check("and shows no chord beside it now",
+          any("Match case" in line and "Ctrl-T" in line
+              for line in screen_of(out)), False)
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -2328,6 +2481,7 @@ def main():
         test_undo_cap(tmpdir)
         test_config(tmpdir)
         test_save_settings(tmpdir)
+        test_cua_keymap(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

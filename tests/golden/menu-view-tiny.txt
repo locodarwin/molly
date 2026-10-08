@@ -1,0 +1,48 @@
+--- screen ---
+ File  Edit  Searc
+┌────────────────┐
+│  Command palet │
+├────────────────┤
+│  Line numbers  │
+│✓ Menu bar      │
+├────────────────┤
+│  Redraw        │
+├────────────────┤
+│  Save settings │
+└────────────────┘
+HELP: Ctrl-S = sav
+--- attrs ---
+gggggggggggggggggg
+gggggggggggggggggg
+gggggggggggggggggg
+gggggggggggggggggg
+gggggggggggggggggg
+gggggggggggggggggg
+gggggggggggggggggg
+gggggggggggggggggg
+gggggggggggggggggg
+gggggggggggggggggg
+gggggggggggggggggg
+..gggggggggggggggg
+--- colors ---
+1: 0-17 7/0
+2: 0-17 7/8
+3: 0-0 7/8  1-16 15/4  17-17 7/8
+4: 0-17 7/8
+5: 0-0 7/8  1-16 15/8  17-17 7/8
+6: 0-0 7/8  1-16 15/8  17-17 7/8
+7: 0-17 7/8
+8: 0-0 7/8  1-16 15/8  17-17 7/8
+9: 0-17 7/8
+10: 0-0 7/8  1-16 15/8  17-17 7/8
+11: 0-17 7/8
+12: 2-17 8/0
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u
+3: 3-3 u
+5: 3-3 u
+6: 3-3 u
+8: 3-3 u
+10: 3-3 u
+--- cursor ---
+row 2 col 1 visible 0

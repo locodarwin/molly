@@ -747,6 +747,7 @@ void undo_set_max_steps(int n);
 int utf8_char_bytes(const char *s, int size, int i);
 int utf8_char_cols(const char *s, int size, int i, int *nbytes);
 int utf8_col_to_byte(const char *s, int col);
+int utf8_fit_cols(const char *s, int cols, int *out_cols);
 int utf8_is_cont(unsigned char c);
 int utf8_prev(const char *s, int i);
 int utf8_str_cols(const char *s);

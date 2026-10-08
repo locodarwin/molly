@@ -234,15 +234,25 @@ def main():
     # With both of its ticks on, so the tick column is proved rather than assumed.
     check("menu-view-checked", ["\x15", "\x1bv"], rows=16, cols=64,
           files={"sample.txt": THREE_LINES})
-    # Narrow, which is where a drop-down wider than the terminal would show.
+    # Narrow, which is where a drop-down wider than the terminal shows. There are
+    # two of these because there are two ways the box can be squeezed, and they
+    # look nothing alike: at 24 columns the labels are cut and the shortcuts stay
+    # aligned down the right, and at 18 there is no label worth reading left
+    # beside a shortcut, so the shortcut column goes entirely and the labels get
+    # the whole interior.
     #
-    # This snapshot records a defect rather than endorsing it: at 24 columns the
-    # first item comes out as "Command pCtrl-Space", because a truncated label
-    # runs straight into the shortcut column with no gap between them. It is
-    # older than this menu and belongs to menu.c's drawing rather than to
-    # anything here, so it is pinned as it is -- when the truncation is fixed,
-    # this snapshot is expected to change and the diff is the point.
+    # Both used to be broken in the same way -- the box was clamped, the label was
+    # drawn in full anyway, and the shortcut was painted over its tail, so the
+    # first item read "Command pCtrl-Space". What these pin now is a gap between
+    # the two columns at every width, and a column of padding before the right
+    # border so a squeezed label does not look like it has broken out of the box.
     check("menu-view-narrow", ["\x1bv"], rows=12, cols=24,
+          files={"sample.txt": THREE_LINES})
+    check("menu-view-tiny", ["\x1bv"], rows=12, cols=18,
+          files={"sample.txt": THREE_LINES})
+    # The Search menu is the one with the widest shortcut (Shift-F3), so it is
+    # where the squeeze starts earliest.
+    check("menu-search-narrow", ["\x1bs"], rows=14, cols=30,
           files={"sample.txt": THREE_LINES})
     # And at 256 colours, where the band is a shade darker than a drop-down.
     check("menu-view-256", ["\x1bv"], rows=16, cols=64,

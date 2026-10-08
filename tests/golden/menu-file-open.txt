@@ -1,10 +1,10 @@
 --- screen ---
  File  Edit  Search  View  Go  Help
 ┌─────────────────┐
-│  Open…   Ctrl-O │
-│  Save    Ctrl-S │
+│  Open…          │
+│  Save           │
 ├─────────────────┤
-│  Quit    Ctrl-Q │
+│  Quit           │
 └─────────────────┘
 ~
 ~

@@ -829,6 +829,50 @@ static void test_regex_expand(void) {
   rx_sub("a", "a", "trailing\\", "E:the replacement ends with a backslash");
 }
 
+/* ---- fitting text to a column budget ------------------------------------ */
+
+/* utf8_fit_cols exists because utf8_col_to_byte is the wrong tool for
+ * truncating: it stops at or just *past* a column, so a double-width glyph
+ * straddling the limit comes back included. Every case below with a wide
+ * character in it is one where the two functions differ, which is the whole
+ * reason for the second one. */
+static void check_fit(const char *s, int cols, int want_bytes, int want_cols) {
+  char label[128];
+  int got_cols = -1;
+  int got = utf8_fit_cols(s, cols, &got_cols);
+  snprintf(label, sizeof(label), "utf8_fit_cols(\"%s\", %d) bytes", s, cols);
+  check(label, got, want_bytes);
+  snprintf(label, sizeof(label), "utf8_fit_cols(\"%s\", %d) cols", s, cols);
+  check(label, got_cols, want_cols);
+}
+
+static void test_fit_cols(void) {
+  printf("\nutf8: fitting a string to a column budget\n");
+
+  check_fit("abc", 10, 3, 3);       /* room to spare */
+  check_fit("abc", 3, 3, 3);        /* exactly */
+  check_fit("abc", 2, 2, 2);        /* cut */
+  check_fit("abc", 0, 0, 0);        /* no room at all */
+  check_fit("", 5, 0, 0);
+
+  /* A double-width character that does not fit is left out rather than drawn
+   * half outside the budget, and the columns reported are the ones actually
+   * used -- one short of the budget, which a caller measuring a mnemonic
+   * against the truncated text needs to know. */
+  check_fit("\xe6\x9c\xa8", 2, 3, 2);   /* the whole wide char fits */
+  check_fit("\xe6\x9c\xa8", 1, 0, 0);   /* it does not, so nothing is taken */
+  check_fit("a\xe6\x9c\xa8", 2, 1, 1);  /* 'a' fits, the wide char does not */
+  check_fit("a\xe6\x9c\xa8", 3, 4, 3);  /* both fit */
+  check_fit("a\xe6\x9c\xa8b", 3, 4, 3); /* and the 'b' does not */
+
+  /* A negative budget is treated as no room, rather than read as a huge one. */
+  check_fit("abc", -1, 0, 0);
+
+  /* A combining mark takes no columns, so it travels with its base character
+   * instead of being cut off it. */
+  check_fit("e\xcc\x81", 1, 3, 1);
+}
+
 /* ---- chords -------------------------------------------------------------- */
 
 /* chord_parse and chord_name are a pair, and the config file depends on both: it
@@ -1288,6 +1332,7 @@ int main(void) {
   test_regex_corners();
   test_regex_limits();
   test_regex_expand();
+  test_fit_cols();
   test_chords();
   test_config_parse();
   test_config_keys();

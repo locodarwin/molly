@@ -196,6 +196,57 @@ static int menu_width(const struct menu *m) {
   return 1 + CHECK_COLS + label_w + (accel_w ? ACCEL_GAP + accel_w : 0) + 1 + 1;
 }
 
+/* How a drop-down's interior divides up at a given box width.
+ *
+ * At the natural width from menu_width() everything fits and this is the
+ * identity. A terminal narrower than that is where it used to go wrong: the box
+ * was clamped to the screen, the label was still drawn in full, and the shortcut
+ * was then painted over its tail -- at 24 columns the View menu's first item read
+ * "Command pCtrl-Space". So the squeeze is a decision rather than an accident,
+ * and it comes off the *shortcut* first: the label says what the item is, while
+ * the shortcut is a reminder of a key that is also on the help screen and in the
+ * palette. Below MENU_MIN_LABEL columns of label there is nothing worth reading
+ * left, so the shortcut column goes entirely and the label takes the whole
+ * interior.
+ *
+ * The decision is made once per menu rather than per item, so that what
+ * shortcuts are shown still line up down the right-hand side.
+ *
+ * A truncated label is cut without a marker. An ellipsis would be the obvious
+ * thing and is the wrong thing here: molly already spends "…" on "this item
+ * opens a dialog" ("Find…", "Open…"), so "Line num…" would promise a dialog
+ * that is not coming. */
+struct dd_cols {
+  int label;   /* columns the label may occupy */
+  int accel;   /* widest shortcut to show, or 0 to show none */
+};
+
+#define MENU_MIN_LABEL 6
+
+static void dropdown_cols(const struct menu *m, int w, struct dd_cols *out) {
+  int label_w, accel_w;
+  /* Border, check column, [this], padding, border -- which is the same division
+   * menu_width() makes in the other direction, so at the natural width `room`
+   * below comes out as exactly label_w. The padding column matters: without it
+   * a squeezed label ran up against the right-hand border, which looks like the
+   * text has broken out of the box. */
+  int interior = w - 3 - CHECK_COLS;
+  menu_measure(m, &label_w, &accel_w);
+  if (interior < 1) interior = 1;
+  (void)label_w;
+
+  if (accel_w > 0) {
+    int room = interior - ACCEL_GAP - accel_w;
+    if (room >= MENU_MIN_LABEL) {
+      out->label = room;
+      out->accel = accel_w;
+      return;
+    }
+  }
+  out->label = interior;
+  out->accel = 0;
+}
+
 #define BOX_TL "\xe2\x94\x8c"
 #define BOX_TR "\xe2\x94\x90"
 #define BOX_BL "\xe2\x94\x94"
@@ -209,9 +260,10 @@ static int menu_width(const struct menu *m) {
 static void dropdown_draw(const struct layer *self) {
   const struct menu *m = &menus[open_menu];
   int x = self->x, y = self->y, w = self->w, h = self->h;
-  int label_w, accel_w, i;
+  struct dd_cols cols;
+  int i;
 
-  menu_measure(m, &label_w, &accel_w);
+  dropdown_cols(m, w, &cols);
 
   /* The shadow first, so the frame covers the part that overlaps it. */
   grid_shade(x + w, y + 1, 2, h, ROLE_DIALOG_SHADOW);
@@ -262,11 +314,16 @@ static void dropdown_draw(const struct layer *self) {
     if (checked) grid_puts(row, x + 1, TICK, 3);
     {
       const char *label = c->label != NULL ? c->label : c->name;
-      grid_puts(row, x + 1 + CHECK_COLS, label, (int)strlen(label));
+      int shown_cols;
+      int shown = utf8_fit_cols(label, cols.label, &shown_cols);
+      grid_puts(row, x + 1 + CHECK_COLS, label, shown);
       /* The mnemonic is the item's own colors plus an underline, which is what the
        * cell modifier byte is for -- a role per container-and-state would otherwise
-       * multiply out. A disabled item gets no underline: there is nothing to press. */
-      if (m->items[i].mnemonic >= 0 && enabled) {
+       * multiply out. A disabled item gets no underline: there is nothing to press.
+       * Nor does a letter the truncation above cut off: underlining a column the
+       * label no longer reaches would mark whatever the shortcut put there. */
+      if (m->items[i].mnemonic >= 0 && enabled &&
+          m->items[i].mnemonic < shown_cols) {
         int off = utf8_col_to_byte(label, m->items[i].mnemonic);
         int nb;
         (void)utf8_char_cols(label, (int)strlen(label), off, &nb);
@@ -275,7 +332,7 @@ static void dropdown_draw(const struct layer *self) {
         grid_attrs(0);
       }
     }
-    if (accel_w && cmd_shortcut(c->name, accel, sizeof(accel))) {
+    if (cols.accel && cmd_shortcut(c->name, accel, sizeof(accel))) {
       int aw = utf8_str_cols(accel);
       grid_role(role);
       /* One column of padding before the border, so the shortcut does not look

@@ -121,6 +121,28 @@ int utf8_str_cols(const char *s) {
 /* The byte offset of the character at display column `col`, or the string's length
  * if it is shorter than that. The inverse of the walk above, for finding the one
  * character a mnemonic underlines. */
+/* Bytes of `s` that fit within `cols` display columns, never exceeding it.
+ *
+ * The difference from utf8_col_to_byte, which is what a caller wanting to
+ * *truncate* needs: that one stops at or just past a column, so a wide glyph
+ * straddling the limit is included and lands one column outside whatever was
+ * being fitted. This one leaves it out. `*out_cols` receives the columns the
+ * returned bytes actually occupy, which is one less than `cols` when a
+ * double-width character was the thing that would not fit; a caller that
+ * measures anything against the truncated text wants that rather than `cols`. */
+int utf8_fit_cols(const char *s, int cols, int *out_cols) {
+  int i = 0, used = 0, len = (int)strlen(s);
+  while (i < len) {
+    int nb;
+    int w = utf8_char_cols(s, len, i, &nb);
+    if (used + w > cols) break;
+    used += w;
+    i += nb;
+  }
+  if (out_cols != NULL) *out_cols = used;
+  return i;
+}
+
 int utf8_col_to_byte(const char *s, int col) {
   int i = 0, cols = 0, len = (int)strlen(s);
   while (i < len && cols < col) {

@@ -20,7 +20,7 @@ remappable.
 | | |
 | --- | --- |
 | Source | 10,143 lines, `src/molly.h` plus 24 `.c` files |
-| Checks | 832 — 480 pty, 44 golden screens, 308 unit |
+| Checks | 858 — 480 pty, 46 golden screens, 332 unit |
 | Fuzz | 4,040 cases per `make test` (40 replace, 4,000 regex, seed 42) |
 | Warnings | clean under `-Wall -Wextra -Wpedantic -Wshadow`; `regex.c` also under `-Wconversion` |
 | OOM sweep | `make test-oom` green: 126 allocations failed in turn, 114 through `die()`, 12 kept running |
@@ -32,7 +32,7 @@ the unit binary. `make test-oom` is the allocation-failure sweep and needs
 
 ```text
 480 passed, 0 failed
-44 passed, 0 failed
+46 passed, 0 failed
 40 cases, 0 failed (seed 42)
 4000 cases, 0 failed (seed 42)
 ```
@@ -115,15 +115,17 @@ The rest of that order stands, and still wants confirming before it is started.
 
 ### Found along the way, not fixed
 
-- **A menu's shortcut column collides with a truncated label.** At 24 columns
-  the View menu's first item draws as `Command pCtrl-Space` — a cut label runs
-  straight into the chord with no gap. It is older than anything in this
-  session and lives in `menu.c`'s drawing. `tests/golden/menu-view-narrow.txt`
-  pins it as it is and says in `test_golden.py` that it is a defect rather than
-  the intent, so when it is fixed the diff is the point.
 - **Tabs versus spaces is not a setting yet.** `[editor] tab width` changes how
   a tab *renders*; molly still inserts a literal tab. "Insert spaces instead" is
   an editing change, and it belongs with the indentation work.
+- **The help screen's columns truncate on bytes, not columns.** `ui.c` cuts with
+  `%.*s`, so a description with a multibyte character in it can be cut mid
+  character. No shipped `.help` string has one, so nothing shows it today;
+  `utf8_fit_cols()` is what it wants when one does.
+- **The menu band itself still clips.** At 18 columns the bar reads
+  `File  Edit  Searc`. That is the grid clipping a layer rather than a layout
+  decision, and unlike the drop-downs there is no obvious right answer — the
+  titles are also the Alt mnemonics, so dropping one hides a menu.
 - **An Options dialog has nothing to do but exist.** Write-back, the settings
   table and the live-value read-back are all in place and all exercised by
   `View ▸ Save Settings`; the dialog is now presentation over a finished

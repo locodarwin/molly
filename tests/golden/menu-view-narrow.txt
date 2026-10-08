@@ -1,14 +1,14 @@
 --- screen ---
  File  Edit  Search  Vie
 ┌──────────────────────┐
-│  Command pCtrl-Space │
+│  Comman   Ctrl-Space │
 ├──────────────────────┤
-│  Line numbers Ctrl-U │
-│✓ Menu bar            │
+│  Line n       Ctrl-U │
+│✓ Menu b              │
 ├──────────────────────┤
 │  Redraw           F5 │
 ├──────────────────────┤
-│  Save settings       │
+│  Save s              │
 └──────────────────────┘
 HELP: Ctrl-S = save | Ct
 --- attrs ---

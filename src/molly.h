@@ -686,9 +686,7 @@ int utf8_str_cols(const char *s);
 /* view.c */
 int drow_of_cursor(const struct cursor *c);
 int drow_total(void);
-int editor_render_byte_to_cx(erow *row, int rbyte);
 int editor_row_cx_to_charcol(erow *row, int cx);
-int editor_row_cx_to_rbyte(erow *row, int cx);
 int editor_row_cx_to_rx(erow *row, int cx);
 int editor_row_rx_to_cx(erow *row, int rx);
 void cursors_collapse(void);

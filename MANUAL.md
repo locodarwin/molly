@@ -377,6 +377,10 @@ letters match only themselves. A match always spans whole characters: a
 query that would begin or end inside a UTF-8 character never matches, which
 also guarantees a replace can never splice a character in half.
 
+A search matches the line as it is *stored*, not as it is drawn: a run of
+spaces never matches a tab. (To match a tab, use `\t` with `Alt-R` on — see
+[Regular Expressions](#regular-expressions).)
+
 ## Regular Expressions
 
 `Alt-R` switches the search between plain text and a regular expression, and the
@@ -412,13 +416,12 @@ Everything above ASCII is a word character, so `\w` and `\b` work on `café` and
 on `naïve`. Case folding is still ASCII-only, exactly as it is for a plain
 search, so `[a-z]` finds `A` but `é` never matches `É`.
 
-### A pattern sees the file; a plain search sees the screen
+### What a search matches against
 
-A plain search matches the line as it is *drawn*, with tabs expanded into
-spaces, which is why searching for eight spaces finds a tab. A pattern matches
-the line as it is *stored*, so `\t` finds a tab and `.` is one character
-whatever its width. Searching for an actual tab is something only a pattern can
-do.
+Both a plain search and a pattern match the line as it is *stored*, not as it is
+drawn — so a run of spaces never matches a tab, and `.` is one character
+whatever width it occupies on screen. A tab is `\t`, which only a pattern can
+say: a prompt has no way to type a Tab keystroke.
 
 `.` never matches a line ending, and `^` and `$` are the ends of a line rather
 than of the file, because Molly matches one line at a time. A pattern cannot

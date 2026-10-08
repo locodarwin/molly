@@ -28,9 +28,11 @@ file is about.
 
 Deterministic: case i draws from random.Random(SEED * 1000 + i), so a
 failure reproduces with the printed command. Set MOLLY_FUZZ_SEED to explore
-elsewhere and MOLLY_FUZZ_N for more iterations. Tabs are deliberately absent
-from the generated text: a plain search matches the tab-expanded render buffer,
-and modeling that mapping in Python would duplicate the code under test.
+elsewhere and MOLLY_FUZZ_N for more iterations. The generated text contains
+tabs, which it could not while a plain search matched the tab-expanded render
+buffer -- modeling that mapping in Python would have duplicated the code under
+test. Both modes match the row as it is stored now, which is what str.replace
+and re.sub do, so a tab is just another byte to both sides.
 """
 
 import os
@@ -55,7 +57,11 @@ REGEX = "\x1br"
 # exercise multibyte-safe deletion and insertion offsets.
 VOCAB = ["alpha", "beta", "gamma", "delta", "Cat", "dog", "pea", "Pea",
          "install", "Install", "cafe", "café", "naïve", "über",
-         "日", "本", "木", "a", "ab"]
+         "日", "本", "木", "a", "ab", "a\tb", "\tx"]
+
+# A prompt has no way to accept a Tab keystroke, so a query or a replacement
+# typed at one can never hold a tab even though the text can.
+TYPEABLE = [w for w in VOCAB if "\t" not in w]
 SELF_REFERENTIAL = ["{q}", "{q}{q}", "x{q}", "{q}x"]
 
 # For the pattern half. Small on purpose: x* and a* are the ones that matter,
@@ -118,11 +124,11 @@ def gen_case(rng):
             nxt = tail[1:].split(maxsplit=1)[0]  # stops at any whitespace
             q = q + " " + nxt
     elif r < 0.3:  # a term that usually is absent: exercises "No matches"
-        q = rng.choice(VOCAB) + "qq"
+        q = rng.choice(TYPEABLE) + "qq"
 
     r = rng.random()
     if r < 0.45:
-        repl = rng.choice(VOCAB)
+        repl = rng.choice(TYPEABLE)
     elif r < 0.6:
         repl = ""
     else:

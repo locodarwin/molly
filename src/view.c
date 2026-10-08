@@ -103,44 +103,6 @@ int editor_row_cx_to_charcol(erow *row, int cx) {
   return col;
 }
 
-/* Byte offset of the cursor within render (tabs expand to spaces there). The
- * search matches on render bytes, so it needs the cursor as a render byte
- * offset, not as a display column. */
-int editor_row_cx_to_rbyte(erow *row, int cx) {
-  int rb = 0, j = 0;
-  while (j < cx) {
-    if (row->chars[j] == '\t') {
-      rb += KILO_TAB_STOP - (rb % KILO_TAB_STOP);
-      j++;
-    } else {
-      int nb = utf8_char_bytes(row->chars, row->size, j);
-      rb += nb;
-      j += nb;
-    }
-  }
-  return rb;
-}
-
-/* Inverse of the above: map a render byte offset (where a search matched) back
- * to a byte offset in chars. */
-int editor_render_byte_to_cx(erow *row, int rbyte) {
-  int rb = 0, cx = 0;
-  while (cx < row->size) {
-    int nb;
-    if (row->chars[cx] == '\t') {
-      rb += KILO_TAB_STOP - (rb % KILO_TAB_STOP);
-      nb = 1;
-    } else {
-      nb = utf8_char_bytes(row->chars, row->size, cx);
-      rb += nb;
-    }
-    if (rb > rbyte) return cx;
-    cx += nb;
-  }
-  return row->size;
-}
-
-
 /* Display rows the buffer occupies. */
 int drow_total(void) {
   return row_count();

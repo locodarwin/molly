@@ -15,12 +15,12 @@ static int search_case_sensitive = 0;
  * on, the Search menu ticks it, and search.regex is the name a config file will
  * set once there is one.
  *
- * One difference between the two is worth knowing, and the manual says it: a
- * plain search matches the row as it is *drawn*, with tabs expanded into spaces,
- * which is what olly did and is why four spaces find a tab. A pattern matches the
- * row as it is *stored*, so \t finds a tab and `.` is one character whatever
- * width it is drawn at. Matching the stored bytes is also what makes a match
- * offset a cursor position already, with no render mapping in between. */
+ * Both modes match the row as it is *stored*. olly matched the tab-expanded
+ * render buffer, so a query of eight spaces found a tab; both are the row's own
+ * bytes now, which means a search matches the characters it was asked for and a
+ * match offset is a cursor position already, with no render mapping in between. A
+ * tab is still only nameable as \t in a pattern, because a prompt has no way to
+ * accept a Tab keystroke. */
 static int search_use_regex = 0;
 
 /* Whether there is a term to find again, which is what greys out Find Next and
@@ -119,7 +119,7 @@ static int ascii_fold(unsigned char c) {
   return (c >= 'a' && c <= 'z') ? (unsigned char)(c - ('a' - 'A')) : c;
 }
 
-static int render_match(const char *hay, const char *needle, int n) {
+static int bytes_match(const char *hay, const char *needle, int n) {
   int i;
 
   if (search_case_sensitive)
@@ -135,7 +135,7 @@ static int render_match(const char *hay, const char *needle, int n) {
  * must not be a UTF-8 continuation byte (otherwise the cursor would land
  * inside a character), and the byte just past it must not be one either
  * (otherwise the match ends mid-character and a replace would splice a
- * character in half). render is NUL-terminated, so hay[n] is in bounds and
+ * character in half). chars is NUL-terminated, so hay[n] is in bounds and
  * reads as a non-continuation byte at end of row. */
 static int match_is_char_aligned(const char *hay, int n) {
   return !utf8_is_cont((unsigned char)hay[0]) &&
@@ -184,11 +184,6 @@ static int editor_search_string(const char *query, int qlen,
   /* The cursor may sit on the phantom line past the last row; anchor the
    * sweep to a real row in that case. */
   int cur = (CUR.cy >= n) ? 0 : CUR.cy;
-  /* The cursor's position as a render byte offset -- render is what a plain
-   * search scans, and the cursor's display column (CUR.rx) is no longer the
-   * same thing once a line holds wide or combining characters. A pattern scans
-   * the stored bytes instead and has no use for this. */
-  int cur_rb = (re == NULL) ? editor_row_cx_to_rbyte(row_at(cur), CUR.cx) : 0;
   /* SEARCH_WRAP runs k to n inclusive, so the starting row is visited a
    * second time at the end of the wrap. Only then is it scanned from its
    * beginning, which is what makes a match earlier on the cursor's own row
@@ -205,12 +200,9 @@ static int editor_search_string(const char *query, int qlen,
   for (k = 0; k <= kmax; k++) {
     int i = dir > 0 ? (cur + k) % n : ((cur - k) % n + n) % n;
     erow *row = row_at(i);
-    int maxstart = row->rsize - qlen;
+    int maxstart = row->size - qlen;
     int on_start_row = (i == CUR.cy) && (k == 0);
 
-    /* The regex path works in chars-space, where a match offset is a cursor
-     * position already; the plain path below works in render-space and has to
-     * map back. That is the only place the two differ. */
     if (re != NULL) {
       struct regex_match m;
       int got;
@@ -240,26 +232,27 @@ static int editor_search_string(const char *query, int qlen,
     }
 
     if (dir > 0) {
-      int start = on_start_row ? (exclude_current ? cur_rb + 1 : cur_rb) : 0;
+      int start = !on_start_row ? 0
+                : (exclude_current ? next_char_offset(row, CUR.cx) : CUR.cx);
       int col;
       for (col = start; col <= maxstart; col++) {
-        if (render_match(row->render + col, query, qlen) &&
-            match_is_char_aligned(row->render + col, qlen)) {
+        if (bytes_match(row->chars + col, query, qlen) &&
+            match_is_char_aligned(row->chars + col, qlen)) {
           CUR.cy = i;
-          CUR.cx = editor_render_byte_to_cx(row, col);
+          CUR.cx = col;
           return SEARCH_FOUND;
         }
       }
     } else {
-      int start = on_start_row ? (exclude_current ? cur_rb - 1 : cur_rb)
-                               : maxstart;
-      if (start > maxstart) start = maxstart;
+      int start = !on_start_row ? maxstart
+                : (exclude_current ? CUR.cx - 1 : CUR.cx);
       int col;
+      if (start > maxstart) start = maxstart;
       for (col = start; col >= 0; col--) {
-        if (render_match(row->render + col, query, qlen) &&
-            match_is_char_aligned(row->render + col, qlen)) {
+        if (bytes_match(row->chars + col, query, qlen) &&
+            match_is_char_aligned(row->chars + col, qlen)) {
           CUR.cy = i;
-          CUR.cx = editor_render_byte_to_cx(row, col);
+          CUR.cx = col;
           return SEARCH_FOUND;
         }
       }
@@ -351,17 +344,6 @@ void editor_toggle_case_sensitive(void) {
   search_case_sensitive = !search_case_sensitive;
   editor_set_status_message("Search is now case-%s",
       search_case_sensitive ? "sensitive" : "insensitive");
-}
-
-/* Length, in chars-space bytes, of a match that started at cx in row and is
- * qlen bytes long in render-space. The two spaces diverge whenever a tab is
- * in play (one byte in chars, up to KILO_TAB_STOP in render), so the match
- * length cannot simply be reused as the delete length -- it must be
- * remeasured through the same rbyte<->cx mapping search itself uses. */
-static int editor_match_char_len(erow *row, int cx, int qlen) {
-  int rb = editor_row_cx_to_rbyte(row, cx);
-  int cx_end = editor_render_byte_to_cx(row, rb + qlen);
-  return cx_end - cx;
 }
 
 void editor_goto_line(void) {
@@ -475,7 +457,9 @@ void editor_replace(void) {
       ins = expanded;
       ilen = (size_t)elen;
     } else {
-      mlen = editor_match_char_len(row, cx_start, qlen);
+      /* A plain match is as long as the thing matched, now that both are
+       * measured in the row's own bytes. */
+      mlen = qlen;
     }
 
     if (!grouped) {

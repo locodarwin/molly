@@ -400,15 +400,16 @@ def test_replace(tmpdir):
 
     print("\nreplace: a match spanning a tab-expanded region deletes the "
           "right bytes")
-    # Regression: search matches against the tab-expanded render buffer, so
-    # a match's length in render bytes is not always its length in
-    # chars-space -- a tab is one byte in chars but up to KILO_TAB_STOP in
-    # render. Naively deleting qlen chars-bytes here would try to delete 8
-    # bytes from a 4-byte row (out of range -- editor_row_delete_n silently
-    # no-ops) and leave the matched text in place instead of replacing it.
-    check("replace across a tab spans the tab as a single character",
+    # This was a regression test for search matching the tab-expanded render
+    # buffer, where a match's length in render bytes was not its length in the
+    # row's own bytes -- deleting the one as if it were the other took eight
+    # bytes out of a four-byte row. Both are the row's bytes now, so that
+    # divergence is gone; what still has to hold is that a match spanning a tab
+    # is deleted at the right length, and \t is the only way to name a tab,
+    # since a prompt has no way to type one.
+    check("a replace across a tab spans the tab as one character",
           edit(tmpdir, "ab\tc\n",
-               [REPLACE, "b      c", "\r", "Q", "\r", "n", "\r", SAVE]),
+               [REGEX, REPLACE, r"b\tc", "\r", "Q", "\r", "n", "\r", SAVE]),
           "aQ\n")
 
     print("\nreplace: replace-all undoes and redoes as a single step")
@@ -473,13 +474,15 @@ def test_regex_search(tmpdir):
     check(r"\t finds a tab, which a plain search cannot look for",
           go("a\tb\n", [REGEX, "\x06", r"a\tb", "\r"])[0], "Found")
     # The tab after the a reaches the next stop at column 8, so the drawn row is
-    # an a, seven spaces and a b -- which a plain search finds and a pattern does
-    # not, because the pattern is looking at what is stored.
+    # an a, seven spaces and a b -- and neither mode sees it that way, because
+    # both match the row as it is stored. olly's search matched the drawn row and
+    # so found a tab when asked for spaces.
     check("a pattern does not see the tab as spaces",
           go("a\tb\n", [REGEX, "\x06", "a" + " " * 7 + "b", "\r"])[0]
           .startswith("Not found"), True)
-    check("a plain search does see it as spaces",
-          go("a\tb\n", ["\x06", "a" + " " * 7 + "b", "\r"])[0], "Found")
+    check("and nor does a plain search",
+          go("a\tb\n", ["\x06", "a" + " " * 7 + "b", "\r"])[0]
+          .startswith("Not found"), True)
 
     check("a pattern that does not compile says why",
           go("abc\n", [REGEX, "\x06", "a(", "\r"])[0],

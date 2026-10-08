@@ -8,9 +8,9 @@ dependencies and instant start.
 
 **Current state:** Phases 0 and 1 are done, and Phase 2 has started: molly
 searches and replaces with regular expressions, on an engine of its own. Molly is
-8,484 lines across `src/molly.h` and twenty-three `.c` files, with a menu bar, a
+8,438 lines across `src/molly.h` and twenty-three `.c` files, with a menu bar, a
 mouse, framed dialogs, a command palette and a keyboard reference generated from
-its own command table. 636 checks pass (396 pty, 33 golden screens, 207 unit) plus
+its own command table. 637 checks pass (397 pty, 33 golden screens, 207 unit) plus
 4,040 fuzz cases and the allocation-failure sweep, and every file is clean under
 `-Wall -Wextra -Wpedantic -Wshadow`. Still `0.1.0-dev`: the *interface* is
 molly's own, and the *editing* features are mostly still olly's.
@@ -605,14 +605,12 @@ Ctrl-N, Ctrl-P and Ctrl-R all read the query as a pattern while it is on. The
 prompt says `Pattern:` instead of `Search:` so the mode is visible where it
 matters. `\1` to `\9` and `\0` work in a replacement.
 
-**A pattern matches the row as it is stored; a plain search matches the row as it
-is drawn.** olly searched the tab-expanded render buffer, which is why searching
-for eight spaces finds a tab — and why searching for a tab is impossible. A
-pattern works on the stored bytes instead, so `\t` finds a tab and `.` is one
-character whatever width it is drawn at. That also means a match offset *is* a
-cursor position, with no render mapping in between, and that the match length
-needs no conversion before a replace deletes it. The inconsistency between the
-two modes is deliberate for now and is in §8.
+**Both modes match the row as it is stored.** A pattern never matched anything
+else; a plain search matched the tab-expanded render buffer, inherited from olly,
+which is why eight spaces used to find a tab. Both are the row's own bytes now
+(§7), so a match offset *is* a cursor position with no render mapping in between, and a match length needs no conversion before a replace
+deletes it — `editor_row_cx_to_rbyte` and `editor_render_byte_to_cx` existed for
+nothing else and went with it.
 
 **Three things only a pattern can do to a sweep**, each of which needed its own
 handling:
@@ -870,6 +868,17 @@ are structural to the menu bar.
 | Regex | **Hand-rolled PCRE subset**, with a step budget and a fuzz target |
 | Platforms | **Linux now. Windows possibly later. No macOS.** |
 | Plugin runtime | **No** — it would end zero-dependency and instant start |
+| What a search matches | **The row as stored**, for plain searches as well as patterns |
+| Config file syntax | **INI-style sections**, `key = value` — small to parse and to write back |
+| Phase 2 order | **The Find dialog next**, which is what forces buttons, focus order and the checkbox into the toolkit |
+
+The first of those changed shipped behaviour: olly searched the tab-expanded
+render buffer, so a run of eight spaces found a tab. Unifying both modes on the
+stored bytes means a search now means exactly the characters asked for, and it
+deleted the only two functions that mapped between the two spaces. A tab is still
+only nameable as `\t` in a pattern, because a prompt cannot accept a Tab
+keystroke — which is also why `tests/fuzz_replace.py` puts tabs in the text it
+generates but never in a query or a replacement.
 
 ### What "Windows later" costs, and what to do about it now
 
@@ -899,13 +908,4 @@ where they are free, instead of being carved out later.
 
 ## 8. Still open
 
-- **Should a plain search move to the stored bytes too?** It matches the drawn
-  row today, inherited from olly, which is why eight spaces find a tab and a tab
-  cannot be searched for at all. Regex matches the stored bytes. Making both the
-  same would fix that, would delete the render↔cursor mapping from the search
-  path, and would let `tests/fuzz_replace.py` stop avoiding tabs — at the cost of
-  changing behavior molly has shipped with. A decision, not a bug.
-- **Phase 2 ordering** beyond "regex first".
 - **Which languages** ship with syntax definitions initially.
-- **Config file syntax** — it has to be machine-writable, since the Options
-  dialogs save to it.

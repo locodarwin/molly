@@ -37,6 +37,7 @@ and a searchable label, so nothing is reachable only by knowing a secret key.
 - [Opening Another File](#opening-another-file)
 - [Saving and Quitting](#saving-and-quitting)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
+- [Configuration](#configuration)
 - [Environment Variables](#environment-variables)
 - [File Format Notes](#file-format-notes)
 
@@ -203,6 +204,12 @@ Choosing one says why it cannot run and leaves the palette open.
 
 A selection made with the mouse is the same selection `Shift`+arrows make, so
 `Ctrl-C` and `Ctrl-X` work on it without caring how it was made.
+
+If you would rather keep your terminal's own click-and-drag behavior, put
+`mouse = off` in the `[input]` section of your [configuration](#configuration)
+file. Molly then never asks the terminal for mouse reports at all, and every
+row of the table above stops applying — which is the trade: molly's mouse and
+the terminal's cannot both have the same gesture.
 
 ## Colors
 
@@ -649,12 +656,152 @@ To see the live keymap rather than this list:
 
     MOLLY_DUMP_KEYMAP=1 molly
 
+## Configuration
+
+Molly reads one file at startup:
+
+```text
+~/.config/molly/mollyrc
+```
+
+If `XDG_CONFIG_HOME` is set, molly looks under that instead of `~/.config`.
+There is no file to begin with, and molly runs the same without one — every
+setting below lists its default, and the defaults are what molly did before
+there was a configuration file at all.
+
+### What the file looks like
+
+INI-style: sections in square brackets, then `key = value`. Blank lines are
+ignored, and so is anything after a `#` or a `;` at the start of a line.
+
+```ini
+[editor]
+tab width = 4
+
+[view]
+line numbers = on
+menu bar = on
+
+[input]
+mouse = on
+
+[search]
+match case = off
+regular expression = off
+
+[keys]
+F9 = file.save
+Ctrl-S = none
+```
+
+Names are matched on their words, so `line numbers`, `Line-Numbers` and
+`line_numbers` all reach the same setting. A flag accepts `on`/`off`,
+`true`/`false`, `yes`/`no` and `1`/`0`. Molly writes `on` and `off`.
+
+### The settings
+
+| Section | Setting | Default | Effect |
+| --- | --- | --- | --- |
+| `editor` | `tab width` | `8` | Columns a tab character occupies, 1 to 16. Changing it re-renders the open file immediately. |
+| `editor` | `undo steps` | `32768` | How many undo steps to keep. |
+| `view` | `line numbers` | `off` | Show the line-number gutter (`Ctrl-U` toggles it). |
+| `view` | `menu bar` | `on` | Give the menu bar its row (`View ▸ Menu Bar` toggles it). |
+| `input` | `mouse` | `on` | Report the mouse to molly. Turning it off hands clicks and drag-select back to the terminal for good, rather than only while `Shift` is held — see [The Mouse](#the-mouse). |
+| `search` | `match case` | `off` | Starting state of the Find dialog's **Match case** checkbox. |
+| `search` | `regular expression` | `off` | Starting state of its **Regular expression** checkbox. |
+
+### Rebinding keys
+
+`[keys]` takes a chord on the left and a command name on the right. `none`
+leaves the chord unbound.
+
+```ini
+[keys]
+F9 = file.save
+Ctrl-L = view.repaint
+Shift-F3 = search.prev
+Ctrl-S = none
+```
+
+A binding in the file replaces molly's own, so `Ctrl-L = view.repaint` moves
+repaint back onto the key olly had it on. The menus and the help screen show
+your binding rather than the default.
+
+Command names are what the command palette lists — `Ctrl-Space`, then read the
+names in the right-hand column — and `MOLLY_DUMP_KEYMAP` prints every binding
+with the command it runs.
+
+A chord is written as modifiers and a key, joined by `-`, in any order and in
+any case:
+
+| Form | Examples |
+| --- | --- |
+| Control | `Ctrl-S`, `ctrl-s`, `Ctrl-?`, `Ctrl-Space` |
+| Alt | `Alt-X`, `alt-r` |
+| Function keys | `F1` … `F12` |
+| Navigation | `Left`, `Right`, `Up`, `Down`, `Home`, `End`, `PgUp`, `PgDn`, `Del`, `Backspace`, `Enter`, `Tab`, `Shift-Tab`, `Esc` |
+| Shifted | `Shift-F3`, `Shift-Right`, `Shift-PgDn` |
+| A bare character | `a`, `}` |
+
+Two limits are worth knowing, because both come from the terminal rather than
+from molly:
+
+- **`Shift` can only be named on the function keys and the navigation keys.**
+  A terminal sends plain `A` for `Shift-A`, and sends the same single byte for
+  `Ctrl-Shift-L` as it does for `Ctrl-L`, so there is nothing there to bind.
+  Molly refuses those chords rather than accepting a binding that could never
+  fire. `Ctrl-Alt-` is refused for the same reason.
+- **`Shift` with an arrow still extends the selection.** Nothing is bound to
+  `Shift-Right`, so it falls through to `move.right` with the modifier noted,
+  which is what extends a selection. Bind `Shift-Right` to something and you
+  lose that, for that key.
+
+The eight `Alt`-letter menu titles cannot be rebound. The menu bar underlines
+the letter whether or not it still opens the menu, so a rebinding would make
+the bar lie about itself.
+
+Multi-key sequences (`Ctrl-K Ctrl-F`) are not supported yet.
+
+### When molly disagrees with the file
+
+A mistake in `mollyrc` is a warning, never a refusal to start. Molly reads the
+rest of the file, applies every line it understood, and reports the first
+problem on the message bar with a count of how many there were:
+
+```text
+mollyrc:4: tab width must be 1 to 16, not 99 (2 problems)
+```
+
+Every warning names the line it came from. `MOLLY_DUMP_CONFIG` prints the whole
+parsed configuration and every warning without starting the editor, which is
+the quickest way to check a file you have just edited.
+
+### Saving settings
+
+**File ▸ Save Settings** writes the current state of everything in the table
+above to `mollyrc`, creating `~/.config/molly/` if it is not there. So the way
+to keep a setting is to change it the usual way — `Ctrl-U` for the gutter,
+`View ▸ Menu Bar` for the bar, the Find dialog's checkboxes — and then save.
+Key bindings you put in the file by hand are written back too; molly's own
+defaults are not, so a later version is free to move a key you never touched.
+
+The write is atomic: molly writes a temporary file beside the target and renames
+it, so an interrupted save cannot leave a half-written file that fails to parse
+the next time molly starts.
+
+One cost, stated plainly: **a save rewrites the file whole.** Your comments, your
+blank lines and any setting this version of molly does not recognize are gone
+afterwards. Molly puts its own comments back, explaining each setting and its
+default.
+
 ## Environment Variables
 
 | Variable | Effect |
 | --- | --- |
 | `TERM`, `COLORTERM` | Choose the 256-color or the 16-color palette — see [Colors](#colors) |
-| `MOLLY_DUMP_KEYMAP` | Print the keymap as `chord<TAB>command` lines and exit, without touching the terminal. Every binding in it was parsed from chord text at startup and printed back, so it is both a reference for what is bound and how the test suite checks the chord code — and it is the form the configuration file will read and write. |
+| `MOLLY_DUMP_KEYMAP` | Print the keymap as `chord<TAB>command` lines and exit, without touching the terminal. Every binding in it was parsed from chord text at startup and printed back, so it is both a reference for what is bound and how the test suite checks the chord code. `[keys]` from your `mollyrc` is applied first, so this is also how to check a rebinding. |
+| `MOLLY_DUMP_CONFIG` | Print the parsed configuration — the file's path, every setting's value, the key bindings it asked for and any warnings — and exit, without touching the terminal. See [Configuration](#configuration). |
+| `MOLLY_CONFIG` | Read configuration from this path instead of `~/.config/molly/mollyrc`. Set to the empty string to read none at all, which is what the test suite does so that its results do not depend on the configuration of the machine it runs on. |
 | `MOLLY_UNDO_STEPS` | Lower the undo history's step limit, which is how the test suite exercises its eviction. |
 
 ## File Format Notes

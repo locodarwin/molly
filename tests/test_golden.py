@@ -206,7 +206,31 @@ def main():
           files={"sample.txt": THREE_LINES})
     check("menu-bar-hidden-open", ["\x1bv", "m", "\x1b[21~"], rows=16, cols=64,
           files={"sample.txt": THREE_LINES})
+    # The View menu, which is where the ticks and Save Settings live: two checked
+    # items whose state shows as a tick rather than as text, a separator above
+    # and below Redraw, and an item that writes a file. Nothing captured this menu
+    # until Save Settings was added to it, which is exactly the gap a new item in
+    # an uncaptured menu leaves -- a lost tick or a separator in the wrong place
+    # would have gone unnoticed.
+    check("menu-view", ["\x1bv"], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES})
+    # With both of its ticks on, so the tick column is proved rather than assumed.
+    check("menu-view-checked", ["\x15", "\x1bv"], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES})
+    # Narrow, which is where a drop-down wider than the terminal would show.
+    #
+    # This snapshot records a defect rather than endorsing it: at 24 columns the
+    # first item comes out as "Command pCtrl-Space", because a truncated label
+    # runs straight into the shortcut column with no gap between them. It is
+    # older than this menu and belongs to menu.c's drawing rather than to
+    # anything here, so it is pinned as it is -- when the truncation is fixed,
+    # this snapshot is expected to change and the diff is the point.
+    check("menu-view-narrow", ["\x1bv"], rows=12, cols=24,
+          files={"sample.txt": THREE_LINES})
     # And at 256 colours, where the band is a shade darker than a drop-down.
+    check("menu-view-256", ["\x1bv"], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES},
+          env={"TERM": "xterm-256color"})
     check("menu-search-256", ["\x1bs"], rows=16, cols=64,
           files={"sample.txt": THREE_LINES},
           env={"TERM": "xterm-256color"})

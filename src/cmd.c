@@ -179,6 +179,23 @@ static int cmd_menu_bar(void) {
   return 0;
 }
 
+/* Write every setting, as it is right now, to the configuration file.
+ *
+ * Which is what makes the existing toggles persistent without any of them
+ * knowing that configuration exists: Ctrl-U still just flips V.linenum, and the
+ * settings table finds out by asking when this runs. The Options dialogs, when
+ * they arrive, call exactly this. */
+static int cmd_save_settings(void) {
+  const char *err = NULL;
+  const char *path = config_path();
+  if (config_write(path, &err) == 0)
+    editor_set_status_message("Settings saved to %s", path);
+  else
+    editor_set_status_message("Could not save settings: %s",
+                              err != NULL ? err : "unknown error");
+  return 0;
+}
+
 static int cmd_line_numbers(void) {
   V.linenum = !V.linenum;
   /* The gutter widens or shrinks the text area, shifting every column, so
@@ -292,6 +309,12 @@ static const struct command commands[] = {
    .help = "Line numbers", .group = "VIEW", .run = cmd_line_numbers, .checked = linenumbers_on},
   {.name = "view.menu-bar", .label = "Menu bar",
    .help = "Show the menu bar", .group = "VIEW", .run = cmd_menu_bar, .checked = menubar_on},
+  /* Unbound by default: there is no CUA chord for it, and the two places it
+   * belongs -- the View menu and the palette -- are enough. It lives under View
+   * rather than File because what it saves is the View, Search and Input
+   * toggles; it moves to an Options menu when there is one. */
+  {.name = "app.save-settings", .label = "Save settings",
+   .help = "Save settings to mollyrc", .group = "VIEW", .run = cmd_save_settings},
 
   /* Hidden from the palette, all of them: the palette has no business offering to
    * open itself, and the menu openers are how you reach commands rather than commands

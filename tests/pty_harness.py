@@ -30,7 +30,13 @@ def run(argv, keys, rows=24, cols=80, settle=0.4, env=None, status=False):
         # tests made the golden screens depend on the ambient environment -- they
         # came out sixteen-colour on one machine and 256-colour on the next. A test
         # that wants a depth asks for it through `env`.
-        environ = dict(os.environ, TERM="xterm", COLORTERM="")
+        # MOLLY_CONFIG is pinned empty for the same reason: molly reads
+        # ~/.config/molly/mollyrc at startup, so without this every test would
+        # depend on the configuration of the machine it ran on -- a developer
+        # with `line numbers = on` would see three dozen failures that nobody
+        # else could reproduce. Empty means "read no configuration file"; a test
+        # that wants one points MOLLY_CONFIG at it through `env`.
+        environ = dict(os.environ, TERM="xterm", COLORTERM="", MOLLY_CONFIG="")
         if env:
             environ.update(env)
         os.execve(argv[0], argv, environ)

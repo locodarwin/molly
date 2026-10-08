@@ -515,11 +515,29 @@ int config_load(void) {
 
   FILE *fp = fopen(path, "r");
   if (fp == NULL) {
-    /* Absent is normal. Anything else -- a directory, no permission -- is worth
-     * saying, because silently ignoring it looks exactly like the file not
-     * being read. */
+    /* Absent is normal, and a fresh install has no file at all. Anything else --
+     * no permission, a broken symlink -- is worth saying, because silently
+     * ignoring it looks exactly like the file not being read. */
     if (errno != ENOENT) config_error("%s: %s", path, strerror(errno));
     return 0;
+  }
+
+  /* fopen() succeeds on a directory; it is the first read that fails. Without
+   * this, MOLLY_CONFIG pointing at a directory read as an empty file and molly
+   * started up silently with every default -- which looks identical to the file
+   * being read and agreeing with them. */
+  {
+    struct stat st;
+    if (fstat(fileno(fp), &st) != 0) {
+      config_error("%s: %s", path, strerror(errno));
+      fclose(fp);
+      return 0;
+    }
+    if (!S_ISREG(st.st_mode)) {
+      config_error("%s: not a regular file", path);
+      fclose(fp);
+      return 0;
+    }
   }
 
   /* Read it whole: a config file is kilobytes, and parsing from one buffer means

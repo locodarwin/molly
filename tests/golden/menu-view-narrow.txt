@@ -1,0 +1,48 @@
+--- screen ---
+ File  Edit  Search  Vie
+┌──────────────────────┐
+│  Command pCtrl-Space │
+├──────────────────────┤
+│  Line numbers Ctrl-U │
+│✓ Menu bar            │
+├──────────────────────┤
+│  Redraw       Ctrl-L │
+├──────────────────────┤
+│  Save settings       │
+└──────────────────────┘
+HELP: Ctrl-S = save | Ct
+--- attrs ---
+gggggggggggggggggggggggg
+gggggggggggggggggggggggg
+gggggggggggggggggggggggg
+gggggggggggggggggggggggg
+gggggggggggggggggggggggg
+gggggggggggggggggggggggg
+gggggggggggggggggggggggg
+gggggggggggggggggggggggg
+gggggggggggggggggggggggg
+gggggggggggggggggggggggg
+gggggggggggggggggggggggg
+..gggggggggggggggggggggg
+--- colors ---
+1: 0-19 7/0  20-23 15/4
+2: 0-23 7/8
+3: 0-0 7/8  1-22 15/4  23-23 7/8
+4: 0-23 7/8
+5: 0-0 7/8  1-22 15/8  23-23 7/8
+6: 0-0 7/8  1-22 15/8  23-23 7/8
+7: 0-23 7/8
+8: 0-0 7/8  1-22 15/8  23-23 7/8
+9: 0-23 7/8
+10: 0-0 7/8  1-22 15/8  23-23 7/8
+11: 0-23 7/8
+12: 2-23 8/0
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u
+3: 3-3 u
+5: 3-3 u
+6: 3-3 u
+8: 3-3 u
+10: 3-3 u
+--- cursor ---
+row 2 col 1 visible 0

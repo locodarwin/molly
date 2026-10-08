@@ -121,9 +121,11 @@ void enable_raw_mode(void) {
    * so. Which is also why it is a setting -- `[input] mouse = off` in mollyrc hands
    * the gesture back to the terminal for good.
    *
-   * Enabled here so that raw mode on its own still behaves as it always did; the
-   * configuration file turns it off afterwards if that is what it says. */
-  term_mouse_set(1);
+   * Not enabled here. `[input] mouse` owns it, default on, and config_apply()
+   * turns it on immediately after init_editor() -- the same arrangement as the
+   * menu bar, and for the same reason: asking for the mouse here and then taking
+   * it back a moment later would put the request in the stream whatever the user
+   * asked for, which is both a flicker and a lie to anyone reading the output. */
 }
 
 /* Mouse reporting, on or off. Separate from raw mode because it is the one part

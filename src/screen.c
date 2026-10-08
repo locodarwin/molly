@@ -368,9 +368,11 @@ void screen_init_layers(void) {
   if (layer_text < 0 || layer_status < 0 || layer_message < 0 || layer_menubar < 0)
     die("screen_init_layers");
 
-  /* Visible by default: the menu bar is molly's main way of showing what it can do,
-   * and hiding it by default would waste that. */
-  V.menubar = 1;
+  /* Not set here any more. The menu bar is visible by default -- it is molly's
+   * main way of showing what it can do, and hiding it by default would waste
+   * that -- but that default is now one line in config.c's settings table, and
+   * config_apply() applies it immediately after init_editor(). Declaring it in
+   * both places is how the two come to disagree. */
 }
 
 /* Give the chrome its bounds for this frame. One place does the row arithmetic

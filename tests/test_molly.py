@@ -2050,6 +2050,237 @@ def test_command_table(tmpdir):
           "Ctrl-Space" in shown, True)
 
 
+# ------------------------------------------------------- configuration ----
+
+def test_config(tmpdir):
+    """The configuration file, from the outside: does it change the editor?
+
+    The parser itself is covered by the unit tests, which can read a bad line and
+    check the warning without a terminal. What only a pty can show is the part
+    that matters to a user -- that `line numbers = on` actually paints a gutter,
+    that `mouse = off` actually stops molly claiming the mouse, and that a
+    rebound chord actually runs the command.
+    """
+    print("\nconfiguration: mollyrc changes the editor")
+
+    body = "alpha\nbeta\ngamma\n"
+    path = os.path.join(tmpdir, "cfg.txt")
+    with open(path, "w") as fh:
+        fh.write(body)
+
+    def with_config(text, keys, rows=24, cols=80):
+        rc = os.path.join(tmpdir, "mollyrc")
+        with open(rc, "w") as fh:
+            fh.write(text)
+        return run([MOLLY, path], keys, rows=rows, cols=cols,
+                   env={"MOLLY_CONFIG": rc})
+
+    def screen_of(out, rows=24, cols=80):
+        scr = Screen(rows, cols)
+        scr.feed(out)
+        return scr.text()
+
+    def status_row(out, rows=24, cols=80):
+        """The status bar, which is the row above the message bar.
+
+        status_lines() reads the message row; the selection byte count and the
+        cursor position live one row up, so a test about either has to look
+        here instead.
+        """
+        return screen_of(out, rows, cols)[rows - 2]
+
+    # Line numbers, which are off by default: the gutter is the visible proof
+    # that a setting reached the editor rather than only the settings table.
+    out = with_config("[view]\nline numbers = on\n", [])
+    check("line numbers = on paints the gutter",
+          screen_of(out)[TEXT_ROW - 1].startswith("1 │ alpha"), True)
+    out = with_config("", [])
+    check("and without it there is no gutter",
+          screen_of(out)[TEXT_ROW - 1].startswith("alpha"), True)
+
+    # The menu bar, which is on by default. Its default now lives in the
+    # settings table rather than in screen_init_layers, so this is also the
+    # check that moving it did not lose it.
+    out = with_config("", [])
+    check("the menu bar is on by default", "File" in screen_of(out)[0], True)
+    out = with_config("[view]\nmenu bar = off\n", [])
+    check("menu bar = off takes its row back", "File" in screen_of(out)[0],
+          False)
+    check("and the text moves up into it", screen_of(out)[0].startswith("alpha"),
+          True)
+
+    # Tab width. A tab is eight columns by default; four means the character
+    # after it lands four columns in.
+    tabbed = os.path.join(tmpdir, "tabbed.txt")
+    with open(tabbed, "w") as fh:
+        fh.write("\tx\n")
+    rc = os.path.join(tmpdir, "mollyrc")
+    with open(rc, "w") as fh:
+        fh.write("[editor]\ntab width = 4\n")
+    out = run([MOLLY, tabbed], [], env={"MOLLY_CONFIG": rc})
+    check("tab width = 4 renders a tab as four columns",
+          screen_of(out)[TEXT_ROW - 1][:5], "    x")
+    out = run([MOLLY, tabbed], [], env={"MOLLY_CONFIG": ""})
+    check("and eight by default", screen_of(out)[TEXT_ROW - 1][:9], "        x")
+
+    # The mouse. With reporting on, molly asks the terminal for it at startup;
+    # with it off, molly must not ask -- that is the whole of the setting, and
+    # the request is visible in the byte stream.
+    out = with_config("", [])
+    check("molly claims the mouse by default", b"\x1b[?1006h" in out, True)
+    out = with_config("[input]\nmouse = off\n", [])
+    check("mouse = off leaves it to the terminal", b"\x1b[?1006h" in out, False)
+
+    # A rebound chord has to actually run the command. F9 is bound to nothing by
+    # default, so this is unambiguous: the file is dirty, and if F9 saved it the
+    # file on disk has the edit in it.
+    rc = os.path.join(tmpdir, "keyrc")
+    with open(rc, "w") as fh:
+        fh.write("[keys]\nf9 = file.save\n")
+    target = os.path.join(tmpdir, "bound.txt")
+    with open(target, "w") as fh:
+        fh.write(body)
+    run([MOLLY, target], ["Z", "\x1b[20~"], env={"MOLLY_CONFIG": rc})
+    with open(target) as fh:
+        check("a chord bound in the file runs its command", fh.read(),
+              "Zalpha\nbeta\ngamma\n")
+
+    # And an unbound one has to stop working. Ctrl-O opens a file; unbound, it
+    # must do nothing at all rather than fall through to inserting a character.
+    out = with_config("[keys]\nctrl-o = none\n", ["\x0f"])
+    check("= none really unbinds a chord",
+          any("Open" in line for line in screen_of(out)), False)
+
+    # Shift-F3, which is the reason Shift became nameable: the shifted form must
+    # reach its own binding while the unshifted key keeps its own.
+    rc = os.path.join(tmpdir, "shiftrc")
+    with open(rc, "w") as fh:
+        fh.write("[keys]\nf3 = search.next\nshift-f3 = view.line-numbers\n")
+    out = run([MOLLY, path], ["\x1b[1;2R"], env={"MOLLY_CONFIG": rc})
+    check("Shift-F3 reaches its own binding",
+          any("Line numbers: on" in m for m in status_lines(out)), True)
+    out = run([MOLLY, path], ["\x1bOR"], env={"MOLLY_CONFIG": rc})
+    check("and plain F3 reaches its own",
+          any("Line numbers" in m for m in status_lines(out)), False)
+
+    # Shift with an arrow still extends a selection, because nothing is bound to
+    # it -- the fallback that makes a shifted binding possible without taking
+    # selection away.
+    out = with_config("", ["\x1b[1;2C", "\x1b[1;2C"])
+    check("Shift-Right still extends the selection",
+          "Sel 2" in status_row(out), True)
+
+    print("\nconfiguration: a file molly disagrees with")
+
+    # A bad line is a warning on the message bar, not a refusal to start, and
+    # every good line around it still applies.
+    out = with_config(
+        "[editor]\ntab width = 99\n[view]\nline numbers = on\n", [])
+    msgs = status_lines(out)
+    check("a bad value is reported on the message bar",
+          any("must be 1 to 16" in m for m in msgs), True)
+    check("naming the line it was on", any("mollyrc:2" in m for m in msgs), True)
+    check("and the good lines still applied",
+          screen_of(out)[TEXT_ROW - 1].startswith("1 │ alpha"), True)
+
+    # Wider than the rest, because the warning names the configuration file by
+    # its full path and the suite's temporary directory is long: at 80 columns
+    # the count falls off the right-hand edge of the message bar. A real
+    # mollyrc lives at ~/.config/molly/mollyrc and fits with room to spare.
+    out = with_config("[editor]\ntab width = 99\nundo steps = nonsense\n", [],
+                      cols=160)
+    check("several problems are counted",
+          any("(2 problems)" in m for m in status_lines(out, cols=160)), True)
+
+    out = with_config("[keys]\nalt-f = file.save\n", [])
+    check("rebinding a menu letter is refused out loud",
+          any("reserved by the menu bar" in m for m in status_lines(out)), True)
+    check("and Alt-F still opens the File menu",
+          any("Undo" not in line and "Save" in line
+              for line in screen_of(run([MOLLY, path], ["\x1bf"],
+                                        env={"MOLLY_CONFIG": ""}))), True)
+
+    # A missing file is the normal case and must say nothing at all.
+    out = run([MOLLY, path], [],
+              env={"MOLLY_CONFIG": os.path.join(tmpdir, "no-such-rc")})
+    check("no configuration file is not a warning",
+          any("mollyrc" in m or "problem" in m for m in status_lines(out)),
+          False)
+
+    # A directory where the file should be is not the normal case, and saying
+    # nothing would look exactly like the file not being read.
+    d = os.path.join(tmpdir, "rc-is-a-dir")
+    os.mkdir(d)
+    out = run([MOLLY, path], [], env={"MOLLY_CONFIG": d})
+    check("but a config path that cannot be read is",
+          any("rc-is-a-dir" in m for m in status_lines(out)), True)
+
+
+def test_save_settings(tmpdir):
+    """View > Save Settings, and what comes back on the next start.
+
+    This is the round trip the whole settings table exists for: change something
+    the ordinary way, save, start again, and find it still changed. It is tested
+    through the editor rather than through config_write because what it has to
+    prove is that the editor's live state is what gets written -- the unit test
+    can only prove that the file parses.
+    """
+    print("\nconfiguration: saving settings")
+
+    body = "alpha\nbeta\n"
+    path = os.path.join(tmpdir, "s.txt")
+    with open(path, "w") as fh:
+        fh.write(body)
+    rc = os.path.join(tmpdir, "saved", "mollyrc")
+
+    def screen_of(out, rows=24, cols=80):
+        scr = Screen(rows, cols)
+        scr.feed(out)
+        return scr.text()
+
+    # Turn the gutter on with Ctrl-U, then save settings from the View menu:
+    # Alt-V, then the last item.
+    out = run([MOLLY, path], ["\x15", "\x1bv", "\x1b[B" * 6, "\r"],
+              env={"MOLLY_CONFIG": rc})
+    check("saving settings reports where it wrote",
+          any("Settings saved" in m for m in status_lines(out)), True)
+    check("and creates the directory it needed", os.path.exists(rc), True)
+
+    with open(rc) as fh:
+        text = fh.read()
+    check("the file records the setting as it was left",
+          "line numbers = on" in text, True)
+    check("and the ones nobody touched at their defaults",
+          "menu bar = on" in text, True)
+    check("it is commented, so it can be hand-edited afterwards",
+          text.lstrip().startswith("# molly"), True)
+
+    # The point of all of it: the next start comes up with the gutter on.
+    out = run([MOLLY, path], [], env={"MOLLY_CONFIG": rc})
+    check("and the next start has the setting",
+          screen_of(out)[TEXT_ROW - 1].startswith("1 │ alpha"), True)
+    check("without a warning about its own file",
+          any("problem" in m for m in status_lines(out)), False)
+
+    # Written twice is still valid: the second write must not double anything or
+    # trip over the file it is replacing.
+    out = run([MOLLY, path], ["\x15", "\x1bv", "\x1b[B" * 6, "\r"],
+              env={"MOLLY_CONFIG": rc})
+    check("saving over an existing file works",
+          any("Settings saved" in m for m in status_lines(out)), True)
+    out = run([MOLLY, path], [], env={"MOLLY_CONFIG": rc})
+    check("and turns the setting back off again",
+          screen_of(out)[TEXT_ROW - 1].startswith("alpha"), True)
+    check("still without a warning",
+          any("problem" in m for m in status_lines(out)), False)
+
+    # A path that cannot be written is reported rather than lost.
+    out = run([MOLLY, path], ["\x1bv", "\x1b[B" * 6, "\r"],
+              env={"MOLLY_CONFIG": "/proc/version"})
+    check("a write that cannot happen says so",
+          any("Could not save settings" in m for m in status_lines(out)), True)
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -2095,6 +2326,8 @@ def main():
         test_directory_refused(tmpdir)
         test_undo(tmpdir)
         test_undo_cap(tmpdir)
+        test_config(tmpdir)
+        test_save_settings(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

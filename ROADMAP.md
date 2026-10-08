@@ -716,6 +716,13 @@ molly runs under `ulimit -v` and has to reach a clean quit.
   real cost, not the rules themselves.
 - **Scope:** regex- or table-driven definitions in config, so adding a language
   is not a recompile. Explicitly *not* a parser per language.
+- **Shipping with:** Rust, C, C++, C#, Python, AutoIt (`.au3`) and Markdown.
+  Seven definitions, decided 2026-10-08. Two of them are the ones that make the
+  cached per-row lexer state unavoidable rather than merely correct: AutoIt's
+  `#cs`/`#ce` block comments and Markdown's fenced code blocks both nest a
+  region whose end is many rows away. Markdown also means the definition format
+  cannot assume keyword/string/comment rules are enough — it needs emphasis
+  and headings, which are not any of the three.
 
 ### Indentation, filetypes and configuration — **IN**
 
@@ -924,6 +931,7 @@ are structural to the menu bar.
 | What a search matches | **The row as stored**, for plain searches as well as patterns |
 | Config file syntax | **INI-style sections**, `key = value` — small to parse and to write back |
 | Phase 2 order | **The Find dialog next**, which is what forces buttons, focus order and the checkbox into the toolkit |
+| Initial syntax languages | **Rust, C, C++, C#, Python, AutoIt (`.au3`), Markdown** |
 
 The first of those changed shipped behaviour: olly searched the tab-expanded
 render buffer, so a run of eight spaces found a tab. Unifying both modes on the
@@ -961,4 +969,5 @@ where they are free, instead of being carved out later.
 
 ## 8. Still open
 
-- **Which languages** ship with syntax definitions initially.
+Nothing. The last item — which languages ship with syntax definitions
+initially — was answered on 2026-10-08 and is recorded in §7.

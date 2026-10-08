@@ -20,6 +20,8 @@ void editor_cleanup(void) {
   editor_free_undo_redo();
   free(B.filename);
   B.filename = NULL;
+  keymap_cleanup();
+  config_cleanup();
   free(V.cursors);
   V.cursors = NULL;
   V.ncursors = 0;
@@ -50,17 +52,40 @@ void init_editor(void) {
   B.final_newline = 1;
   build_recovery_path();
 
-  /* Test hook (documented in MANUAL.md): shrink the undo cap so history
-   * eviction is reachable without editing for an hour. */
-  {
-    const char *cap = getenv("MOLLY_UNDO_STEPS");
-    if (cap && *cap) {
-      long v = strtol(cap, NULL, 10);
-      if (v > 0) undo_set_max_steps((v > 1000000000L) ? 1000000000 : (int)v);
-    }
-  }
-
   screen_init_size();
+}
+
+/* The greeting, built from the keymap rather than written out.
+ *
+ * It used to be a string literal naming five chords, which was fine until a
+ * chord could move: a rebinding in mollyrc, or molly's own defaults changing,
+ * would have left the first thing molly says about itself quietly wrong. So the
+ * keys come from the same place the menus and the help screen get theirs, and a
+ * command with nothing bound to it is skipped rather than shown as blank. */
+static void startup_message(void) {
+  static const struct { const char *cmd; const char *what; } hints[] = {
+    {"file.save", "save"},
+    {"file.quit", "quit"},
+    {"search.find", "find"},
+    {"search.next", "next"},
+    {"view.help", "help"},
+  };
+  char msg[256];
+  size_t o = 0;
+  int i, first = 1;
+
+  o += (size_t)snprintf(msg, sizeof(msg), "HELP:");
+  for (i = 0; i < (int)(sizeof(hints) / sizeof(hints[0])); i++) {
+    char chord[32];
+    int n;
+    if (!cmd_shortcut(hints[i].cmd, chord, sizeof(chord))) continue;
+    n = snprintf(msg + o, sizeof(msg) - o, "%s %s = %s", first ? "" : " |",
+                 chord, hints[i].what);
+    if (n < 0 || (size_t)n >= sizeof(msg) - o) break;
+    o += (size_t)n;
+    first = 0;
+  }
+  editor_set_status_message("%s", msg);
 }
 
 /* Is this argument a "+N" start-line request? Digits only after the plus:
@@ -108,10 +133,26 @@ int main(int argc, char *argv[]) {
     num_extra++;
   }
 
+  /* The configuration file, read before anything is applied and before the
+   * terminal is touched -- which is what lets both dump hooks below report
+   * exactly what the editor is about to do without needing a terminal to do it
+   * on. Nothing here can fail fatally: a file molly cannot read or cannot parse
+   * leaves the defaults in place and a warning to show once the screen is up. */
+  config_load();
+
+  /* Test hook (documented in MANUAL.md): print the parsed configuration and
+   * exit. */
+  if (getenv("MOLLY_DUMP_CONFIG") != NULL) {
+    config_dump(stdout);
+    return 0;
+  }
+
   /* Test hook (documented in MANUAL.md): print the parsed keymap and exit,
-   * before the terminal is touched. */
+   * before the terminal is touched. The file's [keys] are applied first, so this
+   * reports what is actually bound rather than only what molly ships with. */
   if (getenv("MOLLY_DUMP_KEYMAP") != NULL) {
     keymap_init();
+    config_apply_keys();
     keymap_dump(stdout);
     return 0;
   }
@@ -119,6 +160,26 @@ int main(int argc, char *argv[]) {
   enable_raw_mode();
   atexit(editor_cleanup);
   init_editor();
+  /* Now that there is an editor to apply them to. This is also where the menu
+   * bar and the tab width get their defaults, since the settings table is the
+   * one place either is written down. */
+  config_apply();
+
+  /* Test hook (documented in MANUAL.md): shrink the undo cap so history eviction
+   * is reachable without editing for an hour.
+   *
+   * After config_apply() on purpose, which settles the precedence: the built-in
+   * default, then the configuration file, then the environment. It used to sit
+   * in init_editor(), and the moment `undo steps` became a setting that made the
+   * hook useless -- config_apply() ran afterwards and put the cap back. */
+  {
+    const char *cap = getenv("MOLLY_UNDO_STEPS");
+    if (cap != NULL && *cap != '\0') {
+      long v = strtol(cap, NULL, 10);
+      if (v > 0) undo_set_max_steps((v > 1000000000L) ? 1000000000 : (int)v);
+    }
+  }
+
   if (filename != NULL) editor_open(filename);
 
   if (have_line) {
@@ -133,8 +194,7 @@ int main(int argc, char *argv[]) {
     CUR.cx = 0;
   }
 
-  editor_set_status_message(
-      "HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | Ctrl-N = next | Ctrl-? = help");
+  startup_message();
 
   /* May replace the HELP message and paint its own frame while it waits for
    * an answer. */
@@ -143,6 +203,18 @@ int main(int argc, char *argv[]) {
   if (num_extra > 0)
     editor_set_status_message("Warning: ignored %d extra argument%s (e.g. %s)",
         num_extra, num_extra > 1 ? "s" : "", first_extra);
+
+  /* A problem in mollyrc is worth more of the message bar than the greeting is.
+   * The first one is shown in full, with a count when there were more, because a
+   * file with six mistakes in it usually has one mistake repeated six times and
+   * the first line is enough to find it. */
+  if (config_error_count() > 0) {
+    const char *first = config_error_at(0);
+    if (first == NULL) first = "configuration could not be read";
+    if (config_error_count() == 1) editor_set_status_message("%s", first);
+    else editor_set_status_message("%s (%d problems)", first,
+                                   config_error_count());
+  }
 
   /* Paint the first frame up front. The loop below reads a key before it
    * paints, so without this the screen stayed blank until the first

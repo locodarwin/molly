@@ -37,10 +37,11 @@ uninstall:
 # Objects without main(), for linking a test that provides its own.
 LIBOBJ = $(filter-out src/main.o,$(OBJ))
 
-test: molly test-units
+test: molly test-units tests/regex_cli
 	python3 tests/test_molly.py ./molly
 	python3 tests/test_golden.py ./molly
 	python3 tests/fuzz_replace.py ./molly
+	python3 tests/fuzz_regex.py ./tests/regex_cli
 
 # Unit tests for the parts that need no terminal: the event loop (the editor
 # registers one source, so only a direct test covers waiting on several) and the
@@ -54,10 +55,15 @@ test-units: $(LIBOBJ) tests/test_units.c src/molly.h
 golden: molly
 	MOLLY_UPDATE_GOLDEN=1 python3 tests/test_golden.py ./molly
 
+# The driver tests/fuzz_regex.py drives: molly's regex engine on one side of a
+# differential test, with Python's re on the other.
+tests/regex_cli: $(LIBOBJ) tests/regex_cli.c src/molly.h
+	$(CC) $(CFLAGS) -Isrc tests/regex_cli.c $(LIBOBJ) -o tests/regex_cli
+
 test-oom: molly
 	python3 tests/oom_sweep.py ./molly
 
 clean:
-	rm -f molly editor $(OBJ) tests/units_test
+	rm -f molly editor $(OBJ) tests/units_test tests/regex_cli
 
 .PHONY: clean install uninstall test test-oom test-units golden

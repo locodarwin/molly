@@ -24,6 +24,16 @@ static void check(const char *label, long got, long want) {
   }
 }
 
+static void check_str(const char *label, const char *got, const char *want) {
+  if (strcmp(got, want) == 0) {
+    printf("  pass  %s\n", label);
+  } else {
+    printf("  FAIL  %s\n          want: %s\n          got:  %s\n",
+           label, want, got);
+    failures++;
+  }
+}
+
 /* What the handlers record, kept in parallel arrays indexed by the small integer
  * each source is registered with -- this is a test, not an interface. */
 static int fired[4];
@@ -515,6 +525,310 @@ static void test_input_field(void) {
 }
 
 
+/* --- the regex engine -------------------------------------------------------
+ *
+ * tests/fuzz_regex.py compares the engine against Python's re on hundreds of
+ * thousands of random patterns, which is what actually establishes that matching
+ * is right. What is here is the part that comparison cannot reach: the error
+ * messages, the UTF-8 behavior (Python's re in bytes mode counts bytes where
+ * molly counts characters), the two corners where the major engines disagree
+ * with each other, and the limits that stop a backtracker from hanging. */
+
+/* One match, rendered as a string the expectation is written as: the whole match
+ * and then each group as "so,eo", or "-" for no match, "!" for the step budget
+ * or the depth running out, and "E:message" for a pattern that did not
+ * compile. */
+static void rx_expect(const char *pat, const char *text, int start, int flags,
+                      const char *want) {
+  const char *err = NULL;
+  struct regex *re = regex_compile(pat, flags, &err);
+  struct regex_match m;
+  char got[512], label[768];
+  int i, r, n = 0;
+
+  snprintf(label, sizeof label, "/%s/%s on \"%s\"%s", pat,
+           (flags & REGEX_ICASE) ? "i" : "", text, start ? " resumed" : "");
+  if (re == NULL) {
+    snprintf(got, sizeof got, "E:%s", err ? err : "(no message)");
+    check_str(label, got, want);
+    return;
+  }
+  r = regex_exec(re, text, (int)strlen(text), start, &m);
+  if (r == REGEX_TOO_HARD) {
+    snprintf(got, sizeof got, "!");
+  } else if (r == REGEX_NOMATCH) {
+    snprintf(got, sizeof got, "-");
+  } else {
+    for (i = 0; i < m.ngroups && n < (int)sizeof got - 24; i++)
+      n += snprintf(got + n, sizeof got - (size_t)n, "%s%d,%d",
+                    i ? " " : "", m.so[i], m.eo[i]);
+  }
+  check_str(label, got, want);
+  regex_free(re);
+}
+
+static void rx(const char *pat, const char *text, const char *want) {
+  rx_expect(pat, text, 0, 0, want);
+}
+
+static void rx_i(const char *pat, const char *text, const char *want) {
+  rx_expect(pat, text, 0, REGEX_ICASE, want);
+}
+
+static void rx_from(const char *pat, const char *text, int start,
+                    const char *want) {
+  rx_expect(pat, text, start, 0, want);
+}
+
+static void test_regex_syntax(void) {
+  printf("\nregex: what a pattern means, and what it says when it does not\n");
+
+  rx("abc", "xxabcxx", "2,5");
+  rx("a.c", "abc", "0,3");
+  rx("a.c", "a\nc", "-");            /* . is every character but a newline */
+  rx("", "abc", "0,0");
+  rx("x", "abc", "-");
+
+  rx("^abc", "abcdef", "0,3");
+  rx("^abc", "xabc", "-");
+  rx("abc$", "xxabc", "2,5");
+  rx("abc$", "abcx", "-");
+  rx("^$", "", "0,0");
+
+  rx("[abc]+", "xxabcaxx", "2,6");
+  rx("[^abc]+", "abcxyz", "3,6");
+  rx("[a-c]", "d", "-");
+  rx("[]]", "]", "0,1");             /* a ] first is the character */
+  rx("[a-]", "-", "0,1");            /* a - last is the character */
+  rx("[\\d]+", "ab123", "2,5");
+  rx("\\d+", "ab123", "2,5");
+  rx("\\D+", "12ab", "2,4");
+  rx("\\w+", " a_1 ", "1,4");
+  rx("\\W", "ab ", "2,3");
+  rx("\\s+", "a \t b", "1,4");
+  rx("\\S+", "  ab  ", "2,4");
+  rx("[^\\D]+", "ab12", "2,4");      /* not a non-digit is a digit */
+  rx("[\\d\\s]+", "a1 2b", "1,4");
+
+  rx("a*", "bbb", "0,0");
+  rx("a+", "bbb", "-");
+  rx("ab?c", "ac", "0,2");
+  rx("ab?c", "abc", "0,3");
+  rx("a*", "aaa", "0,3");
+  rx("a*?b", "aaab", "0,4");         /* lazy, but it still has to reach the b */
+  rx("a+?", "aaa", "0,1");
+  rx(".*", "abc", "0,3");
+  rx(".*?", "abc", "0,0");
+  rx("a{2}", "aaa", "0,2");
+  rx("a{2,}", "aaaa", "0,4");
+  rx("a{2,3}", "aaaa", "0,3");
+  rx("a{,2}", "aaa", "0,2");         /* a comma with nothing before it is a 0 */
+  rx("a{0}b", "b", "0,1");
+  rx("a{}", "a{}", "0,3");           /* no comma and no digit: just braces */
+
+  rx("(ab)+", "ababab", "0,6 4,6");  /* the group holds the last iteration */
+  rx("(a)(b)", "ab", "0,2 0,1 1,2");
+  rx("(?:ab)+", "abab", "0,4");
+  rx("(a|b)c", "bc", "0,2 0,1");
+  rx("a|ab", "ab", "0,1");           /* leftmost-first: the first alternative */
+  rx("(a)?b", "b", "0,1 -1,-1");
+  rx("((a)(b))", "ab", "0,2 0,2 0,1 1,2");
+  rx("(a)(b)(c)(d)(e)(f)(g)(h)(i)", "abcdefghi",
+     "0,9 0,1 1,2 2,3 3,4 4,5 5,6 6,7 7,8 8,9");
+
+  rx("\\bcat\\b", "a cat here", "2,5");
+  rx("\\bcat\\b", "concat", "-");
+  rx("\\Bcat", "concat", "3,6");
+  rx("\\b", "", "-");                /* nothing either side is no boundary */
+  rx("x\\b", "x y", "0,1");
+
+  rx_i("abc", "ABC", "0,3");
+  rx_i("[a-c]+", "ABC", "0,3");
+  rx_i("[^a]", "A", "-");            /* the fold applies before the negation */
+  rx_i("\u00e9", "\u00c9", "-");     /* and never above ASCII */
+
+  rx_from("^a", "aa", 1, "-");       /* ^ is the row, not where we resumed */
+  rx_from("a", "aa", 1, "1,2");
+  rx_from("\\bb", "ab b", 1, "3,4"); /* the character before the start counts */
+
+  rx("[b-a]", "x", "E:character class range is out of order");
+  rx("[abc", "x", "E:unterminated [ in pattern");
+  rx("[]", "x", "E:unterminated [ in pattern");
+  rx("[\\q]", "x", "E:unknown escape in character class");
+  rx("a{3,2}", "x", "E:repeat counts are out of order");
+  rx("a{70000}", "x", "E:repeat count is too large");
+  rx("*a", "x", "E:nothing to repeat");
+  rx("a**", "x", "E:a quantifier cannot follow a quantifier");
+  rx("a\\", "x", "E:pattern ends with a backslash");
+  rx("\\q", "x", "E:unknown escape sequence");
+  rx("(?=a)", "x", "E:only (?:...) is supported after (?");
+  rx("(a", "x", "E:missing ) in pattern");
+  rx("a)", "x", "E:unmatched ) in pattern");
+  rx("(1)(2)(3)(4)(5)(6)(7)(8)(9)(a)", "x", "E:too many capture groups");
+}
+
+static void test_regex_utf8(void) {
+  printf("\nregex: a character, not a byte\n");
+
+  /* The whole point of the UTF-8 half: . and a class consume a character, so a
+   * match can neither end in the middle of one nor leave the cursor inside one.
+   * Python's re in bytes mode counts bytes here, which is why the differential
+   * fuzz is ASCII and this is not. */
+  rx("^.$", "\u00e9", "0,2");
+  rx(".", "\u65e5\u672c", "0,3");
+  rx("^..$", "\u65e5\u672c", "0,6");
+  rx("[^x]", "\u00e9", "0,2");
+  rx("a.c", "a\u00e9c", "0,4");
+  rx(".{2}", "\u00e91", "0,3");
+  rx("^.*$", "\u65e5\u672c\u8a9e", "0,9");
+
+  /* Everything above ASCII is a word character, so \w and \b work on words
+   * molly cannot case-fold. */
+  rx("\\w+", "caf\u00e9", "0,5");
+  rx("\\bcaf\u00e9\\b", "a caf\u00e9.", "2,7");
+  rx("[\u00e9]", "x\u00e9", "1,3");
+  rx("[\u00e0-\u00ff]", "\u00e9", "0,2");
+  rx("[^\u00e9]", "\u00e9x", "2,3");
+}
+
+static void test_regex_corners(void) {
+  printf("\nregex: the two corners where the big engines disagree\n");
+
+  /* Neither of these has one right answer -- Perl and Python differ from each
+   * other on both -- so they are pinned here to say what molly does rather than
+   * to claim it is the only possibility. Molly's answers fall out of a matcher
+   * that is one repetition node and a save/restore around a capture; it is not
+   * imitating either engine.
+   *
+   * A lazy quantifier as the body of a repetition: molly and Perl reach (1,1)
+   * for the group, Python reaches (0,1). Same text matched either way. */
+  rx("(a*?){1,2}b", "ab", "0,2 1,1");
+  rx("(\\w*?){1,2}$", "ab", "0,2 1,2");
+
+  /* A capture inside a repeated group, where an iteration that does not reach it
+   * follows one that did: molly and Python keep the older value, Perl and
+   * JavaScript clear it at every iteration. Keeping it costs nothing; clearing
+   * it would cost a save and a restore per iteration in the matcher's hot
+   * path. */
+  rx("(b(\\s)?){3}", "b\tbb", "0,4 3,4 1,2");
+  rx("(a(b)?){2}", "aba", "0,3 2,3 1,2");
+  rx("(?:(a)|(b)){2}", "ab", "0,2 0,1 1,2");
+
+  /* An iteration that matches nothing ends the repetition rather than going
+   * round again forever -- but not while the minimum is unmet, where iterating
+   * is finite anyway and stopping early would be wrong. */
+  rx("(a*)*$", "aa", "0,2 2,2");
+  rx("(a?){3}$", "", "0,0 0,0");
+  rx("(a?){2}b", "ab", "0,2 1,1");
+  rx("()*", "x", "0,0 0,0");
+  rx("(){0}", "x", "0,0 -1,-1");
+}
+
+static void test_regex_limits(void) {
+  static char buf[60001];
+  const char *err = NULL;
+  struct regex *re;
+  struct regex_match m;
+  int i;
+
+  printf("\nregex: giving up instead of hanging\n");
+
+  /* The pattern every article about catastrophic backtracking opens with, in the
+   * form that reaches the backtracking: written as (a+)+b it never gets that
+   * far, because b is a character every match must contain and a line of a's
+   * does not contain one. Anchoring on $ instead leaves nothing to rule out in
+   * advance, and then the thirty a's can be partitioned in 2^29 ways, every one
+   * of which fails on the b at the end. The step budget turns that from a hung
+   * editor into a message. */
+  for (i = 0; i < 30; i++) buf[i] = 'a';
+  buf[30] = 'b';
+  buf[31] = '\0';
+  rx("(a+)+$", buf, "!");
+  rx("(a|a)*$", buf, "!");
+  rx("(a+)+b", buf, "0,31 0,30");  /* and with the b where it helps, at once */
+
+  /* A quantified single character is walked rather than recursed down, so this
+   * stays linear and shallow however long the line is -- which is the case that
+   * would otherwise spend one C stack frame per character. */
+  for (i = 0; i < 60000; i++) buf[i] = 'a';
+  buf[60000] = '\0';
+  /* And no match at all is settled by memchr before the scan runs: a b that is
+   * nowhere in the line means there is nothing to find, which is the answer a
+   * leftmost scan would otherwise spend the whole budget arriving at. */
+  re = regex_compile("a*b", 0, &err);
+  check("a*b over 60000 characters answers without a search",
+        re ? regex_exec(re, buf, 60000, 0, &m) : -99, REGEX_NOMATCH);
+  regex_free(re);
+  re = regex_compile("^a*$", 0, &err);
+  check("^a*$ over 60000 characters matches all of it",
+        re ? regex_exec(re, buf, 60000, 0, &m) : -99, REGEX_MATCH);
+  check("and the match is the whole line", re ? m.eo[0] : -1, 60000);
+  regex_free(re);
+
+  /* A repeated *group* does recurse, one frame per iteration, so it has a
+   * ceiling: measured at 160 bytes of stack per unit of depth, RX_MAX_DEPTH is a
+   * 1.6 MB budget. These two pin where the ceiling is -- if the second one ever
+   * starts matching, the matcher stopped using the C stack for backtracking and
+   * this test should say so instead. */
+  for (i = 0; i < 1000; i++) { buf[2 * i] = 'a'; buf[2 * i + 1] = 'b'; }
+  buf[2000] = '\0';
+  re = regex_compile("^(ab)*$", 0, &err);
+  check("a repeated group over 1000 iterations matches",
+        re ? regex_exec(re, buf, 2000, 0, &m) : -99, REGEX_MATCH);
+  regex_free(re);
+  for (i = 0; i < 20000; i++) { buf[2 * i] = 'a'; buf[2 * i + 1] = 'b'; }
+  buf[40000] = '\0';
+  re = regex_compile("^(ab)*$", 0, &err);
+  check("over 20000 it gives up rather than overflowing the stack",
+        re ? regex_exec(re, buf, 40000, 0, &m) : -99, REGEX_TOO_HARD);
+  regex_free(re);
+}
+
+static void rx_sub(const char *pat, const char *text, const char *tmpl,
+                   const char *want) {
+  const char *err = NULL;
+  struct regex *re = regex_compile(pat, 0, &err);
+  struct regex_match m;
+  char label[512];
+  char *out;
+  int len = 0;
+
+  snprintf(label, sizeof label, "/%s/ on \"%s\" replaced with \"%s\"",
+           pat, text, tmpl);
+  if (re == NULL || regex_exec(re, text, (int)strlen(text), 0, &m) != REGEX_MATCH) {
+    check_str(label, "no match", want);
+    regex_free(re);
+    return;
+  }
+  out = regex_expand(tmpl, text, &m, &len, &err);
+  if (out == NULL) {
+    char got[512];
+    snprintf(got, sizeof got, "E:%s", err ? err : "(no message)");
+    check_str(label, got, want);
+  } else {
+    check_str(label, out, want);
+    check("and the length it reports is the length it wrote",
+          len, (long)strlen(out));
+    free(out);
+  }
+  regex_free(re);
+}
+
+static void test_regex_expand(void) {
+  printf("\nregex: building the replacement\n");
+
+  rx_sub("(\\w+)=(\\w+)", "k=v", "\\2=\\1", "v=k");
+  rx_sub("(\\w+)=(\\w+)", "k=v", "[\\0]", "[k=v]");
+  rx_sub("a", "a", "x\\\\y", "x\\y");
+  rx_sub("a", "a", "\\ty", "\ty");
+  rx_sub("a", "a", "\\$1", "$1");          /* an escape before punctuation */
+  rx_sub("a", "a", "plain", "plain");
+  rx_sub("(a)|(b)", "b", "[\\1][\\2]", "[][b]");  /* the branch not taken */
+  rx_sub("a", "a", "\\n", "E:a replacement cannot contain a newline");
+  rx_sub("(a)", "a", "\\2", "E:the pattern has no group with that number");
+  rx_sub("a", "a", "trailing\\", "E:the replacement ends with a backslash");
+}
+
 int main(void) {
   test_loop_sources();
   test_wait_key_services_sources();
@@ -524,6 +838,11 @@ int main(void) {
   test_theme_color_bytes();
   test_palette_matcher();
   test_input_field();
+  test_regex_syntax();
+  test_regex_utf8();
+  test_regex_corners();
+  test_regex_limits();
+  test_regex_expand();
 
   printf("\n%s\n", failures ? "FAILED" : "ok");
   return failures ? 1 : 0;

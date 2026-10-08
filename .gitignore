@@ -7,3 +7,4 @@ molly-recover.*
 __pycache__/
 .claude/
 tests/units_test
+tests/regex_cli

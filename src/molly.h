@@ -437,6 +437,37 @@ struct style {
   unsigned char underline;
 };
 
+/* --- regular expressions ----------------------------------------------------
+ *
+ * A PCRE subset, hand-rolled; see regex.c for what is in it and what is not. The
+ * compiled form is opaque because nothing outside regex.c has any business
+ * looking at it, and matching is deliberately separable from the editor: it takes
+ * a pointer and a length, which makes it testable without a terminal and reusable
+ * on a row, a selection or a filename. */
+
+struct regex;
+
+#define REGEX_ICASE 0x01  /* fold A-Z against a-z, ASCII only */
+
+#define REGEX_MAX_GROUPS 10  /* the whole match, plus \1 to \9 */
+
+/* What regex_exec returns. TOO_HARD is the backtracker giving up rather than
+ * hanging -- see the step budget in regex.c -- and a caller has to tell it apart
+ * from "no match" because the honest thing to say is that the pattern is too
+ * complex, not that the text does not contain it. */
+#define REGEX_NOMATCH   0
+#define REGEX_MATCH     1
+#define REGEX_TOO_HARD (-1)
+
+/* Byte offsets into the text that was searched: so[0]/eo[0] are the whole match
+ * and the rest are the capturing groups, with -1 for a group that did not
+ * participate. Half-open, so eo - so is the length. */
+struct regex_match {
+  int ngroups;
+  int so[REGEX_MAX_GROUPS];
+  int eo[REGEX_MAX_GROUPS];
+};
+
 struct abuf {
   char *b;
   int len;
@@ -544,6 +575,15 @@ void menu_bar_draw(const struct layer *self);
 /* palette.c */
 int palette_open(void);
 int palette_score(const char *s, const char *pat);
+
+/* regex.c */
+char *regex_expand(const char *tmpl, const char *text,
+                   const struct regex_match *m, int *outlen, const char **err);
+int regex_exec(const struct regex *re, const char *text, int len, int start,
+               struct regex_match *m);
+int regex_ngroups(const struct regex *re);
+struct regex *regex_compile(const char *pat, int flags, const char **err);
+void regex_free(struct regex *re);
 
 /* screen.c */
 int screen_poll_size(void);

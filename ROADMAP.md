@@ -6,14 +6,15 @@ behaves like a GUI one: menu bar, mouse, dialogs, splits, discoverable
 everything. Molly aims at that experience in C, keeping olly's zero runtime
 dependencies and instant start.
 
-**Current state:** Phases 0 and 1 are done. Molly is 7,037 lines across
-`src/molly.h` and twenty-two `.c` files, with a menu bar, a mouse, framed
-dialogs, a command palette and a keyboard reference generated from its own
-command table. 491 checks pass (371 pty, 33 golden screens, 87 unit) plus 40
-fuzz cases and the allocation-failure sweep, and every file is clean under
-`-Wall -Wextra -Wpedantic -Wshadow`. Still `0.1.0-dev`: the *interface* is
-molly's own now, and the *editing* features are still olly's — Phase 2 is where
-those start.
+**Current state:** Phases 0 and 1 are done, and Phase 2 has started with the
+regular-expression engine — which is written and tested but not yet reachable
+from the editor. Molly is 8,253 lines across `src/molly.h` and twenty-three `.c`
+files, with a menu bar, a mouse, framed dialogs, a command palette and a keyboard
+reference generated from its own command table. 611 checks pass (371 pty, 33
+golden screens, 207 unit) plus 4,040 fuzz cases and the allocation-failure sweep,
+and every file is clean under `-Wall -Wextra -Wpedantic -Wshadow`. Still
+`0.1.0-dev`: the *interface* is molly's own now, and the *editing* features are
+still olly's.
 
 **Reaching commands:** Ctrl keys *and* Alt keys, plus a menu system on Alt.
 That decision is settled and it drives Phases 0-1 below.
@@ -538,6 +539,64 @@ Grouped by where they live:
   match and reports "pattern too complex" rather than freezing the editor, and a
   fuzz target from day one, in the spirit of the existing replace-all fuzz.
 - Capture groups in replacements (`\1`).
+
+#### The engine — **done**, and not yet wired to anything
+
+`src/regex.c`, 1,143 lines. It takes a pointer and a length rather than a row, so
+it is testable without a terminal and reusable on a selection or a filename
+later. Everything in the scope above is in it, plus `{,n}` for `{0,n}` because
+both Python and PCRE2 read it that way. Out: lookaround, backreferences inside
+the pattern, named groups, possessive quantifiers, `\x` escapes and POSIX
+`[:alpha:]` classes.
+
+**What the fuzz found.** `tests/fuzz_regex.py` compares the engine against
+Python's `re` on random patterns — 800,000 of them during development, 4,000 per
+`make test` — in bytes mode, which is the only mode whose offsets are byte
+offsets and whose `\w` and `IGNORECASE` are ASCII-only. It found two real bugs
+within minutes of existing:
+
+- **`{m,n}` was built by copying the subtree** m times and adding n−m optional
+  copies, which is the obvious way and is wrong: a repetition has a rule that a
+  row of optional copies cannot express, which is that an iteration matching
+  nothing ends the repetition instead of going round again. Rebuilt as a counted
+  loop, which is both correct and smaller — `rx_clone` and the expansion went
+  away, and `a{1000}` is now one node rather than a thousand.
+- **`{,3}` was being read as a literal brace**, where both Python and PCRE2 read
+  it as `{0,3}`.
+
+**Two corners have no right answer**, because Perl and Python disagree with each
+other, and a differential test cannot arbitrate what the references dispute.
+Molly follows Perl on which iteration's capture survives when a repetition's body
+is lazy, and Python on whether a capture inside a repeated group is cleared at
+every iteration (it is not — clearing it would cost a save and restore per
+iteration in the matcher's hot path). Both are pinned in `tests/test_units.c`
+rather than left to drift, and the fuzz allows a difference only where molly's
+answer passes a check that does not depend on either engine's taste: the two must
+agree that there is a match and on where it starts, since neither is a matter of
+search order, and molly's extent has to be a real match of the pattern. That
+exemption is used about twice per 100,000 cases and the run fails if it is needed
+more.
+
+**What keeps it from hanging**, measured rather than assumed:
+
+| Guard | Value | Why that value |
+| --- | --- | --- |
+| Step budget | 2,000,000 node visits per call | 9 ms on this machine for the worst case, which is the ceiling on how long one row can take |
+| Recursion depth | 10,000 frames | measured at exactly 160 bytes of C stack per unit of depth, so a 1.6 MB ceiling — a small fraction of a Linux main thread's 8 MB, and sized with a Windows main thread's 1 MB in mind |
+| Required characters | up to 4 | a character every match must contain, looked for with `memchr` before the scan runs |
+
+The last one is not a micro-optimisation: without it, `.*zzz` against a
+200 KB line spends the entire step budget and then reports "pattern too complex"
+for a line that simply contains no `z`. With it, the same search answers
+correctly in under a tenth of a millisecond. A quantified single character
+(`.*`, `[0-9]+`) is also walked rather than recursed down, which is what keeps
+`^a*$` over 60,000 characters from needing 60,000 stack frames.
+
+What the depth limit still costs: a repeated *group* does recurse once per
+iteration, so `^(ab)*$` matches over a thousand iterations and gives up over
+twenty thousand. Lifting that means replacing C recursion with an explicit
+backtrack stack, which is a rewrite of the matcher and is not worth it until
+something needs it.
 
 ### Multiple buffers and tabs — **IN**
 

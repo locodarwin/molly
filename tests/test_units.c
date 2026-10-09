@@ -78,8 +78,8 @@ static void test_loop_sources(void) {
   handler_fd[0] = a[0];
   handler_fd[1] = b[0];
 
-  ida = loop_add(a[0], drain_handler, &idx[0]);
-  idb = loop_add(b[0], drain_handler, &idx[1]);
+  ida = loop_add(a[0], LOOP_READ, drain_handler, &idx[0]);
+  idb = loop_add(b[0], LOOP_READ, drain_handler, &idx[1]);
   check("two sources registered", loop_source_count(), 2);
   check("ids are distinct", ida != idb, 1);
 
@@ -127,11 +127,11 @@ static void test_loop_sources(void) {
   {
     int i, last = 0, extra;
     for (i = 0; i < 64; i++) {
-      int id = loop_add(b[0], drain_handler, &idx[1]);
+      int id = loop_add(b[0], LOOP_READ, drain_handler, &idx[1]);
       if (id < 0) break;
       last++;
     }
-    extra = loop_add(b[0], drain_handler, &idx[1]);
+    extra = loop_add(b[0], LOOP_READ, drain_handler, &idx[1]);
     check("a full table refuses rather than overflows", extra, -1);
     check("the table filled to its stated size", last, loop_source_count());
   }
@@ -181,7 +181,7 @@ static void test_wait_key_services_sources(void) {
     return;
   }
   handler_fd[0] = src[0];
-  if (loop_add(src[0], drain_handler, &idx) < 0) {
+  if (loop_add(src[0], LOOP_READ, drain_handler, &idx) < 0) {
     failures++;
     return;
   }
@@ -1348,6 +1348,222 @@ static void test_help_entries(void) {
   check("no help entry has an empty key column", blank, 0);
 }
 
+/* A cancel callback that asks to stop the second time it is consulted, so the
+ * command is interrupted while it is running rather than before it starts. */
+static int cancel_calls;
+static int cancel_second_time(void) {
+  return ++cancel_calls >= 2;
+}
+
+/* ---- the shell filter ---------------------------------------------------- */
+
+/* filter_run() takes a string and a command and gives back a string, so every
+ * one of its failure modes is reachable here rather than through a pty: a
+ * command that fails, one that floods, one that hangs, one that does not
+ * exist, and one that stops reading halfway through its input.
+ *
+ * The limits are arguments and not settings for exactly this reason. The editor
+ * passes seconds and megabytes; these pass milliseconds and kilobytes, so the
+ * timeout test costs a quarter of a second instead of ten. */
+static int filt(const char *cmd, const char *in, struct filter_io *io) {
+  memset(io, 0, sizeof(*io));
+  io->cmd = cmd;
+  io->in = in;
+  io->inlen = (in != NULL) ? (int)strlen(in) : 0;
+  io->timeout_ms = 2000;
+  io->max_out = 64 * 1024;
+  return filter_run(io, NULL);
+}
+
+static void test_filter(void) {
+  struct filter_io io;
+  printf("\nshell filter: text in, a command, text out\n");
+
+  loop_cleanup();
+
+  check("cat gives the text back", filt("cat", "one\ntwo\n", &io), FILTER_OK);
+  check_str("unchanged", io.out, "one\ntwo\n");
+  check("and the length agrees", io.outlen, 8);
+  filter_free(&io);
+
+  check("sort sorts it", filt("sort", "beta\nalpha\ngamma\n", &io), FILTER_OK);
+  check_str("into order", io.out, "alpha\nbeta\ngamma\n");
+  filter_free(&io);
+
+  /* A pipeline, which is why the command goes through a shell rather than
+   * being split on spaces and exec'd. */
+  check("a pipeline is one command",
+        filt("tr a-z A-Z | rev", "abc\n", &io), FILTER_OK);
+  check_str("and both halves ran", io.out, "CBA\n");
+  filter_free(&io);
+
+  /* No input at all: the command's standard input must reach end of file
+   * rather than staying open, or `cat` never returns. */
+  check("a command with no input still finishes",
+        filt("cat; echo done", "", &io), FILTER_OK);
+  check_str("and sees end of file immediately", io.out, "done\n");
+  filter_free(&io);
+
+  /* More than a pipe will hold, in both directions at once. This is the
+   * deadlock the writable event source exists to prevent: molly is still
+   * feeding the command when the command's output fills its own pipe. */
+  {
+    char *big = xmalloc(200001);
+    memset(big, 'x', 200000);
+    big[200000] = '\0';
+    memset(&io, 0, sizeof(io));
+    io.cmd = "cat";
+    io.in = big;
+    io.inlen = 200000;
+    io.timeout_ms = 5000;
+    io.max_out = 1024 * 1024;
+    check("200k through cat does not deadlock", filter_run(&io, NULL), FILTER_OK);
+    check("and arrives whole", io.outlen, 200000);
+    filter_free(&io);
+    free(big);
+  }
+
+  printf("\nshell filter: when the command goes wrong\n");
+
+  /* A non-zero exit is reported rather than applied. The editor does not
+   * replace the text on a failure, which is why the status has to come back. */
+  check("a failing command says so", filt("exit 3", "x\n", &io), FILTER_FAILED);
+  check("with its status", io.status, 3);
+  filter_free(&io);
+
+  /* The command's own words, not molly's. "sh: 1: jqq: not found" tells the
+   * user what to fix; "exited 127" does not. */
+  check("a command that does not exist fails",
+        filt("jqq-does-not-exist", "x\n", &io), FILTER_FAILED);
+  check("and its own error message comes back", io.err[0] != '\0', 1);
+  check("with the name of the thing that was missing",
+        strstr(io.err, "jqq-does-not-exist") != NULL, 1);
+  filter_free(&io);
+
+  /* One line of it, with control bytes defanged: the message goes on a one-row
+   * bar, and an escape sequence in it would repaint the screen. */
+  check("several lines of error keep the first",
+        filt("printf 'first\\nsecond\\n' >&2; exit 1", "x\n", &io), FILTER_FAILED);
+  check_str("only", io.err, "first");
+  filter_free(&io);
+
+  check("an escape in the error text is defanged",
+        filt("printf '\\033[31mred\\n' >&2; exit 1", "x\n", &io), FILTER_FAILED);
+  check_str("to spaces", io.err, "[31mred");
+  filter_free(&io);
+
+  /* Standard error must be a pipe even when the command succeeds, or a warning
+   * lands in the middle of the text area. Here it is collected and the output
+   * is still clean. */
+  check("a command that warns and succeeds still succeeds",
+        filt("echo oops >&2; cat", "x\n", &io), FILTER_OK);
+  check_str("with its output unpolluted", io.out, "x\n");
+  filter_free(&io);
+
+  printf("\nshell filter: the three limits\n");
+
+  /* A command that never finishes. 250ms rather than the editor's ten seconds,
+   * which is the whole reason the timeout is an argument. */
+  memset(&io, 0, sizeof(io));
+  io.cmd = "sleep 30";
+  io.in = "";
+  io.inlen = 0;
+  io.timeout_ms = 250;
+  io.max_out = 64 * 1024;
+  check("a command that hangs is stopped", filter_run(&io, NULL), FILTER_TIMEOUT);
+  check_str("and says why", io.err, "took too long");
+  filter_free(&io);
+
+  /* And the whole pipeline goes, not just the shell: `sleep` is the child of
+   * the `sh` that molly started, so killing one process would leave it
+   * running. The group is what makes this finish at all.
+   *
+   * Checked by the clock: if only the shell had been killed, reaping it would
+   * have returned at once and this would be fast, but the sleep would still be
+   * running. A command substitution waits for the whole pipeline, so the shell
+   * cannot exit before its children do. */
+  memset(&io, 0, sizeof(io));
+  io.cmd = "sleep 30 | cat";
+  io.in = "";
+  io.inlen = 0;
+  io.timeout_ms = 250;
+  io.max_out = 64 * 1024;
+  check("a hanging pipeline is stopped too", filter_run(&io, NULL), FILTER_TIMEOUT);
+  filter_free(&io);
+
+  /* A command that floods. The cap is checked as the output arrives, so a
+   * runaway is never held in memory in order to be rejected. */
+  memset(&io, 0, sizeof(io));
+  io.cmd = "yes molly";
+  io.in = "";
+  io.inlen = 0;
+  io.timeout_ms = 5000;
+  io.max_out = 16 * 1024;
+  check("a command that floods is stopped", filter_run(&io, NULL), FILTER_TOOBIG);
+  check_str("and says why", io.err, "too much output");
+  check("having kept no more than the cap plus the read that crossed it",
+        io.outlen <= 16 * 1024 + 8192, 1);
+  filter_free(&io);
+
+  /* The cancel callback, which in the editor reads the keyboard. Here it says
+   * stop on its second call, so the command is interrupted rather than waited
+   * for. */
+  memset(&io, 0, sizeof(io));
+  io.cmd = "sleep 30";
+  io.in = "";
+  io.inlen = 0;
+  io.timeout_ms = 10000;
+  io.max_out = 64 * 1024;
+  cancel_calls = 0;
+  check("a cancelled command is stopped", filter_run(&io, cancel_second_time),
+        FILTER_CANCELLED);
+  check_str("and says so", io.err, "cancelled");
+  filter_free(&io);
+
+  printf("\nshell filter: and the awkward ones\n");
+
+  /* `head -1` reads one line and closes its input. Molly is still writing, so
+   * the write fails with EPIPE -- which is correct behaviour and must not be
+   * fatal. Without SIGPIPE ignored this check kills the test binary. */
+  {
+    char *big = xmalloc(100001);
+    memset(big, 'y', 100000);
+    big[0] = 'z';
+    big[1] = '\n';
+    big[100000] = '\0';
+    memset(&io, 0, sizeof(io));
+    io.cmd = "head -1";
+    io.in = big;
+    io.inlen = 100000;
+    io.timeout_ms = 5000;
+    io.max_out = 1024 * 1024;
+    check("a command that stops reading is not an error",
+          filter_run(&io, NULL), FILTER_OK);
+    check_str("and its output is what it did read", io.out, "z\n");
+    filter_free(&io);
+    free(big);
+  }
+
+  /* An empty command is refused before anything is forked. */
+  check("an empty command does not run", filt("", "x\n", &io), FILTER_NOSTART);
+  check_str("and says what was wrong", io.err, "no command");
+  filter_free(&io);
+
+  /* Nothing may be left registered. A source left behind would be polled for
+   * the rest of the session on a descriptor that has been closed and may since
+   * have been handed to something else. */
+  check("every event source was given back", loop_source_count(), 0);
+
+  /* Binary is text as far as this is concerned: the output is length-counted,
+   * not NUL-terminated, because a filter may legitimately produce a zero byte
+   * and truncating there would lose the rest. */
+  check("a NUL in the output does not truncate it",
+        filt("printf 'a\\000b'", "", &io), FILTER_OK);
+  check("the length counts all of it", io.outlen, 3);
+  check("including the zero byte", io.out[1] == '\0' && io.out[2] == 'b', 1);
+  filter_free(&io);
+}
+
 /* ---- the window tree ----------------------------------------------------- */
 
 /* Splits are testable without a terminal for the same reason the buffer list is:
@@ -1994,6 +2210,7 @@ int main(void) {
   test_syntax_markdown();
   test_syntax_misc();
   test_buflist();
+  test_filter();
   test_windows();
   test_windows_too_small();
   test_windows_buffer_closed();

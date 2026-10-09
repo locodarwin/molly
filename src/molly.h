@@ -31,6 +31,7 @@
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <termios.h>
 #include <time.h>
 #include <unistd.h>
@@ -503,12 +504,56 @@ struct dialog {
 #define DIALOG_CANCEL  2  /* Esc, or Ctrl-C */
 #define DIALOG_PRESSED 3  /* a button went in; d->pressed says which */
 
+/* --- the shell filter -------------------------------------------------------
+ *
+ * Text in, a command, text out. The one place molly runs something on the
+ * user's behalf, which is why the limits are arguments rather than policy
+ * buried inside: a caller says how long it will wait and how much output it
+ * will take, and a test says milliseconds and kilobytes where the editor says
+ * seconds and megabytes.
+ *
+ * Deliberately knows nothing about buffers, selections, the keymap or the
+ * prompt. It takes a string and returns a string, which is also what makes it
+ * testable without a terminal -- the editing half is in cmd.c. */
+#define FILTER_OK        0  /* ran and exited 0; `out` is its output */
+#define FILTER_FAILED    1  /* ran and exited non-zero, or died on a signal */
+#define FILTER_TIMEOUT   2  /* still going after timeout_ms */
+#define FILTER_CANCELLED 3  /* the cancel callback asked for it to stop */
+#define FILTER_TOOBIG    4  /* produced more than max_out bytes */
+#define FILTER_NOSTART   5  /* a pipe or fork failed; nothing ran */
+
+struct filter_io {
+  /* In. */
+  const char *cmd;    /* passed to `sh -c`, so a pipeline is one command */
+  const char *in;     /* text for the command's standard input */
+  int inlen;
+  int timeout_ms;     /* 0 for no limit */
+  int max_out;        /* bytes of output accepted; 0 for no limit */
+
+  /* Out. */
+  char *out;          /* the command's standard output; NUL-terminated */
+  int outlen;
+  char err[256];      /* the first line of its standard error, or why it did not run */
+  int status;         /* its exit status, when it ran to completion */
+  int signalled;      /* the signal that killed it, or 0 */
+};
+
+int filter_run(struct filter_io *io, int (*cancelled)(void));
+void filter_free(struct filter_io *io);
+
 /* --- the event loop --------------------------------------------------------
  *
  * What loop_wait returns. The keyboard is reported; every other source is
  * dispatched through its handler before loop_wait returns. */
 #define LOOP_STDIN       0x01  /* keyboard input is waiting */
 #define LOOP_INTERRUPTED 0x02  /* a signal cut the wait short (a resize, say) */
+
+/* What a registered source is waiting for. A pipe molly is *feeding* is as much
+ * a source as one it is reading -- the shell filter has one of each, and without
+ * both it would have to write all of its input before reading any output, which
+ * deadlocks the moment the command's output outgrows a pipe buffer. */
+#define LOOP_READ  0x01
+#define LOOP_WRITE 0x02
 
 typedef void (*loop_handler)(void *user);
 
@@ -752,6 +797,8 @@ int config_error_count(void);
 int config_load(void);
 int config_write(const char *path, const char **err);
 int setting_count(void);
+int shell_output_max(void);
+int shell_timeout_ms(void);
 int setting_get(const char *section, const char *name);
 void config_apply(void);
 void config_apply_keys(void);
@@ -804,7 +851,7 @@ void layer_pop_to(int count);
 void layer_set_bounds(int i, int x, int y, int w, int h);
 
 /* loop.c */
-int loop_add(int fd, loop_handler on_ready, void *user);
+int loop_add(int fd, int events, loop_handler on_ready, void *user);
 int loop_source_count(void);
 int loop_wait(int timeout_ms);
 void loop_cleanup(void);

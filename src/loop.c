@@ -35,6 +35,7 @@
 struct loop_source {
   int in_use;
   int fd;
+  int events;            /* LOOP_READ, LOOP_WRITE, or both */
   loop_handler on_ready;
   void *user;
 };
@@ -44,13 +45,21 @@ static int sources_used;   /* highest slot ever used, so the scan can stop early
 
 /* Register a descriptor to wait on. Returns an id for loop_remove, or -1 when
  * there is no room -- which the caller must handle rather than assume, since a
- * language server per language plus a terminal or two can fill a small table. */
-int loop_add(int fd, loop_handler on_ready, void *user) {
+ * language server per language plus a terminal or two can fill a small table.
+ *
+ * `events` is LOOP_READ, LOOP_WRITE or both. It was not a parameter while the
+ * only sources were things molly read; the shell filter writes to one pipe
+ * while reading another, and the alternative to saying so here was a second
+ * poll() somewhere else -- which is exactly what this module's own comment
+ * above says it exists to prevent. */
+int loop_add(int fd, int events, loop_handler on_ready, void *user) {
   int i;
+  if (events == 0) events = LOOP_READ;
   for (i = 0; i < LOOP_MAX_SOURCES; i++) {
     if (sources[i].in_use) continue;
     sources[i].in_use = 1;
     sources[i].fd = fd;
+    sources[i].events = events;
     sources[i].on_ready = on_ready;
     sources[i].user = user;
     if (i >= sources_used) sources_used = i + 1;
@@ -63,6 +72,7 @@ void loop_remove(int id) {
   if (id < 0 || id >= LOOP_MAX_SOURCES) return;
   sources[id].in_use = 0;
   sources[id].fd = -1;
+  sources[id].events = 0;
   sources[id].on_ready = NULL;
   sources[id].user = NULL;
   while (sources_used > 0 && !sources[sources_used - 1].in_use) sources_used--;
@@ -80,6 +90,7 @@ void loop_cleanup(void) {
   for (i = 0; i < LOOP_MAX_SOURCES; i++) {
     sources[i].in_use = 0;
     sources[i].fd = -1;
+    sources[i].events = 0;
     sources[i].on_ready = NULL;
     sources[i].user = NULL;
   }
@@ -109,7 +120,8 @@ int loop_wait(int timeout_ms) {
   for (i = 0; i < sources_used; i++) {
     if (!sources[i].in_use) continue;
     pfd[n].fd = sources[i].fd;
-    pfd[n].events = POLLIN;
+    pfd[n].events = (short)(((sources[i].events & LOOP_READ) ? POLLIN : 0) |
+                            ((sources[i].events & LOOP_WRITE) ? POLLOUT : 0));
     pfd[n].revents = 0;
     slot[n] = i;
     n++;
@@ -125,8 +137,9 @@ int loop_wait(int timeout_ms) {
   for (i = 0; i < n; i++) {
     /* POLLHUP and POLLERR matter as much as POLLIN: a child that exits leaves a
      * descriptor that is readable-at-EOF, and a handler that is never told will
-     * spin on it forever. */
-    if (!(pfd[i].revents & (POLLIN | POLLHUP | POLLERR))) continue;
+     * spin on it forever. The same goes the other way -- a pipe whose reader
+     * has gone is POLLERR, and the writer has to be told so it can stop. */
+    if (!(pfd[i].revents & (POLLIN | POLLOUT | POLLHUP | POLLERR))) continue;
     if (slot[i] < 0) {
       result |= LOOP_STDIN;
       continue;

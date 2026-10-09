@@ -191,6 +191,19 @@ static int live_tab_width(void) { return tab_width(); }
 static void apply_undo_steps(int v) { undo_set_max_steps(v); }
 static int live_undo_steps(void) { return undo_max_steps(); }
 
+/* The shell filter's two limits. Settings rather than constants because what
+ * counts as "too slow" is the difference between `sort` and `black`, and
+ * because the roadmap asked for a timeout and an output cap without saying what
+ * they should be -- so the answer is the user's. */
+static int shell_timeout_s = 10;
+static int shell_output_kb = 8192;
+static void apply_shell_timeout(int v) { shell_timeout_s = v; }
+static int live_shell_timeout(void) { return shell_timeout_s; }
+static void apply_shell_output(int v) { shell_output_kb = v; }
+static int live_shell_output(void) { return shell_output_kb; }
+int shell_timeout_ms(void) { return shell_timeout_s * 1000; }
+int shell_output_max(void) { return shell_output_kb * 1024; }
+
 static void apply_match_case(int v) { search_set_case(v); }
 static void apply_regex(int v) { search_set_regex(v); }
 
@@ -221,6 +234,17 @@ static struct setting settings[] = {
   {"input", "mouse", SET_BOOL, 0, 0, 1, 0,
    "report the mouse to molly rather than leaving it to the terminal",
    apply_mouse, live_mouse},
+
+  /* Seconds and kilobytes, because that is what a person writing the file
+   * thinks in; filter.c takes milliseconds and bytes, because that is what a
+   * poll timeout and a buffer length are. The conversion is one function each
+   * and it lives here, next to the units it is converting from. */
+  {"shell", "timeout", SET_INT, 1, 3600, 10, 0,
+   "seconds a filter command may run before molly stops it",
+   apply_shell_timeout, live_shell_timeout},
+  {"shell", "output limit", SET_INT, 1, 1048576, 8192, 0,
+   "kilobytes of output a filter command may produce",
+   apply_shell_output, live_shell_output},
 
   {"search", "match case", SET_BOOL, 0, 0, 0, 0,
    "searches are case sensitive",

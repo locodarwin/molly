@@ -27,6 +27,7 @@ and a searchable label, so nothing is reachable only by knowing a secret key.
 - [Syntax Highlighting](#syntax-highlighting)
 - [Prompts](#prompts)
 - [Editing](#editing)
+- [Indentation](#indentation)
 - [Moving Around](#moving-around)
 - [Help Screen](#help-screen)
 - [Line Numbers](#line-numbers)
@@ -301,6 +302,9 @@ types = string table math io pairs ipairs tostring true false nil
 | `fence` | Pairs that open and close a verbatim region (Markdown's triple backtick) |
 | `code span` | A delimiter for inline verbatim text (Markdown's backtick) |
 | `emphasis` | Single characters that delimit emphasis (Markdown's `*` and `_`) |
+| `tab width` | Columns a tab occupies in this language's files, 1 to 16 |
+| `insert spaces` | `on` or `off`, for this language only |
+| `auto indent` | `on` or `off`, for this language only |
 
 A section naming a language molly ships adds to it, so
 
@@ -312,6 +316,21 @@ types = mytype_t othertype_t
 colours two more words in every `.c` file without disturbing anything else. A
 rule molly does not recognise is a warning naming the line, as any other
 configuration mistake is.
+
+The last three rules in the table are not about colour at all: they are the
+[indentation](#indentation) settings, answered per language. A section that
+leaves one out keeps whatever `[editor]` says, so
+
+```ini
+[editor]
+tab width = 8
+[syntax python]
+tab width = 4
+insert spaces = on
+```
+
+gives Python files four-column tabs and spaces, and leaves every other file
+with eight-column tabs and a real tab character.
 
 ### What it deliberately does not do
 
@@ -350,8 +369,8 @@ Molly is modeless: whatever you type is inserted at the cursor.
 | Key | Action |
 | --- | --- |
 | Any character | Insert at the cursor |
-| `Tab` | Insert a tab character |
-| `Enter` | Split the line / insert a new line |
+| `Tab` | Insert one indent step — see [Indentation](#indentation) |
+| `Enter` | Split the line / insert a new line, keeping the indentation |
 | `Backspace` | Delete the character before the cursor |
 | `Delete` | Delete the character at the cursor |
 
@@ -359,6 +378,75 @@ If the cursor is on the empty row below the last line of text, typing creates
 that row for you automatically. If the cursor is at the very start of a line,
 `Backspace` joins the current line onto the previous one; `Delete` at the very
 end of a line joins the next line onto it.
+
+## Indentation
+
+Three questions, each answerable in `[editor]` for everything or in
+`[syntax <name>]` for one language — see [Configuration](#configuration) and
+[Teaching molly a language](#teaching-molly-a-language).
+
+| Setting | Default | What it decides |
+| --- | --- | --- |
+| `tab width` | `8` | How many columns a tab character occupies on screen |
+| `insert spaces` | `off` | Whether `Tab` types spaces instead of a tab |
+| `auto indent` | `on` | Whether `Enter` starts the new line under the old one |
+
+**`tab width` is about the screen; `insert spaces` is about the file.** Changing
+the width changes how a tab already in your file is drawn and nothing else.
+Turning `insert spaces` on changes what `Tab` writes — so it changes the bytes
+a save puts on disk, which is why it is off until you ask for it: a file
+indented with tabs should not quietly start gaining spaces because you opened
+it in molly.
+
+### What one `Tab` does
+
+With `insert spaces` off, `Tab` types one tab character, as it always has.
+
+With it on, `Tab` inserts however many spaces reach the next tab stop — not a
+fixed number. From column 0 of an eight-column stop that is eight spaces; from
+column 2 it is six, so the text that follows lands on the stop either way. A
+tab already on the row counts as the columns it occupies rather than as one
+character, so the arithmetic is right on a row indented with both.
+
+The whole run is one undo step: `Ctrl-Z` after a `Tab` takes back the step, not
+one space of it.
+
+### What `Enter` does
+
+With `auto indent` on, the new line starts with the same leading whitespace as
+the line you left — tabs as tabs, spaces as spaces, mixed as it was. The split
+and the indentation are one undo step, so `Ctrl-Z` takes back the whole
+gesture rather than leaving an indented blank line behind.
+
+Only the whitespace *behind the cursor* is copied, and the text that moves down
+keeps its own. The rule is that the text does not change column:
+
+- `Enter` at the end of `····alpha` gives you a new line starting at column 4.
+- `Enter` in the middle, at `····alpha|beta`, puts `beta` at column 4 too.
+- `Enter` at column 0 copies nothing, so it inserts a blank line above —
+  which is how you get one.
+- `Enter` inside the indentation, at `··|··alpha`, leaves `alpha` at column 4
+  where it was, on a row of its own.
+
+Text that arrives from somewhere else is never re-indented: pasting
+(`Ctrl-V`) and [filtering through a command](#filtering-through-a-command) both
+insert their lines as they are, so code that is already indented does not come
+in indented twice.
+
+### What it deliberately does not do
+
+- **It does not know your language.** The new line copies the old line's
+  indentation; it does not add a level after a `{` or an `if`, and it does not
+  take one away before a `}`. That needs a grammar per language rather than a
+  rule per filetype.
+- **`Tab` does not indent a selection.** With text selected, `Tab` replaces it,
+  which is what it has always done. Indenting and dedenting a block are a
+  separate pair of commands molly does not have yet.
+- **`Backspace` does not eat an indent level.** It deletes one character, even
+  inside leading whitespace.
+- **Nothing rewrites what is already there.** Turning `insert spaces` on does
+  not convert a file's existing tabs, and turning it off does not convert its
+  spaces. Molly changes what the next keystroke writes, never what it finds.
 
 ## Moving Around
 
@@ -1032,6 +1120,8 @@ Names are matched on their words, so `line numbers`, `Line-Numbers` and
 | Section | Setting | Default | Effect |
 | --- | --- | --- | --- |
 | `editor` | `tab width` | `8` | Columns a tab character occupies, 1 to 16. Changing it re-renders the open file immediately. |
+| `editor` | `insert spaces` | `off` | `Tab` inserts spaces as far as the next tab stop rather than a tab character. See [Indentation](#indentation). |
+| `editor` | `auto indent` | `on` | A new line starts at the indentation of the line above it. |
 | `editor` | `undo steps` | `32768` | How many undo steps to keep. |
 | `view` | `line numbers` | `off` | Show the line-number gutter (`Ctrl-U` toggles it). |
 | `view` | `menu bar` | `on` | Give the menu bar its row (`View ▸ Menu Bar` toggles it). |

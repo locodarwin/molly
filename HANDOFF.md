@@ -1,42 +1,43 @@
 # Handoff
 
-Written 2026-10-09 and re-measured the same day at `8c91bbf`, which is where
-both `main` and `origin/main` are: everything is committed and pushed, the
-working tree is clean, and nothing is half-finished.
+Written 2026-10-09 and re-measured the same day at `236f227`, which is where
+`main` is: everything is committed, the working tree is clean, and nothing is
+half-finished. **Not yet pushed** — three commits are ahead of `origin/main`.
 
 This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
 
-**Nothing is in flight.** The shell filter was the last feature and it is done
-end to end: `d24326a` the mechanism with nothing calling it, `42981c3` the key
-and the menu item that call it, `8c91bbf` the documentation — all three pushed.
-So the next job is choosing the next job: three candidates in
-dependency order under "Next by dependency" below, and **that order has not
-been confirmed with Shawn**. Ask which one before starting it, and do not
-assume the list's order is the answer.
+**Nothing is in flight.** Indentation was the last feature and it is done end
+to end: `ae2d882` the mechanism with no keystroke reaching it, `236f227` the
+two keys that reach it, and the documentation commit on top. Shawn chose it
+from the three candidates on 2026-10-09; the two that are left are under "Next
+by dependency" below, and **which of them comes next has not been confirmed**.
+Ask before starting one.
 
 ---
 
 ## Where we are
 
-Phases 0 and 1 are done. Phase 2 has eight features finished end to end:
+Phases 0 and 1 are done. Phase 2 has nine features finished end to end:
 regular expressions, the configuration file, the CUA keymap, multiple buffers,
-the tab bar, syntax highlighting, window splits, and the shell filter. Molly
-searches and replaces with patterns on an engine of its own; it reads
-`~/.config/molly/mollyrc` and can write it back; its keys are CUA and
+the tab bar, syntax highlighting, window splits, the shell filter, and
+indentation. Molly searches and replaces with patterns on an engine of its own;
+it reads `~/.config/molly/mollyrc` and can write it back; its keys are CUA and
 remappable; it holds any number of files open at once with a tab per file; it
 colours seven languages from table-driven definitions a config file can add to;
 it splits its screen into windows that each keep their own cursor, scroll and
-gutter; and it pipes text through any shell command.
+gutter; it pipes text through any shell command; and it indents a new line
+under the old one, with the width, the character and auto-indent each
+answerable per filetype.
 
-**Measured, not remembered** (all of these taken at `8c91bbf` from a clean
+**Measured, not remembered** (all of these taken at `236f227` from a clean
 build on 2026-10-09; re-measure before quoting them anywhere):
 
 | | |
 | --- | --- |
-| Source | 13,787 lines, `src/molly.h` plus 29 `.c` files |
-| Checks | 1,268 — 625 pty, 87 golden screens, 556 unit |
+| Source | 14,051 lines, `src/molly.h` plus 30 `.c` files |
+| Checks | 1,337 — 648 pty, 87 golden screens, 602 unit |
 | Fuzz | 4,040 cases per `make test` (40 replace, 4,000 regex, seed 42) |
 | Warnings | clean under `-Wall -Wextra -Wpedantic -Wshadow` from a **clean** build; `regex.c` also under `-Wconversion` |
 | OOM sweep | `make test-oom` green: 142 allocations failed in turn, 130 through `die()`, 12 kept running |
@@ -47,11 +48,15 @@ the unit binary. `make test-oom` is the allocation-failure sweep and needs
 `cc` at runtime; it is not part of `make test`. Green at the last commit:
 
 ```text
-625 passed, 0 failed
+648 passed, 0 failed
 87 passed, 0 failed
 40 cases, 0 failed (seed 42)
 4000 cases, 0 failed (seed 42)
 ```
+
+The pty suite now takes long enough that `make test` can run past ten minutes
+on a cold build. That is 648 pty sessions each with a settle time, not a
+regression; budget for it rather than assuming a hang.
 
 ### What exists that did not exist a week ago
 
@@ -87,6 +92,12 @@ the unit binary. `make test-oom` is the allocation-failure sweep and needs
   view. `F7`/`F8` split right and below, `F6`/`Shift-F6` walk them, `F9` closes
   one, and a Window menu holds those plus Only this window. Each window has its
   own cursor, scroll offset, gutter and status bar.
+- **Indentation** (`src/indent.c`): `Enter` starts the new line under the old
+  one and `Tab` types a tab or spaces to the next tab stop. The tab width, the
+  choice of character and auto-indent are each a `[editor]` default that a
+  `[syntax <name>]` block may override, which is what makes them the first
+  per-filetype settings. The tab width stopped being one global in the process
+  — see the gotcha about `indent_sync()` below.
 - **A shell filter** (`src/filter.c`): `Alt-|` pipes the selection, or the whole
   buffer, through `/bin/sh` and replaces it with the output, as one undo step.
   The file is in two halves with a banner between them: above it is text in and
@@ -106,6 +117,14 @@ Full table in `ROADMAP.md` §7. The ones that bite soonest:
   persist.
 - **Keymap is CUA on the four conflicts, and fully remappable** except the
   eight Alt-letter menu titles.
+- **`Enter` inside leading whitespace keeps the text in its column.** Only the
+  whitespace behind the cursor is copied and the tail keeps its own, so
+  splitting `····alpha` after two spaces leaves `alpha` at column four. The
+  same rule is what makes `Enter` at column zero insert a blank line above
+  rather than an indented one, and it is why `editor_newline_and_indent()` is
+  a second function rather than a change to `editor_insert_newline()` — paste
+  and the shell filter both split rows through that one, and text that arrives
+  indented must not be indented twice.
 - **Linux now. Windows possibly later. No macOS.** No Windows code gets
   written, but platform calls stay behind `term.c` and `sys.c`.
 - **Every default lives in the settings table and nowhere else.** The menu bar
@@ -170,24 +189,31 @@ Full table in `ROADMAP.md` §7. The ones that bite soonest:
 
 ### Still open — needs Shawn
 
-Nothing. `ROADMAP.md` §8 is empty: the last item, which languages ship with
-syntax definitions, was answered on 2026-10-08 and is recorded in §7.
+`ROADMAP.md` §8 is empty: the last item, which languages ship with syntax
+definitions, was answered on 2026-10-08 and is recorded in §7.
+
+Three of indentation's answers were **chosen while building it rather than
+asked about**, because none of them changes what the work was. They are in §7
+with their reasoning, and any of them is a one-line change if Shawn disagrees:
+
+- `insert spaces` defaults **off** (a literal tab), because the setting decides
+  what bytes a save writes.
+- `auto indent` defaults **on**, because it changes only what a keystroke does.
+- `Enter` inside leading whitespace leaves the text in its column, which is the
+  case the references disagree about. Pinned in both suites.
 
 ### Next by dependency
 
-Five of the first handoff's items are done: the config file with the CUA
-keymap, multiple buffers with tabs, syntax highlighting, window splits, and the
-shell filter. What is left still wants confirming before it is started.
+Six of the first handoff's items are done: the config file with the CUA keymap,
+multiple buffers with tabs, syntax highlighting, window splits, the shell
+filter, and indentation with per-filetype defaults. Two are left, and neither
+has been confirmed as next.
 
-1. **Indentation and per-filetype defaults.** Auto-indent, and tabs-versus-
-   spaces, which is not a setting yet. Filetypes now exist for it to hang off:
-   `syntax_for_filename()` is the hook, and `[syntax c] tab width = 4` would be
-   the shape.
-2. **Multi-cursor.** Nothing is in front of it: the cursor-list model landed in
+1. **Multi-cursor.** Nothing is in front of it: the cursor-list model landed in
    Phase 0 and both of the features it was waiting on — buffers and splits — are
    done. `ROADMAP.md` §5 has the shape, and warns it is the most invasive thing
    on the list.
-3. **Soft wrap.** The display-row model landed in Phase 0, so this is three
+2. **Soft wrap.** The display-row model landed in Phase 0, so this is three
    functions (`drow_total`, `drow_of_cursor`, `drow_at`) rather than a refit of
    the renderer. `ROADMAP.md` §5 is explicit about what else it touches.
 
@@ -210,6 +236,16 @@ commit:
   a question; what is there is a message with a count. It wants Save All /
   Discard / Cancel on it, and it would share most of its shape with the
   buffer-list dialog — which is why they are worth doing together.
+- **Indent and dedent a block** with `Tab`/`Shift-Tab` on a selection. This is
+  the item people will expect next, and indentation did not do it: `Tab` with
+  text selected still replaces the selection, as it always has.
+  `indent_insert_step()` is the shape one indent level now has, so what is
+  missing is the walk over the selected rows and the undo group around it —
+  plus a decision about what `Shift-Tab` takes off a row indented with both
+  tabs and spaces. `ROADMAP.md` §5 lists it among the cheap Edit items.
+- **Smart Backspace**, eating one indent level rather than one character. Also
+  §5, also cheap now that `tab_width()` answers per filetype, and the obvious
+  companion to `insert spaces` — without it, one Backspace per space.
 - **Italic for comments.** `ROADMAP.md` said italic would be what a comment
   wants; the colour is doing that work instead, because italic means a fourth
   cell modifier, the SGR for it, and `tests/screen.py` learning to read it.
@@ -221,9 +257,11 @@ commit:
 
 ### Found along the way, not fixed
 
-- **Tabs versus spaces is not a setting yet.** `[editor] tab width` changes how
-  a tab *renders*; molly still inserts a literal tab. "Insert spaces instead" is
-  an editing change, and it belongs with the indentation work.
+- **Nothing converts a file's existing indentation.** `[editor] insert spaces`
+  changes what the next `Tab` writes and nothing else, so a file of tabs stays
+  a file of tabs. Converting one — retab, or "indent with spaces" over a
+  selection — is a separate editing command nobody has asked for yet, and the
+  manual says plainly that molly does not do it.
 - **The quit warning is a message, not a list.** `ROADMAP.md` §5 asks for a list
   of the unsaved files; what is there counts them and names one. See the dialog
   note above.
@@ -390,6 +428,26 @@ landed; the features come later.
   because `config_apply()` ran after `init_editor()` and put the cap back. The
   precedence is now default, then file, then environment, and the hook sits
   after `config_apply()` in `main()` to say so.
+- **The tab width is not a global, and `tab_width()` is not what the renderer
+  reads.** A width that can come from the filetype is per buffer, because two
+  windows can show two filetypes in one frame — with one global, each window
+  re-rendered a whole file to undo the other's work, every frame.
+  `editor_update_row()` reads `B.tabw`, the width that buffer's render strings
+  were actually built at; `tab_width()` is the width that *should* be in force;
+  and `indent_sync()` is the only thing that moves one to the other. It runs
+  from `syntax_retype()`, from `tab_width_set()`, and once per window per frame
+  in `window_scroll_all()` — before `editor_scroll()`, because the scroll
+  measures the cursor against the render string the sync may replace. Anything
+  new that changes which buffer is current needs no call: the per-frame one
+  catches it.
+- **A `live` function in the settings table must return the default, not the
+  value in force.** The three indentation settings can each be overridden per
+  filetype, so `live_tab_width()` returning `tab_width()` would have written
+  C's width into `mollyrc` as everybody's the first time settings were saved
+  with a `.c` file open. `tab_width_default()` and the two
+  `indent_*_default()` functions exist only for this. It is not enough to read
+  the settings table either: a unit test calls `tab_width_set()` directly and
+  expects write-back to see it, which is the whole point of `live`.
 
 ### Operational mistakes to not repeat
 

@@ -97,9 +97,12 @@ void indent_insert_step(void) {
  * indentation and the command that a keystroke reaches is the one that carries
  * it down -- which is the same split this repo keeps everywhere else.
  *
- * Only the whitespace *before the cursor* is copied, so Enter pressed inside a
- * run of leading blanks moves the rest of that run down with the text rather
- * than duplicating it. */
+ * The rule is that the text which moves down keeps the column it was at: only
+ * the whitespace *behind the cursor* is copied, and the tail keeps its own. So
+ * splitting "    alpha" after two spaces leaves "alpha" at column four, where
+ * it started, and splitting at column zero copies nothing -- which is what
+ * makes Enter there insert a blank line above rather than an indented one. The
+ * references disagree about the middle case, so it is pinned in both suites. */
 void editor_newline_and_indent(void) {
   char *lead = NULL;
   int n = 0, i;

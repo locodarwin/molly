@@ -6,16 +6,16 @@ behaves like a GUI one: menu bar, mouse, dialogs, splits, discoverable
 everything. Molly aims at that experience in C, keeping olly's zero runtime
 dependencies and instant start.
 
-**Current state:** Phases 0 and 1 are done, and Phase 2 has eight features
+**Current state:** Phases 0 and 1 are done, and Phase 2 has nine features
 finished end to end: regular-expression search and replace on an engine of its
 own, a configuration file with a remappable keymap, the CUA keys, any number of
 files open at once, a tab bar, syntax highlighting for seven languages, window
-splits, and a shell filter. Molly is 13,787 lines across `src/molly.h` and
-twenty-nine `.c` files, with a menu bar, a mouse, framed dialogs that have
-buttons and checkboxes on them, a command palette and a keyboard reference
-generated from its own command table. 1,268 checks pass (625 pty, 87 golden
-screens, 556 unit) plus 4,040 fuzz cases and the allocation-failure sweep, and
-every file is clean under `-Wall -Wextra -Wpedantic -Wshadow`. Still `0.1.0-dev`: the *interface* is
+splits, a shell filter, and indentation that follows the filetype. Molly is
+14,051 lines across `src/molly.h` and thirty `.c` files, with a menu bar, a
+mouse, framed dialogs that have buttons and checkboxes on them, a command
+palette and a keyboard reference generated from its own command table. 1,337
+checks pass (648 pty, 87 golden screens, 602 unit) plus 4,040 fuzz cases and
+the allocation-failure sweep, and every file is clean under `-Wall -Wextra -Wpedantic -Wshadow`. Still `0.1.0-dev`: the *interface* is
 molly's own, and the *editing* features are mostly still olly's.
 
 **Reaching commands:** Ctrl keys *and* Alt keys, plus a menu system on Alt.
@@ -516,8 +516,10 @@ Grouped by where they live:
   comment, indent/dedent with Tab/Shift-Tab, case conversion, sort selected
   lines, trim trailing whitespace.
 - **Smart editing:** smart Home (first non-blank ↔ column 0), smart Backspace
-  (eat one indent level), auto-indent on Enter, auto-close brackets and quotes,
-  surround selection — all configurable, because each one annoys somebody.
+  (eat one indent level), auto-close brackets and quotes, surround selection —
+  all configurable, because each one annoys somebody. Auto-indent on Enter is
+  **done**, with the tab width and tabs-versus-spaces, and each of the three is
+  answerable per filetype.
 - **Navigate:** go to matching bracket, word-wise movement, position history
   (jump back where you were), bookmarks 0-9.
 - **View:** whitespace indicators, indent guides, current-line highlight,
@@ -794,7 +796,7 @@ molly runs under `ulimit -v` and has to reach a clean quit.
   the SGR for it, and the snapshot harness learning to read it; the colour is
   doing the work for now.
 
-### Indentation, filetypes and configuration — **IN**
+### Indentation, filetypes and configuration — **done**
 
 - **For:** tabs vs spaces, tab width, auto-indent, per-filetype defaults. Olly's
   "no configuration" was its most limiting rule, and a menu-driven editor needs
@@ -805,15 +807,30 @@ molly runs under `ulimit -v` and has to reach a clean quit.
   ship defaults that match today's behavior exactly, and make the file
   machine-writable from the Options dialogs rather than hand-edited.
 - **Landed:** the file, the parser, the settings table, write-back and the
-  `[keys]` section. Seven settings so far — tab width, undo steps, line numbers,
-  menu bar, mouse, match case, regular expression — each with its default in the
-  table and nowhere else, which is what made the menu bar and the mouse stop
-  declaring theirs twice. The test harness pins `MOLLY_CONFIG` empty so the
-  suite does not read the developer's own file.
-- **Still to come:** auto-indent and per-filetype defaults, which need
-  filetypes, and the Options dialogs, which are what write-back was built for.
-  Tabs-versus-spaces is not a setting yet: molly inserts a literal tab, and
-  "insert spaces instead" is an editing change rather than a rendering one.
+  `[keys]` section. Seven settings at the time — tab width, undo steps, line
+  numbers, menu bar, mouse, match case, regular expression — each with its
+  default in the table and nowhere else, which is what made the menu bar and
+  the mouse stop declaring theirs twice. The test harness pins `MOLLY_CONFIG`
+  empty so the suite does not read the developer's own file.
+- **Landed since:** auto-indent, tabs-versus-spaces and per-filetype defaults.
+  Thirteen settings now, the tab bar, syntax and the filter's two limits
+  having arrived with their own features in between. The three indentation
+  ones are the first that a filetype can answer for itself, and the answer
+  lives in the `[syntax <name>]` block rather than in a section of its own —
+  that block already names the language, and a second place to name it would
+  be a second place for the two to disagree. `[editor]` holds each default,
+  `[syntax <name>]` may override it, and `indent.c` reconciles the two.
+- **What that cost:** the tab width could no longer be one global. It is a
+  function of the filetype, and two windows can show two filetypes in the same
+  frame, so a single "current width" had each window re-rendering a whole file
+  to undo the other's work. The width a buffer's rows were built at is now a
+  field on the buffer, reconciled by `indent_sync()` — once per window per
+  frame, and a no-op unless something moved.
+- **Still to come:** the Options dialogs, which are what write-back was built
+  for. Indenting and dedenting a block with `Tab`/`Shift-Tab` is still one of
+  the cheap Edit items in §5 rather than part of this, and nothing here knows a
+  language: the new line copies the old line's indentation and does not add a
+  level after a brace.
 
 ### Shell filter — **done**
 
@@ -1084,6 +1101,10 @@ are structural to the menu bar.
 | Config file syntax | **INI-style sections**, `key = value` — small to parse and to write back |
 | Phase 2 order | **The Find dialog next**, which is what forces buttons, focus order and the checkbox into the toolkit |
 | Initial syntax languages | **Rust, C, C++, C#, Python, AutoIt (`.au3`), Markdown** |
+| Where a per-filetype setting lives | **In its `[syntax <name>]` block**, not a section of its own — the block that already names the language |
+| Tabs versus spaces default | **A literal tab**, because the setting decides what bytes a save writes |
+| Auto-indent default | **On**, because it changes only what a keystroke does |
+| `Enter` inside leading whitespace | **The text keeps its column** — only the whitespace behind the cursor is copied |
 
 The first of those changed shipped behaviour: olly searched the tab-expanded
 render buffer, so a run of eight spaces found a tab. Unifying both modes on the

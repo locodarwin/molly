@@ -1,10 +1,20 @@
 # Handoff
 
-Written 2026-10-09 at `main`'s tip. `origin/main` is at `dfbad51`: the shell
-filter is not pushed yet.
+Written 2026-10-09 and re-measured the same day at `8c91bbf`, which is where
+both `main` and `origin/main` are: everything is committed and pushed, the
+working tree is clean, and nothing is half-finished.
+
 This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
+
+**Nothing is in flight.** The shell filter was the last feature and it is done
+end to end: `d24326a` the mechanism with nothing calling it, `42981c3` the key
+and the menu item that call it, `8c91bbf` the documentation — all three pushed.
+So the next job is choosing the next job: three candidates in
+dependency order under "Next by dependency" below, and **that order has not
+been confirmed with Shawn**. Ask which one before starting it, and do not
+assume the list's order is the answer.
 
 ---
 
@@ -20,7 +30,8 @@ colours seven languages from table-driven definitions a config file can add to;
 it splits its screen into windows that each keep their own cursor, scroll and
 gutter; and it pipes text through any shell command.
 
-**Measured, not remembered** (re-measure before quoting these anywhere):
+**Measured, not remembered** (all of these taken at `8c91bbf` from a clean
+build on 2026-10-09; re-measure before quoting them anywhere):
 
 | | |
 | --- | --- |

@@ -52,7 +52,6 @@
 /* ---- what a definition holds ---------------------------------------------- */
 
 #define SYN_MAX_LANGS  32
-#define SYN_MAX_WORDS  512
 #define SYN_MAX_PAIRS  4
 #define SYN_MAX_DELIMS 4
 #define SYN_TOKEN      16
@@ -74,8 +73,17 @@ struct syntax {
   char name[32];
   char exts[192];                   /* space-separated, no dots */
 
-  char *words[SYN_WORD_CLASSES][SYN_MAX_WORDS];
-  int nwords[SYN_WORD_CLASSES];
+  /* Each class is kept as the single space-separated string it was given, not
+   * split into an array of words.
+   *
+   * Splitting meant one allocation per keyword: about four hundred and fifty
+   * across the seven built-in definitions, every one of them during startup,
+   * which showed up as the allocation-failure sweep growing from 129 cases to
+   * 580. Lookup already has to compare against every word in the class, so
+   * walking the string costs the same walk it was doing over the array -- and
+   * the arbitrary cap on how many keywords a language may have goes away with
+   * it. */
+  char *words[SYN_WORD_CLASSES];
 
   char line_comment[SYN_MAX_PAIRS][SYN_TOKEN];
   int n_line_comment;
@@ -170,14 +178,16 @@ static int next_token(const char **p, char *dst, size_t dsz) {
   return (int)n;
 }
 
-static int add_words(struct syntax *s, int cls, const char *value) {
-  char tok[SYN_TOKEN * 4];
-  const char *p = value;
-  while (next_token(&p, tok, sizeof(tok)) > 0) {
-    if (s->nwords[cls] == SYN_MAX_WORDS) return 0;
-    s->words[cls][s->nwords[cls]++] = xstrdup(tok);
-  }
-  return 1;
+/* Appended rather than replaced, so a second `keywords =` line for the same
+ * language adds to it -- which is what `[syntax c] keywords = ...` in a
+ * configuration file is for. */
+static void add_words(struct syntax *s, int cls, const char *value) {
+  size_t have = (s->words[cls] != NULL) ? strlen(s->words[cls]) : 0;
+  size_t add = strlen(value);
+  char *p = xrealloc(s->words[cls], have + add + 2);
+  if (have > 0) p[have++] = ' ';
+  memcpy(p + have, value, add + 1);
+  s->words[cls] = p;
 }
 
 /* A list of open/close pairs: two tokens make one pair, so `#cs #ce` is one pair
@@ -248,12 +258,14 @@ int syntax_set_line(const char *lang, const char *key, const char *value,
     snprintf(s->exts, sizeof(s->exts), "%s", value);
     return 1;
   }
-  if (strcmp(key, "keywords") == 0)
-    return add_words(s, SYN_WORDS_KEYWORD, value) ? 1
-        : (err ? (*err = "too many keywords", 0) : 0);
-  if (strcmp(key, "types") == 0)
-    return add_words(s, SYN_WORDS_TYPE, value) ? 1
-        : (err ? (*err = "too many types", 0) : 0);
+  if (strcmp(key, "keywords") == 0) {
+    add_words(s, SYN_WORDS_KEYWORD, value);
+    return 1;
+  }
+  if (strcmp(key, "types") == 0) {
+    add_words(s, SYN_WORDS_TYPE, value);
+    return 1;
+  }
   if (strcmp(key, "line comment") == 0)
     return add_tokens(s->line_comment, &s->n_line_comment, value) ? 1
         : (err ? (*err = "too many line comment markers", 0) : 0);
@@ -451,13 +463,12 @@ void syntax_init(void) {
 }
 
 void syntax_cleanup(void) {
-  int i, c, w;
+  int i, c;
   for (i = 0; i < nlangs; i++)
-    for (c = 0; c < SYN_WORD_CLASSES; c++)
-      for (w = 0; w < langs[i].nwords[c]; w++) {
-        free(langs[i].words[c][w]);
-        langs[i].words[c][w] = NULL;
-      }
+    for (c = 0; c < SYN_WORD_CLASSES; c++) {
+      free(langs[i].words[c]);
+      langs[i].words[c] = NULL;
+    }
   nlangs = 0;
 }
 
@@ -510,18 +521,31 @@ static int match_at(const char *r, int rs, int i, const char *tok) {
   return memcmp(r + i, tok, (size_t)n) == 0;
 }
 
-/* Which word class this identifier belongs to, or -1. */
+/* Which word class this identifier belongs to, or -1.
+ *
+ * Walks the class's word string in place rather than copying each word out of
+ * it: the length is compared first, so most words are rejected without looking
+ * at a single character of them. A linear scan over a couple of hundred words
+ * per identifier would be worth worrying about if it ran per keystroke, and it
+ * does not -- a row is lexed when it changes and then its roles are cached. */
 static int word_class(const struct syntax *s, const char *r, int start, int len) {
-  int c, w;
+  int c;
   for (c = 0; c < SYN_WORD_CLASSES; c++) {
-    for (w = 0; w < s->nwords[c]; w++) {
-      const char *kw = s->words[c][w];
-      if ((int)strlen(kw) != len) continue;
-      if (s->case_sensitive) {
-        if (memcmp(r + start, kw, (size_t)len) == 0) return c;
-      } else {
-        if (strncasecmp(r + start, kw, (size_t)len) == 0) return c;
-      }
+    const char *p = s->words[c];
+    if (p == NULL) continue;
+    while (*p != '\0') {
+      const char *w;
+      int wl;
+      while (*p == ' ') p++;
+      if (*p == '\0') break;
+      w = p;
+      while (*p != '\0' && *p != ' ') p++;
+      wl = (int)(p - w);
+      if (wl != len) continue;
+      if (s->case_sensitive
+              ? (memcmp(r + start, w, (size_t)len) == 0)
+              : (strncasecmp(r + start, w, (size_t)len) == 0))
+        return c;
     }
   }
   return -1;

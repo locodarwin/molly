@@ -129,6 +129,22 @@ typedef struct erow {
   int rcap;
   char *chars;
   char *render;
+
+  /* Syntax highlighting: one cell role per byte of `render`, and the lexer state
+   * this row was entered and left with. See syntax.c.
+   *
+   * Parallel to `render` rather than to `chars` because that is what the draw
+   * loop walks, and because highlighting is a display question -- unlike what a
+   * search matches, which is the stored bytes (ROADMAP.md section 7).
+   *
+   * `syn` is NULL until the row is first lexed, and stays NULL for a buffer with
+   * no filetype, which is what makes highlighting cost nothing when it is off.
+   * `syn_in` is the state the row starts in; the buffer's `syn_valid` says how
+   * many rows' worth of those are known to be right. */
+  unsigned char *syn;
+  int syncap;
+  int syn_in;
+  int syn_out;
 } erow;
 
 /* One cursor: a position plus its own selection anchor. Molly keeps a *list* of
@@ -198,6 +214,14 @@ struct buffer {
   int eol_crlf;         /* write \r\n line endings, as the loaded file used */
   int final_newline;    /* the file ended with a newline (so the save should) */
   struct undoState undo;
+
+  /* The filetype, and how far up the file the per-row lexer states are known to
+   * be right. An edit on row N lowers `syn_valid` to N and stops; the renderer
+   * brings rows back up to date just before it draws them. Eager invalidation
+   * would relex everything below an edit on every keystroke, for the sake of
+   * rows nobody is looking at. */
+  const struct syntax *syn;
+  int syn_valid;
 
   /* The last-saved contents, so "modified" means really different rather than
    * merely edited, and the mtime seen then, so an overwrite can be questioned. */
@@ -513,6 +537,20 @@ enum cell_role {
    * nothing and a role nothing distinguishes is a theme entry nothing tests. */
   ROLE_TABBAR,           /* the band, and the tabs that are not current */
   ROLE_TAB_SELECTED,     /* the buffer being edited */
+
+  /* Syntax highlighting. Eight roles for seven languages, which is the set that
+   * falls out of what those languages actually distinguish rather than a palette
+   * chosen first: two keyword classes (control words and type names), strings,
+   * numbers, comments, preprocessor lines, and the two a prose format needs --
+   * Markdown has no keywords but it does have headings and emphasis. */
+  ROLE_SYN_KEYWORD,
+  ROLE_SYN_TYPE,
+  ROLE_SYN_STRING,
+  ROLE_SYN_NUMBER,
+  ROLE_SYN_COMMENT,
+  ROLE_SYN_PREPROC,
+  ROLE_SYN_HEADING,
+  ROLE_SYN_EMPHASIS,
   ROLE_COUNT
 };
 
@@ -545,6 +583,11 @@ struct style {
  * on a row, a selection or a filename. */
 
 struct regex;
+
+/* A syntax definition. Opaque for the same reason struct regex is: nothing
+ * outside syntax.c has any business reading one, and keeping it that way is what
+ * lets the rule set grow without the rest of molly recompiling against it. */
+struct syntax;
 
 #define REGEX_ICASE 0x01  /* fold A-Z against a-z, ASCII only */
 
@@ -641,6 +684,7 @@ int setting_count(void);
 int setting_get(const char *section, const char *name);
 void config_apply(void);
 void config_apply_keys(void);
+void config_apply_syntax(void);
 void config_cleanup(void);
 void config_defaults(void);
 void config_dump(FILE *out);
@@ -771,6 +815,22 @@ void fsync_parent_dir(const char *path);
 int tabbar_mouse(const struct layer *self, const struct mouse_event *ev);
 int tabbar_rows(void);
 void tabbar_draw(const struct layer *self);
+
+/* syntax.c */
+const char *syntax_lang_name(int i);
+const char *syntax_name(const struct syntax *s);
+const struct syntax *syntax_for_filename(const char *path);
+int syntax_lang_count(void);
+int syntax_set_line(const char *lang, const char *key, const char *value,
+                    const char **err);
+void syntax_cleanup(void);
+void syntax_ensure(int upto);
+void syntax_init(void);
+void syntax_invalidate_from(int row);
+void syntax_retype(void);
+unsigned char syntax_role_at(const erow *row, int i);
+void syntax_row(const struct syntax *s, const char *r, int rs, int state_in,
+                unsigned char *out, int *state_out);
 
 /* term.c */
 _Noreturn void die(const char *s);

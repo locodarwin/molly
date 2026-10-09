@@ -58,6 +58,20 @@ static const struct theme_entry theme_256[ROLE_COUNT] = {
   /* ROLE_MENU_DISABLED    */ {243, 238, 0, 0},
   /* ROLE_TABBAR           */ {245, 235, 0, 0},
   /* ROLE_TAB_SELECTED     */ {231, 239, 0, 1},
+
+  /* Syntax, on the terminal's own background: code is the one thing on screen
+   * that is not a panel, so a background here would fight whatever the user has
+   * chosen. Comments are the dimmest thing in the file on purpose -- they are
+   * what you skip when you are looking for code -- and strings and numbers sit
+   * close together because both are literals. */
+  /* ROLE_SYN_KEYWORD      */ {110, DEFAULT_COLOR, 0, 0},
+  /* ROLE_SYN_TYPE         */ {79,  DEFAULT_COLOR, 0, 0},
+  /* ROLE_SYN_STRING       */ {173, DEFAULT_COLOR, 0, 0},
+  /* ROLE_SYN_NUMBER       */ {179, DEFAULT_COLOR, 0, 0},
+  /* ROLE_SYN_COMMENT      */ {244, DEFAULT_COLOR, 0, 0},
+  /* ROLE_SYN_PREPROC      */ {140, DEFAULT_COLOR, 0, 0},
+  /* ROLE_SYN_HEADING      */ {110, DEFAULT_COLOR, 0, 1},
+  /* ROLE_SYN_EMPHASIS     */ {186, DEFAULT_COLOR, 0, 0},
 };
 
 /* The sixteen-color theme, for terminals that cannot do better. */
@@ -83,6 +97,19 @@ static const struct theme_entry theme_16[ROLE_COUNT] = {
   /* ROLE_MENU_DISABLED    */ {0,  8, 0, 0},
   /* ROLE_TABBAR           */ {7,  0, 0, 0},
   /* ROLE_TAB_SELECTED     */ {15, 8, 0, 1},
+
+  /* Eight roles onto eight usable foregrounds, which is the whole of what
+   * sixteen colours leaves once the background is the terminal's. Comments take
+   * the bright black that is the only dim colour there is; a heading leans on
+   * bold instead of on a colour of its own, because there was not one left. */
+  /* ROLE_SYN_KEYWORD      */ {12, DEFAULT_COLOR, 0, 0},
+  /* ROLE_SYN_TYPE         */ {14, DEFAULT_COLOR, 0, 0},
+  /* ROLE_SYN_STRING       */ {3,  DEFAULT_COLOR, 0, 0},
+  /* ROLE_SYN_NUMBER       */ {11, DEFAULT_COLOR, 0, 0},
+  /* ROLE_SYN_COMMENT      */ {8,  DEFAULT_COLOR, 0, 0},
+  /* ROLE_SYN_PREPROC      */ {13, DEFAULT_COLOR, 0, 0},
+  /* ROLE_SYN_HEADING      */ {12, DEFAULT_COLOR, 0, 1},
+  /* ROLE_SYN_EMPHASIS     */ {14, DEFAULT_COLOR, 0, 0},
 };
 
 static const struct theme_entry *active = theme_16;

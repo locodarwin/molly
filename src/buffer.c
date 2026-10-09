@@ -44,6 +44,12 @@ void saved_snapshot_take(void) {
     B.saved_rows[i].rsize = 0;
     B.saved_rows[i].render = NULL;
     B.saved_rows[i].rcap = 0;
+    /* Text only: the snapshot exists to answer "is this buffer really
+     * different from the file on disk", and nothing ever draws it. */
+    B.saved_rows[i].syn = NULL;
+    B.saved_rows[i].syncap = 0;
+    B.saved_rows[i].syn_in = 0;
+    B.saved_rows[i].syn_out = 0;
   }
 }
 
@@ -154,6 +160,15 @@ void tab_width_set(int n) {
 }
 
 void editor_update_row(erow *row) {
+  /* The row's index, for the syntax watermark. Pointer arithmetic into the row
+   * array rather than an argument, because this is called from a dozen places
+   * that hold the erow and not its index -- and because the array is exactly
+   * where every row of this buffer lives. Whatever replaces the flat array will
+   * have to answer this differently, along with everything else that indexes
+   * B.row. */
+  if (V.buf != NULL && B.row != NULL && row >= B.row && row < B.row + B.rowcap)
+    syntax_invalidate_from((int)(row - B.row));
+
   int tabs = 0;
   int j;
 
@@ -219,7 +234,14 @@ void editor_insert_row(int at, char *s, size_t len) {
   (*row_at(at)).rsize = 0;
   (*row_at(at)).render = NULL;
   (*row_at(at)).rcap = 0;
+  (*row_at(at)).syn = NULL;
+  (*row_at(at)).syncap = 0;
+  (*row_at(at)).syn_in = 0;
+  (*row_at(at)).syn_out = 0;
   editor_update_row(row_at(at));
+  /* Inserting shifts every row below, so their stored entry states now belong
+   * to the wrong rows. */
+  syntax_invalidate_from(at);
 
   B.numrows++;
   B.dirty++;
@@ -228,6 +250,7 @@ void editor_insert_row(int at, char *s, size_t len) {
 void editor_free_row(erow *row) {
   if (row->rcap > 0) free(row->render);  /* rcap > 0 => render is owned */
   free(row->chars);
+  free(row->syn);
 }
 
 void editor_delete_row(int at) {
@@ -236,6 +259,9 @@ void editor_delete_row(int at) {
   memmove(row_at(at), row_at(at + 1), sizeof(erow) * (row_count() - at - 1));
   B.numrows--;
   B.dirty++;
+  /* Deleting shifts every row below up one, so their stored entry states belong
+   * to the wrong rows now -- and the deleted row may have opened a comment. */
+  syntax_invalidate_from(at);
 }
 
 void editor_row_insert_char(erow *row, int at, int c) {
@@ -516,6 +542,9 @@ void editor_open(char *filename) {
   free(B.filename);
   B.filename = xstrdup(filename);
   build_recovery_path();
+  /* Which language, from the new name. Before the rows are read, so the first
+   * lex of the first row already has a definition to work with. */
+  syntax_retype();
   B.have_disk_mtime = 0;
 
   FILE *fp = fopen(filename, "r");

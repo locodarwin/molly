@@ -284,6 +284,51 @@ static int bind_add(const char *chord, const char *cmd) {
   return 1;
 }
 
+/* A `[syntax <name>]` rule, held until the built-in definitions exist.
+ *
+ * Deferred for the same reason the key bindings are, plus one of its own:
+ * syntax_init() wipes and rebuilds the definitions, and it runs inside
+ * init_editor() -- *after* the configuration file is read. Applying a rule at
+ * parse time would hand it to a table that is about to be thrown away.
+ *
+ * The line number travels with the rule, because the rule's name cannot be
+ * checked here without keeping a second copy of syntax.c's key list, and
+ * "mollyrc:31: unknown syntax rule" is worth a struct field. */
+struct pending_syn {
+  char lang[32];
+  char key[48];
+  char val[1024];
+  int lineno;
+};
+
+static struct pending_syn *syns;
+static int syns_n, syns_cap;
+
+static void syns_clear(void) {
+  free(syns);
+  syns = NULL;
+  syns_n = 0;
+  syns_cap = 0;
+}
+
+static int syn_add(const char *lang, const char *key, const char *val,
+                   int lineno) {
+  if (strlen(lang) >= sizeof(syns[0].lang) ||
+      strlen(key) >= sizeof(syns[0].key) ||
+      strlen(val) >= sizeof(syns[0].val))
+    return 0;
+  if (syns_n == syns_cap) {
+    syns_cap = syns_cap ? syns_cap * 2 : 16;
+    syns = xrealloc(syns, (size_t)syns_cap * sizeof(*syns));
+  }
+  memcpy(syns[syns_n].lang, lang, strlen(lang) + 1);
+  memcpy(syns[syns_n].key, key, strlen(key) + 1);
+  memcpy(syns[syns_n].val, val, strlen(val) + 1);
+  syns[syns_n].lineno = lineno;
+  syns_n++;
+  return 1;
+}
+
 /* ---- the parser ------------------------------------------------------------ */
 
 static char *skip_space(char *p) {
@@ -351,9 +396,18 @@ static int parse_int(const char *v, int *out) {
 
 /* Is this section one molly knows? Derived from the settings table, plus the one
  * section that is not settings at all. */
+/* `[syntax c]` and the like: the section name carries the language, which is
+ * what keeps a definition in one block rather than spread over a `language =`
+ * key that could disagree with the block it is in. */
+static const char *section_syntax_lang(const char *name) {
+  if (strncmp(name, "syntax ", 7) != 0) return NULL;
+  return (name[7] != '\0') ? name + 7 : NULL;
+}
+
 static int section_known(const char *name) {
   int i;
   if (strcmp(name, "keys") == 0) return 1;
+  if (section_syntax_lang(name) != NULL) return 1;
   for (i = 0; i < NSETTINGS; i++)
     if (strcmp(settings[i].section, name) == 0) return 1;
   return 0;
@@ -378,6 +432,16 @@ static void config_set_line(const char *origin, int lineno, const char *section,
     if (!bind_add(key, value))
       config_error("%s:%d: binding is too long to hold", origin, lineno);
     return;
+  }
+
+  {
+    const char *lang = section_syntax_lang(section);
+    if (lang != NULL) {
+      /* Not validated here: see struct pending_syn. */
+      if (!syn_add(lang, key, value, lineno))
+        config_error("%s:%d: syntax rule is too long to hold", origin, lineno);
+      return;
+    }
   }
 
   struct setting *s = setting_find(section, key);
@@ -518,6 +582,7 @@ int config_load(void) {
   config_errors_clear();
   config_defaults();
   binds_clear();
+  syns_clear();
 
   const char *path = config_path();
   if (path == NULL) return 0;
@@ -585,11 +650,28 @@ void config_apply_keys(void) {
   }
 }
 
+/* Hand the file's `[syntax ...]` rules to syntax.c, on top of the built-ins --
+ * so a block for a language molly already knows adds to it (more keywords) or
+ * replaces what it names (a different comment marker), and a block for a new
+ * language defines one. */
+void config_apply_syntax(void) {
+  const char *path = config_path();
+  int i;
+  for (i = 0; i < syns_n; i++) {
+    const char *err = NULL;
+    if (!syntax_set_line(syns[i].lang, syns[i].key, syns[i].val, &err))
+      config_error("%s:%d: [syntax %s] %s: %s", path ? path : "config",
+                   syns[i].lineno, syns[i].lang, syns[i].key,
+                   err ? err : "rejected");
+  }
+}
+
 void config_apply(void) {
   int i;
   for (i = 0; i < NSETTINGS; i++)
     if (settings[i].apply != NULL) settings[i].apply(settings[i].value);
   config_apply_keys();
+  config_apply_syntax();
 }
 
 /* ---- writing it back ------------------------------------------------------- */
@@ -723,6 +805,9 @@ void config_dump(FILE *out) {
   }
   for (i = 0; i < binds_n; i++)
     fprintf(out, "bind\t%s\t%s\n", binds[i].chord, binds[i].cmd);
+  for (i = 0; i < syns_n; i++)
+    fprintf(out, "syntax\t%s\t%s\t%s\n", syns[i].lang, syns[i].key,
+            syns[i].val);
   fprintf(out, "errors\t%d\n", errors_seen);
   for (i = 0; i < errors_kept; i++) fprintf(out, "error\t%s\n", errors[i]);
 }
@@ -730,4 +815,5 @@ void config_dump(FILE *out) {
 void config_cleanup(void) {
   config_errors_clear();
   binds_clear();
+  syns_clear();
 }

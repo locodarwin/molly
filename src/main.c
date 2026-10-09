@@ -12,6 +12,7 @@ void editor_cleanup(void) {
   search_cleanup();
   keymap_cleanup();
   config_cleanup();
+  syntax_cleanup();
   /* Every open buffer, with its rows, its saved snapshot and its undo history --
    * which is what this function used to do by hand for the one buffer there was.
    * After the frees above rather than before, because several of them still read
@@ -33,6 +34,7 @@ void init_editor(void) {
   theme_init();
   screen_init_layers();
   keymap_init();
+  syntax_init();
   cursors_init();
   V.drowoff = 0;
   V.coloff = 0;

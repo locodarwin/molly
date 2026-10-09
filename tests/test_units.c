@@ -1527,6 +1527,251 @@ static void test_buflist(void) {
   cursors_init();
 }
 
+/* ---- syntax highlighting -------------------------------------------------- */
+
+/* The lexer, against a role-per-character sketch of the expected answer.
+ *
+ * A row is written out with one letter per character of the input, which makes
+ * the expectation readable as a line of its own and makes a failure point at the
+ * column that is wrong rather than at a number:
+ *
+ *     "int x = 1;"
+ *     "ttt.......t"   <- would be wrong; the trailing t has no character
+ *
+ * The letters are the first letter of the role, with 'w' for keyword (k is
+ * taken by nothing but reads worse) and '.' for plain text. Anything the lexer
+ * produces that has no letter here shows up as '?', so a new role cannot pass a
+ * test by being invisible.
+ */
+static char syn_letter(unsigned char role) {
+  switch (role) {
+    case ROLE_TEXT:           return '.';
+    case ROLE_SYN_KEYWORD:    return 'w';
+    case ROLE_SYN_TYPE:       return 't';
+    case ROLE_SYN_STRING:     return 's';
+    case ROLE_SYN_NUMBER:     return 'n';
+    case ROLE_SYN_COMMENT:    return 'c';
+    case ROLE_SYN_PREPROC:    return 'p';
+    case ROLE_SYN_HEADING:    return 'h';
+    case ROLE_SYN_EMPHASIS:   return 'e';
+    default:                  return '?';
+  }
+}
+
+/* Lex one row and compare the sketch. `state` is carried in and out so a
+ * multi-row case is a sequence of calls. */
+static int syn_check(const struct syntax *lang, const char *text,
+                     const char *want, int *state) {
+  unsigned char roles[512];
+  char got[513];
+  int n = (int)strlen(text);
+  int i, out = 0;
+  char label[256];
+
+  if (n > (int)sizeof(roles)) n = (int)sizeof(roles);
+  syntax_row(lang, text, n, state ? *state : 0, roles, &out);
+  for (i = 0; i < n; i++) got[i] = syn_letter(roles[i]);
+  got[n] = '\0';
+  if (state != NULL) *state = out;
+
+  snprintf(label, sizeof(label), "%.60s", text);
+  /* A sketch of the wrong length is a miscount in the test, not a disagreement
+   * about roles -- and left unchecked it reads as the lexer being wrong from the
+   * first column onwards. */
+  if ((int)strlen(want) != n) {
+    printf("  FAIL  %s\n          sketch is %d chars, row is %d\n",
+           label, (int)strlen(want), n);
+    failures++;
+    return out;
+  }
+  check_str(label, got, want);
+  return out;
+}
+
+static const struct syntax *syn_lang(const char *path) {
+  return syntax_for_filename(path);
+}
+
+static void test_syntax_c(void) {
+  const struct syntax *c = syn_lang("x.c");
+  int st = 0;
+  printf("\nsyntax: C\n");
+
+  check("a .c file gets a definition", c != NULL, 1);
+  check_str("and it is the C one", syntax_name(c), "c");
+
+  syn_check(c, "int x = 1;",        "ttt.....n.", NULL);
+  syn_check(c, "return 0;",         "wwwwww.n.", NULL);
+  syn_check(c, "if (a) b();",       "ww.........", NULL);
+  /* A keyword has to be a whole word: "iffy" is not "if". */
+  syn_check(c, "iffy = 1;",         ".......n.", NULL);
+  syn_check(c, "x_if = 1;",         ".......n.", NULL);
+  /* Nor is a word that merely contains one. */
+  syn_check(c, "printf(\"%d\", x);", ".......ssss.....", NULL);
+  /* A number has to start a word, so the 1 in x1 is an identifier. */
+  syn_check(c, "x1 = 1;",           ".....n.", NULL);
+  syn_check(c, "1.5e-3;",           "nnnnnn.", NULL);
+  /* A line comment outranks a string, so this is not an open string. */
+  syn_check(c, "// \"unclosed",     "cccccccccccc", NULL);
+  /* And a string outranks a keyword. */
+  syn_check(c, "\"if\"",            "ssss", NULL);
+  /* An escape keeps the string open past the quote it escapes. */
+  syn_check(c, "\"a\\\"b\" x",      "ssssss..", NULL);
+  /* A preprocessor line, which has to be line-leading. */
+  syn_check(c, "#include <stdio.h>", "pppppppppppppppppp", NULL);
+  /* The indentation before a directive is not part of it. */
+  syn_check(c, "  #define X 1",     "..ppppppppppp", NULL);
+  syn_check(c, "x = a#b;",          "........", NULL);
+
+  printf("\nsyntax: a comment that spans rows\n");
+
+  /* The whole reason rows carry a lexer state. */
+  st = 0;
+  syn_check(c, "/* open",           "ccccccc", &st);
+  check("the row leaves inside a comment", st != 0, 1);
+  syn_check(c, "int still comment", "ccccccccccccccccc", &st);
+  check("and so does the next", st != 0, 1);
+  syn_check(c, "closed */ int x;",  "ccccccccc.ttt...", &st);
+  check("the closer ends it", st, 0);
+  /* Code after the closer on the same row is code again. */
+  syn_check(c, "/* a */ return 1;", "ccccccc.wwwwww.n.", NULL);
+  /* An unterminated string does NOT span rows: a stray quote should not paint
+   * the rest of the file. */
+  st = 0;
+  syn_check(c, "\"oops",            "sssss", &st);
+  check("an unterminated string ends at the row", st, 0);
+}
+
+static void test_syntax_python(void) {
+  const struct syntax *py = syn_lang("x.py");
+  int st = 0;
+  printf("\nsyntax: Python\n");
+
+  check_str("a .py file gets Python", syntax_name(py), "python");
+  syn_check(py, "def f(x):",        "www......", NULL);
+  syn_check(py, "# a comment",      "ccccccccccc", NULL);
+  syn_check(py, "s = 'text'",       "....ssssss", NULL);
+  syn_check(py, "n = 42",           "....nn", NULL);
+
+  /* Triple quotes are a region, which is what the `multiline strings` rule is
+   * for -- and the single-quote rule must not claim the first two of the three. */
+  st = 0;
+  syn_check(py, "\"\"\"docstring",  "ssssssssssss", &st);
+  check("a triple quote opens a region", st != 0, 1);
+  syn_check(py, "still inside",     "ssssssssssss", &st);
+  syn_check(py, "done\"\"\" x",     "sssssss..", &st);
+  check("and the closing triple ends it", st, 0);
+}
+
+static void test_syntax_autoit(void) {
+  const struct syntax *au = syn_lang("x.au3");
+  int st = 0;
+  printf("\nsyntax: AutoIt\n");
+
+  check_str("a .au3 file gets AutoIt", syntax_name(au), "autoit");
+  /* Case-insensitive keywords, which is why `case sensitive = off` exists. */
+  syn_check(au, "If x Then",        "ww...wwww", NULL);
+  syn_check(au, "IF x THEN",        "ww...wwww", NULL);
+  syn_check(au, "if x then",        "ww...wwww", NULL);
+  syn_check(au, "; a comment",      "ccccccccccc", NULL);
+
+  /* #cs / #ce, one of the two things that make a cached per-row state
+   * unavoidable rather than merely correct. */
+  st = 0;
+  syn_check(au, "#cs",              "ccc", &st);
+  check("#cs opens a region", st != 0, 1);
+  syn_check(au, "If this were code", "ccccccccccccccccc", &st);
+  syn_check(au, "#ce",              "ccc", &st);
+  check("#ce closes it", st, 0);
+  /* The long spelling is the second pair. */
+  st = 0;
+  syn_check(au, "#comments-start",  "ccccccccccccccc", &st);
+  check("#comments-start opens one too", st != 0, 1);
+  syn_check(au, "#comments-end",    "ccccccccccccc", &st);
+  check("and #comments-end closes it", st, 0);
+  /* A directive that is not a comment opener is still a directive. */
+  syn_check(au, "#include <x.au3>", "pppppppppppppppp", NULL);
+}
+
+static void test_syntax_markdown(void) {
+  const struct syntax *md = syn_lang("x.md");
+  int st = 0;
+  printf("\nsyntax: Markdown\n");
+
+  check_str("a .md file gets Markdown", syntax_name(md), "markdown");
+  syn_check(md, "# Heading",        "hhhhhhhhh", NULL);
+  syn_check(md, "### Deeper",       "hhhhhhhhhh", NULL);
+  syn_check(md, "not a # heading",  "...............", NULL);
+  syn_check(md, "a *word* here",    "..eeeeee.....", NULL);
+  syn_check(md, "a `span` here",    "..ssssss.....", NULL);
+  /* A lone delimiter is prose, not an opener that never closes. */
+  syn_check(md, "2 * 3 is six",     "............", NULL);
+  /* Markdown has `numbers = off`: a number in prose is prose. */
+  syn_check(md, "there were 42",    ".............", NULL);
+
+  /* A fenced block, the other thing that forces the cached state. */
+  st = 0;
+  syn_check(md, "```c",             "ssss", &st);
+  check("a fence opens a region", st != 0, 1);
+  syn_check(md, "# not a heading",  "sssssssssssssss", &st);
+  check("and a heading inside it is not one", st != 0, 1);
+  syn_check(md, "```",              "sss", &st);
+  check("the closing fence ends it", st, 0);
+  syn_check(md, "# heading again",  "hhhhhhhhhhhhhhh", NULL);
+}
+
+static void test_syntax_misc(void) {
+  int st = 0;
+  printf("\nsyntax: the rest of the seven, and no filetype\n");
+
+  check_str("a .rs file gets Rust", syntax_name(syn_lang("x.rs")), "rust");
+  check_str("a .cpp file gets C++", syntax_name(syn_lang("x.cpp")), "cpp");
+  check_str("a .hpp file gets C++", syntax_name(syn_lang("x.hpp")), "cpp");
+  check_str("a .cs file gets C#", syntax_name(syn_lang("x.cs")), "cs");
+  /* A .h is C, not C++, which is a judgement rather than a fact -- it is the
+   * one extension both claim, and C is the one molly itself is written in. */
+  check_str("a .h file gets C", syntax_name(syn_lang("x.h")), "c");
+  check("all seven definitions are loaded", syntax_lang_count(), 7);
+
+  /* Extensions are matched without regard to case, and a path's directories
+   * must not be mistaken for one. */
+  check_str("an extension matches whatever its case",
+            syntax_name(syn_lang("X.PY")), "python");
+  check_str("and a full path still finds it",
+            syntax_name(syn_lang("/a/b.c/thing.rs")), "rust");
+
+  check("a file with no extension gets nothing",
+        syn_lang("Makefile") == NULL, 1);
+  check("nor does an unknown one", syn_lang("x.zzz") == NULL, 1);
+  check("nor does a trailing dot", syn_lang("x.") == NULL, 1);
+  check("and neither does nothing at all", syn_lang(NULL) == NULL, 1);
+
+  /* No filetype means every byte is plain, which is what lets the draw loop
+   * have no special case for highlighting being off. */
+  syn_check(NULL, "int x = 1;", "..........", &st);
+  check("and lexing with no definition leaves no state", st, 0);
+
+  printf("\nsyntax: a rule molly does not know\n");
+  {
+    const char *err = NULL;
+    check("an unknown rule is refused",
+          syntax_set_line("c", "sparkles", "on", &err), 0);
+    check_str("and says so", err, "unknown syntax rule");
+    err = NULL;
+    check("a block comment with an unpaired marker is refused",
+          syntax_set_line("c", "block comment", "/*", &err), 0);
+    err = NULL;
+    check("and a flag that is not a flag",
+          syntax_set_line("c", "numbers", "maybe", &err), 0);
+    check_str("with its own message", err, "numbers wants on or off");
+  }
+
+  /* Leave the definitions as the rest of the suite expects to find them: the
+   * refusals above are harmless, but a test that adds a rule should not leak it.
+   */
+  syntax_init();
+}
+
 int main(void) {
   test_loop_sources();
   test_wait_key_services_sources();
@@ -1541,8 +1786,14 @@ int main(void) {
   test_regex_corners();
   test_regex_limits();
   test_regex_expand();
+  syntax_init();
   test_fit_cols();
   test_help_entries();
+  test_syntax_c();
+  test_syntax_python();
+  test_syntax_autoit();
+  test_syntax_markdown();
+  test_syntax_misc();
   test_buflist();
   test_chords();
   test_config_parse();

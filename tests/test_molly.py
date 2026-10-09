@@ -115,12 +115,17 @@ def check(label, got, want):
               % (label, want, got))
 
 
-def edit(tmpdir, original, keys, name="f.txt"):
-    """Open a file with `original` in it, send `keys`, return it afterwards."""
+def edit(tmpdir, original, keys, name="f.txt", env=None):
+    """Open a file with `original` in it, send `keys`, return it afterwards.
+
+    `env` is for the settings that change what a keystroke does rather than
+    what the screen shows: the file on disk afterwards is the whole proof, so
+    those tests want this and not a screen.
+    """
     path = os.path.join(tmpdir, name)
     with open(path, "w") as fh:
         fh.write(original)
-    run([MOLLY, path], keys)
+    run([MOLLY, path], keys, env=env)
     with open(path) as fh:
         return fh.read()
 
@@ -3148,6 +3153,170 @@ def screen_rows(out, rows=24, cols=80):
     return scr.text()
 
 
+def test_indent(tmpdir):
+    """Indentation from the keyboard: Enter carrying it down, Tab inserting it.
+
+    The resolution -- filetype over default, unset falling through -- is unit
+    tested, because it is a question about three functions. What is left for
+    here is the half that only a keystroke reaches, and the proof is the file
+    on disk rather than the screen: whether a save writes a tab or eight
+    spaces is the whole of what the setting decides.
+    """
+    print("\nindentation: Enter starts the new line under the old one")
+
+    rc = os.path.join(tmpdir, "indentrc")
+
+    def cfg(text):
+        with open(rc, "w") as fh:
+            fh.write(text)
+        return {"MOLLY_CONFIG": rc}
+
+    # Auto-indent is on by default, so this needs no configuration at all.
+    check("Enter at the end of an indented line indents the new one",
+          edit(tmpdir, "    alpha\n", [END, "\r", "beta", SAVE]),
+          "    alpha\n    beta\n")
+    check("a tab-indented line carries its tab down",
+          edit(tmpdir, "\talpha\n", [END, "\r", "beta", SAVE]),
+          "\talpha\n\tbeta\n")
+    check("and mixed leading whitespace comes down as it was",
+          edit(tmpdir, "\t  alpha\n", [END, "\r", "beta", SAVE]),
+          "\t  alpha\n\t  beta\n")
+    check("a line with no indent starts the next one at the margin",
+          edit(tmpdir, "alpha\n", [END, "\r", "beta", SAVE]),
+          "alpha\nbeta\n")
+
+    # Enter inside the leading whitespace. The references disagree about this
+    # one, so molly's answer is pinned here and the rule it follows is: the
+    # text that moves down keeps the column it was at. Only the whitespace
+    # *behind* the cursor is copied, and the tail keeps its own -- so splitting
+    # "    alpha" after two spaces leaves "alpha" at column four, where it
+    # started, rather than pulling it left. The same rule is what makes Enter
+    # at column zero insert a blank line above instead of an indented one.
+    check("a split inside the indent leaves the text in its column",
+          edit(tmpdir, "    alpha\n", [HOME, RIGHT, RIGHT, "\r", SAVE]),
+          "  \n    alpha\n")
+    check("and at column zero it indents nothing at all",
+          edit(tmpdir, "    alpha\n", [HOME, "\r", SAVE]),
+          "\n    alpha\n")
+
+    # Enter in the middle of the text indents to the line's own indent, which
+    # is the case the feature is for.
+    check("Enter mid-line indents the tail to match",
+          edit(tmpdir, "    alphabeta\n",
+               [HOME] + [RIGHT] * 9 + ["\r", SAVE]),
+          "    alpha\n    beta\n")
+
+    # One undo step for the whole gesture. Two would mean the first Ctrl-Z
+    # taking the indentation off and leaving the split behind.
+    check("the split and its indent undo together",
+          edit(tmpdir, "    alpha\n", [END, "\r", "\x1a", SAVE]),
+          "    alpha\n")
+
+    check("auto indent = off leaves the new line at the margin",
+          edit(tmpdir, "    alpha\n", [END, "\r", "beta", SAVE],
+               env=cfg("[editor]\nauto indent = off\n")),
+          "    alpha\nbeta\n")
+
+    # Pasted text must not be indented twice: the clipboard's own newlines go
+    # through the mechanism rather than the command. Select the indented line,
+    # copy it, go to the end and paste -- what comes back has to be what was
+    # copied, not what was copied plus a fresh indent.
+    check("pasting an indented line does not indent it again",
+          edit(tmpdir, "    alpha\nbeta\n",
+               [HOME, "\x1b[1;2F", "\x03", DOWN, END, "\r", "\x16", SAVE]),
+          "    alpha\nbeta\n    alpha\n")
+
+    print("\nindentation: Tab inserts a tab, or spaces to the next stop")
+
+    # The default is a literal tab, because the setting decides what bytes a
+    # save writes and a file indented with tabs must not quietly gain spaces.
+    check("Tab types a tab by default",
+          edit(tmpdir, "alpha\n", [HOME, "\t", SAVE]), "\talpha\n")
+
+    spaces = cfg("[editor]\ninsert spaces = on\n")
+    check("insert spaces = on types spaces instead",
+          edit(tmpdir, "alpha\n", [HOME, "\t", SAVE], env=spaces),
+          "        alpha\n")
+
+    # To the next stop, not a fixed count: from column two of an eight-column
+    # stop a step is six spaces, so the text lands on the stop.
+    check("a step reaches the next stop rather than a fixed width",
+          edit(tmpdir, "alpha\n", [HOME, RIGHT, RIGHT, "\t", SAVE],
+               env=spaces),
+          "al      pha\n")
+    check("and two steps reach the one after it",
+          edit(tmpdir, "alpha\n", [HOME, "\t", "\t", SAVE], env=spaces),
+          "                alpha\n")
+
+    # Measured in columns, so a literal tab already on the row counts as the
+    # columns it renders to and not as one byte.
+    check("a tab already on the row is counted as its columns",
+          edit(tmpdir, "\talpha\n", [HOME, RIGHT, "\t", SAVE], env=spaces),
+          "\t        alpha\n")
+
+    check("a run of spaces undoes as one step",
+          edit(tmpdir, "alpha\n", [HOME, "\t", "\x1a", SAVE], env=spaces),
+          "alpha\n")
+
+    # Tab with a selection replaces it, which is what it did before this
+    # feature and is not the indent-the-block command the roadmap still wants.
+    check("Tab still replaces a selection",
+          edit(tmpdir, "alpha\n", [HOME, "\x1b[1;2F", "\t", SAVE],
+               env=spaces),
+          "        \n")
+
+    print("\nindentation: a filetype answers for itself")
+
+    # The per-filetype override, from the keyboard: the same keystroke on two
+    # files writes different bytes.
+    per = cfg("[editor]\ninsert spaces = on\n"
+              "[syntax python]\ntab width = 4\n"
+              "[syntax c]\ninsert spaces = off\n")
+    check("a filetype's width is what a step reaches for",
+          edit(tmpdir, "alpha\n", [HOME, "\t", SAVE], name="x.py", env=per),
+          "    alpha\n")
+    check("a filetype can turn the global flag back off",
+          edit(tmpdir, "alpha\n", [HOME, "\t", SAVE], name="x.c", env=per),
+          "\talpha\n")
+    check("and a file of neither type keeps the global answer",
+          edit(tmpdir, "alpha\n", [HOME, "\t", SAVE], name="x.txt", env=per),
+          "        alpha\n")
+
+    # The width a filetype names also reaches the renderer, which is the part
+    # the per-buffer render width exists for: four columns, not eight.
+    tabbed = os.path.join(tmpdir, "w.py")
+    with open(tabbed, "w") as fh:
+        fh.write("\tx\n")
+    out = run([MOLLY, tabbed], [], env=cfg("[syntax python]\ntab width = 4\n"))
+    scr = Screen(24, 80)
+    scr.feed(out)
+    check("a filetype's tab width renders at that width",
+          scr.text()[TEXT_ROW - 1][:5], "    x")
+
+    # And a file of another type in the same session is unaffected: opened as a
+    # second buffer, so both are rendered in one run and a single global width
+    # would have one of them wrong.
+    plain = os.path.join(tmpdir, "w.txt")
+    with open(plain, "w") as fh:
+        fh.write("\tx\n")
+    # Both files open in one session, so a single global width would have one
+    # of the two wrong. The .py file is the current one at startup and renders
+    # at the four columns its filetype asks for; switching to the .txt file
+    # re-renders at the default eight. Two buffers, so the tab bar takes a row
+    # and the text starts one lower.
+    py_then_txt = cfg("[syntax python]\ntab width = 4\n")
+    out = run([MOLLY, tabbed, plain], [], env=py_then_txt)
+    scr = Screen(24, 80)
+    scr.feed(out)
+    check("with two filetypes open the current one renders at its own width",
+          scr.text()[TEXT_ROW][:5], "    x")
+    out = run([MOLLY, tabbed, plain], ["\x1b[5;5~"], env=py_then_txt)
+    scr = Screen(24, 80)
+    scr.feed(out)
+    check("and switching to the other re-renders at its width",
+          scr.text()[TEXT_ROW][:9], "        x")
+
+
 def test_filter(tmpdir):
     """The shell filter, from the keyboard.
 
@@ -3316,6 +3485,7 @@ def main():
         test_syntax(tmpdir)
         test_splits(tmpdir)
         test_filter(tmpdir)
+        test_indent(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

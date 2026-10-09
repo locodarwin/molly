@@ -2341,14 +2341,17 @@ static void test_indent(void) {
   check("and the whole gesture undoes at once", B.numrows, 1);
   check_str("leaving the row as it was", B.row[0].chars, "    ab");
 
-  /* Enter inside the leading whitespace moves the rest of it down with the
-   * text rather than copying what it split off. */
+  /* Enter inside the leading whitespace. The rule is that the text that moves
+   * down keeps the column it was at: only the whitespace behind the cursor is
+   * copied, and the tail keeps its own -- so "    ab" split after two spaces
+   * leaves "ab" at column four, where it started. The references disagree
+   * about this one, so it is pinned here and in the pty suite. */
   CUR.cy = 0;
   CUR.cx = 2;
   editor_newline_and_indent();
-  check_str("a split inside the indent copies only what is behind the cursor",
+  check_str("a split inside the indent leaves the text in its column",
             B.row[1].chars, "    ab");
-  check("and the cursor is at its own indent", CUR.cx, 2);
+  check("and the cursor is at the indent it copied", CUR.cx, 2);
   editor_undo();
 
   /* The flag off is the old behaviour exactly. */

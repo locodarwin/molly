@@ -41,7 +41,7 @@ static int quit_times = KILO_QUIT_TIMES;
 
 static int cmd_newline(void) {
   if (CUR.sel_active) selection_delete();
-  editor_insert_newline();
+  editor_newline_and_indent();
   return 0;
 }
 
@@ -1229,7 +1229,11 @@ void editor_process_key(int c) {
      * iscntrl() alone threw it away and a tab could not be typed at all; key
      * codes of 1000 and up are outside iscntrl()'s domain and must not reach it. */
     if (CUR.sel_active) selection_delete();
-    editor_insert_char(c);
+    /* Tab through indent.c and not editor_insert_char(): whether a step is a
+     * tab or spaces to the next stop is one decision, and this is the only
+     * path a typed tab takes. */
+    if (c == '\t') indent_insert_step();
+    else editor_insert_char(c);
   }
   /* Anything else -- Esc, an unbound function or Alt key -- does nothing, but
    * still falls through to the selection and countdown handling below, which is

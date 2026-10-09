@@ -1,7 +1,7 @@
 --- screen ---
  File  Edit  Search  View  Go  Help
+ sample.txt  second.txt  third.txt
 two
-~
 ~
 ~
 ~
@@ -17,8 +17,8 @@ two
 3 files open - Ctrl-PgUp/PgDn to switch
 --- attrs ---
 gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 
-g
 g
 g
 g
@@ -34,7 +34,7 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 
 --- colors ---
 1: 0-63 7/0
-3: 0-0 8/-
+2: 0-11 7/0  12-23 15/8  24-63 7/0
 4: 0-0 8/-
 5: 0-0 8/-
 6: 0-0 8/-
@@ -48,5 +48,6 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 14: 0-0 8/-
 --- modifiers ---
 1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u
+2: 12-23 b
 --- cursor ---
-row 2 col 1 visible 1
+row 3 col 1 visible 1

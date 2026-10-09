@@ -340,6 +340,7 @@ static int layer_text = -1;
 static int layer_status = -1;
 static int layer_message = -1;
 static int layer_menubar = -1;
+static int layer_tabbar = -1;
 
 /* Rows of chrome above and below the text area. The status and message bars are
  * always there; the menu bar will add one above, which is the whole reason the
@@ -349,7 +350,7 @@ static int layer_menubar = -1;
  * reflowing the whole screen by a row every time a menu opens would be worse than
  * briefly covering a line of text. */
 static int chrome_rows_above(void) {
-  return V.menubar ? 1 : 0;
+  return (V.menubar ? 1 : 0) + tabbar_rows();
 }
 
 static int chrome_rows_below(void) {
@@ -369,10 +370,16 @@ void screen_init_layers(void) {
   layer_message = layer_push(&l);
   /* Above the chrome, so that while the bar is hidden an open menu's band covers the
    * text rather than being covered by it. Dialogs push higher still. */
+  /* Below the menu bar in the stack as well as on the screen, so that an open
+   * menu's drop-down covers the tabs rather than being covered by them. */
+  l.draw = tabbar_draw;
+  l.mouse = tabbar_mouse;
+  layer_tabbar = layer_push(&l);
   l.draw = menu_bar_draw;
   l.mouse = menu_bar_mouse;
   layer_menubar = layer_push(&l);
-  if (layer_text < 0 || layer_status < 0 || layer_message < 0 || layer_menubar < 0)
+  if (layer_text < 0 || layer_status < 0 || layer_message < 0 ||
+      layer_menubar < 0 || layer_tabbar < 0)
     die("screen_init_layers");
 
   /* Not set here any more. The menu bar is visible by default -- it is molly's
@@ -395,6 +402,10 @@ static void screen_layout(void) {
    * height is skipped by both drawing and hit-testing. */
   layer_set_bounds(layer_menubar, 0, 0, V.screencols,
                    (V.menubar || menu_is_open()) ? 1 : 0);
+  /* Directly under the band when there is one, and at row zero when there is
+   * not. Its row is already counted in `top`, so this is where that row is. */
+  layer_set_bounds(layer_tabbar, 0, V.menubar ? 1 : 0, V.screencols,
+                   tabbar_rows());
 }
 
 /* Bring the view and the grid in step with the terminal, without drawing anything.

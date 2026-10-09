@@ -237,6 +237,7 @@ struct view {
   int screencols;
   int linenum;             /* line-number gutter shown (Ctrl-U toggles it) */
   int menubar;             /* menu bar occupies a row (View > Menu Bar toggles it) */
+  int tabbar;              /* tab bar wanted; it only takes a row with 2+ buffers */
   int gutter_w;            /* gutter width in columns for this frame, 0 when off */
 };
 
@@ -504,6 +505,14 @@ enum cell_role {
   ROLE_MENU_FRAME,       /* its single-line border */
   ROLE_MENU_SELECTED,    /* the highlighted item */
   ROLE_MENU_DISABLED,    /* an item its command says is unavailable */
+
+  /* The tab bar, which reads as chrome of the same family as the menu bar: the
+   * band is the menu bar's shade, and the current tab is lifted out of it the
+   * way a selected menu title is. An *inactive* tab has no role of its own -- it
+   * is the band, because a third shade between the band and the current tab buys
+   * nothing and a role nothing distinguishes is a theme entry nothing tests. */
+  ROLE_TABBAR,           /* the band, and the tabs that are not current */
+  ROLE_TAB_SELECTED,     /* the buffer being edited */
   ROLE_COUNT
 };
 
@@ -757,6 +766,11 @@ mode_t default_file_mode(void);
 void *xmalloc(size_t n);
 void *xrealloc(void *p, size_t n);
 void fsync_parent_dir(const char *path);
+
+/* tabbar.c */
+int tabbar_mouse(const struct layer *self, const struct mouse_event *ev);
+int tabbar_rows(void);
+void tabbar_draw(const struct layer *self);
 
 /* term.c */
 _Noreturn void die(const char *s);

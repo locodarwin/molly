@@ -2503,12 +2503,17 @@ def test_buffers(tmpdir):
     def go(argv, keys, rows=24, cols=80):
         return run([MOLLY] + argv, keys, rows=rows, cols=cols)
 
+    # TEXT_ROW is the first line of text under the menu bar alone. With more than
+    # one buffer open the tab bar takes a row as well, so the text starts one
+    # lower -- which is a thing test_tabbar checks on purpose and this one has to
+    # account for.
+    TABBED = TEXT_ROW
+
     # Every file argument opens, where all but the first used to be thrown away
     # with a warning.
     out = go([a, b, c], [])
     check("three files open as three buffers", "[1/3]" in status_row(out), True)
-    check("showing the first", screen_of(out)[TEXT_ROW - 1].startswith("aaa"),
-          True)
+    check("showing the first", screen_of(out)[TABBED].startswith("aaa"), True)
     check("and saying so on the message bar",
           any("3 files open" in m for m in status_lines(out)), True)
 
@@ -2519,7 +2524,7 @@ def test_buffers(tmpdir):
     # Switching.
     out = go([a, b, c], [CPGDN])
     check("Ctrl-PgDn moves to the next buffer", "[2/3]" in status_row(out), True)
-    check("and shows its text", screen_of(out)[TEXT_ROW - 1].startswith("bbb"),
+    check("and shows its text", screen_of(out)[TABBED].startswith("bbb"),
           True)
     out = go([a, b, c], [CPGDN, CPGDN])
     check("again moves to the third", "[3/3]" in status_row(out), True)
@@ -2551,7 +2556,7 @@ def test_buffers(tmpdir):
     out = go([a], [NEW])
     check("Ctrl-N makes a new buffer", "[2/2]" in status_row(out), True)
     check("which is unnamed", "[No Name]" in status_row(out), True)
-    check("and empty", screen_of(out)[TEXT_ROW - 1].startswith("~"), True)
+    check("and empty", screen_of(out)[TABBED].startswith("~"), True)
 
     out = go([a, b], [CLOSE])
     check("Ctrl-W closes a clean buffer", "[1/1]" in status_row(out), False)
@@ -2640,6 +2645,165 @@ def test_buffers(tmpdir):
             os.unlink(p)
 
 
+# ----------------------------------------------------------- the tab bar ----
+
+def test_tabbar(tmpdir):
+    """The row of tabs: when it is there, what it says, and clicking it.
+
+    The colours -- which tab is the current one -- are a golden-screen matter.
+    What is checked here is the behaviour: that the row appears and disappears at
+    the right times, that it costs the text area exactly one row when it is
+    there, that it says the file names rather than the paths, and that the mouse
+    reaches it.
+    """
+    print("\nthe tab bar: when it appears")
+
+    # The bodies deliberately do not contain the file names: a check that asks
+    # whether a name is on the tab row would otherwise pass on the file's own
+    # text when the tab bar was missing entirely.
+    names = ["alpha.c", "beta.c", "gamma.h", "delta.txt", "epsilon.md",
+             "zeta.py"]
+    bodies = ["one\n", "two\n", "three\n", "four\n", "five\n", "six\n"]
+    paths = []
+
+    def fresh():
+        """Rewrite the fixtures. Some checks below save, which changes the file
+        on disk -- so later checks cannot assume the original contents unless
+        they are put back."""
+        del paths[:]
+        for n, body in zip(names, bodies):
+            q = os.path.join(tmpdir, n)
+            with open(q, "w") as fh:
+                fh.write(body)
+            paths.append(q)
+
+    fresh()
+
+    TABROW = 1          # under the menu bar
+    TOGGLE_TABS = "\x1bb"
+
+    def screen_of(out, rows=24, cols=80):
+        scr = Screen(rows, cols)
+        scr.feed(out)
+        return scr.text()
+
+    def go(argv, keys, rows=24, cols=80, env=None):
+        return run([MOLLY] + argv, keys, rows=rows, cols=cols, env=env)
+
+    def click(x, y, btn=0):
+        return "\x1b[<%d;%d;%dM" % (btn, x + 1, y + 1)
+
+    # One buffer: no row. A single tab restates what the status bar already says
+    # and molly is meant to work on a 24-row terminal.
+    out = go(paths[:1], [])
+    check("one buffer gets no tab bar",
+          "alpha.c" in screen_of(out)[TABROW], False)
+    check("and the text starts directly under the menu bar",
+          screen_of(out)[TABROW].startswith("one"), True)
+
+    out = go(paths[:2], [])
+    check("two buffers get a tab bar",
+          "alpha.c" in screen_of(out)[TABROW] and
+          "beta.c" in screen_of(out)[TABROW], True)
+    check("and the text moves down a row",
+          screen_of(out)[TABROW + 1].startswith("one"), True)
+    # The chrome below must not be pushed off the bottom, which is what forgetting
+    # a chrome row does -- it is why chrome_rows_above() is one function.
+    check("the status bar is still second from the bottom",
+          "Ln 1, Col 1" in screen_of(out)[22], True)
+    check("and the message bar is still last",
+          "files open" in screen_of(out)[23], True)
+
+    # Closing back down to one takes the row away again.
+    out = go(paths[:2], ["\x17"])
+    check("closing back to one buffer takes the row away",
+          screen_of(out)[TABROW].startswith("two"), True)
+
+    print("\nthe tab bar: what it says")
+
+    out = go(paths[:2], [])
+    check("a tab shows the file name, not its path",
+          tmpdir in screen_of(out)[TABROW], False)
+    out = go(paths[:2], ["X"])
+    check("an unsaved buffer is marked with an asterisk",
+          "alpha.c*" in screen_of(out)[TABROW], True)
+    check("and a saved one is not",
+          "beta.c*" in screen_of(out)[TABROW], False)
+    out = go(paths[:2], ["X", SAVE])
+    check("saving clears the marker",
+          "alpha.c*" in screen_of(out)[TABROW], False)
+    fresh()   # that one wrote to disk
+    # An unnamed buffer still needs a tab to click on.
+    out = go(paths[:1], ["\x0e"])
+    check("a new unnamed buffer gets a tab too",
+          "[No Name]" in screen_of(out)[TABROW], True)
+
+    print("\nthe tab bar: more tabs than fit")
+
+    # Scrolled rather than shrunk: tabs cut to three characters are worse than
+    # tabs you have to scroll past.
+    out = go(paths, [], cols=36)
+    row = screen_of(out, cols=36)[TABROW]
+    check("a row too narrow for every tab shows a window of them",
+          "alpha.c" in row, True)
+    check("with an arrow saying there are more", "\u203a" in row, True)
+    check("and the ones that do not fit are left out", "zeta.py" in row, False)
+    # Moving to the last buffer brings the window with it.
+    out = go(paths, ["\x1b[5;5~"], cols=36)
+    row = screen_of(out, cols=36)[TABROW]
+    check("the window follows the current buffer", "zeta.py" in row, True)
+    check("with an arrow the other way", "\u2039" in row, True)
+    check("and the first tab scrolled out", "alpha.c" in row, False)
+    # At a width that fits everything there are no arrows at all.
+    row = screen_of(go(paths, []))[TABROW]
+    check("a row wide enough for all of them has no arrows",
+          "\u2039" in row or "\u203a" in row, False)
+
+    print("\nthe tab bar: the mouse")
+
+    # " alpha.c " is columns 0-8, " beta.c " 9-16, " gamma.h " 17-25.
+    out = go(paths[:3], [click(11, TABROW)])
+    check("clicking a tab switches to it", "[2/3]" in screen_of(out)[22], True)
+    out = go(paths[:3], [click(20, TABROW)])
+    check("and clicking another one switches again",
+          "[3/3]" in screen_of(out)[22], True)
+    out = go(paths[:3], [click(60, TABROW)])
+    check("clicking the empty part of the band does nothing",
+          "[1/3]" in screen_of(out)[22], True)
+    out = go(paths[:3], [click(60, TABROW, btn=65)])
+    check("the wheel steps to the next buffer",
+          "[2/3]" in screen_of(out)[22], True)
+    # The bar consumes its own row and nothing else: a click in the text still
+    # moves the cursor.
+    out = go(paths[:3], [click(3, TABROW + 2)])
+    check("a click in the text still reaches the text",
+          "Ln 2" in screen_of(out)[22], True)
+
+    print("\nthe tab bar: turning it off")
+
+    out = go(paths[:2], [TOGGLE_TABS])
+    check("Alt-B hides the tab bar",
+          screen_of(out)[TABROW].startswith("one"), True)
+    check("and says so", any("Tab bar: off" in m for m in status_lines(out)),
+          True)
+    out = go(paths[:2], [TOGGLE_TABS, TOGGLE_TABS])
+    check("and brings it back", "alpha.c" in screen_of(out)[TABROW], True)
+
+    # Toggling it on with one buffer open explains why nothing happened, rather
+    # than looking broken.
+    out = go(paths[:1], [TOGGLE_TABS, TOGGLE_TABS])
+    check("turning it on with one buffer says when it will show",
+          any("second file" in m for m in status_lines(out)), True)
+
+    # And the setting, which is what mollyrc puts it in.
+    rc = os.path.join(tmpdir, "tabrc")
+    with open(rc, "w") as fh:
+        fh.write("[view]\ntab bar = off\n")
+    out = go(paths[:2], [], env={"MOLLY_CONFIG": rc})
+    check("tab bar = off declines the row entirely",
+          screen_of(out)[TABROW].startswith("one"), True)
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -2689,6 +2853,7 @@ def main():
         test_save_settings(tmpdir)
         test_cua_keymap(tmpdir)
         test_buffers(tmpdir)
+        test_tabbar(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

@@ -690,7 +690,7 @@ multi-row buffer: `b?` against a six-line file is 57 matches and both engines
 agree on every one. Its termination witness is unchanged and still the point —
 molly runs under `ulimit -v` and has to reach a clean quit.
 
-### Multiple buffers and tabs — **IN** (buffers landed, tabs next)
+### Multiple buffers and tabs — **done**
 
 - **For:** the most-missed thing about olly, and mostly bookkeeping once Phase 0
   separates buffer from view. Prerequisite for File—Close, the file explorer,
@@ -708,8 +708,15 @@ molly runs under `ulimit -v` and has to reach a clean quit.
   and quit counts them all. The quit warning is a *message* with a count rather
   than the list in a dialog this section asks for; that wants a dialog with
   Save All / Discard / Cancel on it, which is a feature rather than a message.
-- **Still to come:** the tab bar, and a buffer-list dialog for picking one by
-  name rather than by walking the list.
+- **The tab bar landed too:** one tab per buffer under the menu bar, with the
+  file's name rather than its path, an asterisk for unsaved, click and wheel to
+  switch, and a scrolled window with arrows when there are more tabs than fit.
+  It takes a row only when there is a second buffer, and `[view] tab bar = off`
+  declines it. Scrolled rather than squeezed on purpose: tabs cut to three
+  characters are harder to read than tabs you have to scroll past.
+- **Still to come:** a buffer-list dialog for picking one by name rather than by
+  walking the list, which is also what the quit-with-unsaved-work dialog wants
+  to be built on.
 
 ### Window splits — **IN**
 

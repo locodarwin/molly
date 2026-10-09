@@ -1,0 +1,41 @@
+--- screen ---
+ File  Edit  Search  View
+‹ second.txt  third.txt
+three
+~
+~
+~
+~
+~
+~
+~
+[3/3] third.txt - 1 lines
+3 files open - Ctrl-PgUp/P
+--- attrs ---
+gggggggggggggggggggggggggg
+gggggggggggggggggggggggggg
+
+g
+g
+g
+g
+g
+g
+g
+RRRRRRRRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-25 7/0
+2: 0-12 7/0  13-23 15/8  24-25 7/0
+4: 0-0 8/-
+5: 0-0 8/-
+6: 0-0 8/-
+7: 0-0 8/-
+8: 0-0 8/-
+9: 0-0 8/-
+10: 0-0 8/-
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u
+2: 13-23 b
+--- cursor ---
+row 3 col 1 visible 1

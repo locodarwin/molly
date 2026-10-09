@@ -206,6 +206,36 @@ def main():
           files={"sample.txt": THREE_LINES})
     check("menu-bar-hidden-open", ["\x1bv", "m", "\x1b[21~"], rows=16, cols=64,
           files={"sample.txt": THREE_LINES})
+    # The tab bar. Which tab is current is a colour rather than a character, so
+    # this is the snapshot that proves it at all -- and both depths are here
+    # because the band and the lifted current tab are two shades of the same
+    # family, which is exactly the relationship a 16-colour fallback can lose.
+    TABFILES = {"sample.txt": THREE_LINES, "second.txt": "two\n",
+                "third.txt": "three\n"}
+    TABARGS = ["sample.txt", "second.txt", "third.txt"]
+    check("tabbar", [], rows=16, cols=64, files=TABFILES, args=TABARGS)
+    check("tabbar-256", [], rows=16, cols=64, files=TABFILES, args=TABARGS,
+          env={"TERM": "xterm-256color"})
+    # On another tab, so the highlight is proved to move rather than to be
+    # painted on the first one.
+    check("tabbar-switched", ["\x1b[6;5~"], rows=16, cols=64, files=TABFILES,
+          args=TABARGS)
+    # The unsaved marker, which is the one thing on the row that is a character.
+    check("tabbar-modified", ["X"], rows=16, cols=64, files=TABFILES,
+          args=TABARGS)
+    # Narrow: more tabs than fit, scrolled with an arrow rather than squeezed.
+    # Two of them, because the window and the arrow differ at each end.
+    check("tabbar-narrow", [], rows=12, cols=26, files=TABFILES, args=TABARGS)
+    check("tabbar-narrow-end", ["\x1b[5;5~"], rows=12, cols=26,
+          files=TABFILES, args=TABARGS)
+    # An open menu has to cover the tabs, not the other way round -- the tab bar
+    # is pushed below the menu bar in the layer stack for exactly this.
+    check("tabbar-under-menu", ["\x1bf"], rows=16, cols=64, files=TABFILES,
+          args=TABARGS)
+    # And with the menu bar hidden, the tabs take row zero.
+    check("tabbar-no-menubar", ["\x1bm"], rows=16, cols=64, files=TABFILES,
+          args=TABARGS)
+
     # Several buffers open. Nothing captured the status bar's "[2/3]" counter,
     # and until the tab bar exists that counter is the only thing on screen
     # saying there is more than one file open at all -- so it is worth a snapshot

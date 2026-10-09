@@ -63,9 +63,10 @@ Everything olly does, molly does. These all work today:
   changes are refused first).
 - **Dirty-quit protection**: when there are unsaved changes, `Ctrl-Q` asks
   several times before exiting (counted down in the status bar).
-- **Any number of files open at once**: `molly one.c two.c`, `Ctrl-N` for a new
-  buffer, `Ctrl-W` to close one, `Ctrl-PgUp`/`Ctrl-PgDn` to move between them.
-  Each keeps its own cursor position and undo history.
+- **Any number of files open at once**, with a tab bar: `molly one.c two.c`,
+  `Ctrl-N` for a new buffer, `Ctrl-W` to close one, `Ctrl-PgUp`/`Ctrl-PgDn` or a
+  click on a tab to move between them. Each keeps its own cursor position and
+  undo history.
 - **Keyboard reference built in**: press `F1` at any time.
 - **Configurable**: `~/.config/molly/mollyrc` holds the settings and the
   keymap, and `View ▸ Save Settings` writes it for you.

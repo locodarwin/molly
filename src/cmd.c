@@ -357,6 +357,15 @@ static int cmd_save_settings(void) {
   return 0;
 }
 
+static int cmd_tab_bar(void) {
+  V.tabbar = !V.tabbar;
+  /* The row appears or goes, so every row below it moves. */
+  screen_force_repaint();
+  editor_set_status_message("Tab bar: %s%s", V.tabbar ? "on" : "off",
+      (V.tabbar && buf_count() < 2) ? " (shown once a second file is open)" : "");
+  return 0;
+}
+
 static int cmd_line_numbers(void) {
   V.linenum = !V.linenum;
   /* The gutter widens or shrinks the text area, shifting every column, so
@@ -407,6 +416,7 @@ static int several_buffers(void) { return buf_count() > 1; }
 static int on_a_row(void) { return CUR.cy < row_count(); }
 static int linenumbers_on(void) { return V.linenum; }
 static int menubar_on(void) { return V.menubar; }
+static int tabbar_on(void) { return V.tabbar; }
 
 /* The table. Order matters only for the help screen, which walks it in order
  * within each group. `label` is for the menu bar and the palette; `help` and
@@ -503,6 +513,9 @@ static const struct command commands[] = {
    * belongs -- the View menu and the palette -- are enough. It lives under View
    * rather than File because what it saves is the View, Search and Input
    * toggles; it moves to an Options menu when there is one. */
+  {.name = "view.tab-bar", .label = "Tab bar",
+   .help = "Show a tab per file", .group = "VIEW", .run = cmd_tab_bar,
+   .checked = tabbar_on},
   {.name = "app.save-settings", .label = "Save settings",
    .help = "Save settings to mollyrc", .group = "VIEW", .run = cmd_save_settings},
 
@@ -832,6 +845,8 @@ static const struct binding default_bindings[] = {
    * Alt letters the menu bar reserves are F, E, S, V, G, H and the T and O that
    * Tools and Options will take. */
   {"alt-m",  "view.menu-bar"},
+  /* Alt-B for the tab bar. B is not one of the eight the menu bar reserves. */
+  {"alt-b",  "view.tab-bar"},
 
   /* The palette, on two chords. Ctrl-Space is the one the roadmap settles on, and
    * Alt-X is there because not every terminal sends NUL for Ctrl-Space -- and because
@@ -1176,6 +1191,7 @@ static const struct help_entry help_entries[] = {
   {"VIEW",      NULL, NULL, "view.repaint"},
   {NULL,        NULL, NULL, "view.line-numbers"},
   {NULL,        NULL, NULL, "view.menu-bar"},
+  {NULL,        NULL, NULL, "view.tab-bar"},
 };
 
 int help_entry_count(void) {

@@ -170,6 +170,12 @@ static void apply_menu_bar(int v) {
 }
 static int live_menu_bar(void) { return V.menubar; }
 
+static void apply_tab_bar(int v) {
+  V.tabbar = v;
+  screen_force_repaint();
+}
+static int live_tab_bar(void) { return V.tabbar; }
+
 static void apply_mouse(int v) { term_mouse_set(v); }
 static int live_mouse(void) { return term_mouse_is_on(); }
 
@@ -199,6 +205,9 @@ static struct setting settings[] = {
   {"view", "menu bar", SET_BOOL, 0, 0, 1, 0,
    "give the menu bar its row",
    apply_menu_bar, live_menu_bar},
+  {"view", "tab bar", SET_BOOL, 0, 0, 1, 0,
+   "show a tab per open file (only ever drawn with two or more)",
+   apply_tab_bar, live_tab_bar},
 
   {"input", "mouse", SET_BOOL, 0, 0, 1, 0,
    "report the mouse to molly rather than leaving it to the terminal",

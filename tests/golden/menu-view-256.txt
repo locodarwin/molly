@@ -5,12 +5,12 @@ beta                │  Command palette…   Ctrl-Space │
 gamma               ├────────────────────────────────┤
 ~                   │  Line numbers           Ctrl-U │
 ~                   │✓ Menu bar                Alt-M │
+~                   │✓ Tab bar                 Alt-B │
 ~                   ├────────────────────────────────┤
 ~                   │  Redraw                     F5 │
 ~                   ├────────────────────────────────┤
 ~                   │  Save settings                 │
 ~                   └────────────────────────────────┘
-~
 ~
 ~
 sample.txt - 3 lines                                 Ln 1, Col 1
@@ -27,8 +27,8 @@ g...................gggggggggggggggggggggggggggggggggggg
 g...................gggggggggggggggggggggggggggggggggggg
 g...................gggggggggggggggggggggggggggggggggggg
 g...................gggggggggggggggggggggggggggggggggggg
+g...................gggggggggggggggggggggggggggggggggggg
 g.....................gggggggggggggggggggggggggggggggggg
-g
 g
 RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 
@@ -39,20 +39,21 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 4: 20-53 245/238  54-55 240/234
 5: 0-0 8/-  20-20 245/238  21-52 252/238  53-53 245/238  54-55 240/234
 6: 0-0 8/-  20-20 245/238  21-52 252/238  53-53 245/238  54-55 240/234
-7: 0-0 8/-  20-53 245/238  54-55 240/234
-8: 0-0 8/-  20-20 245/238  21-52 252/238  53-53 245/238  54-55 240/234
-9: 0-0 8/-  20-53 245/238  54-55 240/234
-10: 0-0 8/-  20-20 245/238  21-52 252/238  53-53 245/238  54-55 240/234
-11: 0-0 8/-  20-53 245/238  54-55 240/234
-12: 0-0 8/-  22-55 240/234
-13: 0-0 8/-
+7: 0-0 8/-  20-20 245/238  21-52 252/238  53-53 245/238  54-55 240/234
+8: 0-0 8/-  20-53 245/238  54-55 240/234
+9: 0-0 8/-  20-20 245/238  21-52 252/238  53-53 245/238  54-55 240/234
+10: 0-0 8/-  20-53 245/238  54-55 240/234
+11: 0-0 8/-  20-20 245/238  21-52 252/238  53-53 245/238  54-55 240/234
+12: 0-0 8/-  20-53 245/238  54-55 240/234
+13: 0-0 8/-  22-55 240/234
 14: 0-0 8/-
 --- modifiers ---
 1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u
 3: 23-23 u
 5: 23-23 u
 6: 23-23 u
-8: 23-23 u
-10: 23-23 u
+7: 23-23 u
+9: 23-23 u
+11: 23-23 u
 --- cursor ---
 row 2 col 1 visible 0

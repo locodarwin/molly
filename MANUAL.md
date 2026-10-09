@@ -582,7 +582,29 @@ the one you land in. A name repeated opens once.
 `File ▸ New`, `File ▸ Close` and `Go ▸ Next/Previous buffer` do the same, and so
 does the command palette.
 
-With more than one buffer open the status bar carries a counter on the left:
+### The tab bar
+
+With more than one buffer open, a row of tabs appears under the menu bar:
+
+     one.c  two.c*  three.h
+
+One tab per buffer, showing the file's name rather than its path; the current
+one is highlighted, and an asterisk means unsaved changes. Click a tab to switch
+to it, or roll the wheel over the row to step through them.
+
+The row appears when there is a second buffer and goes away again when there is
+not: a single tab restates what the status bar already says, and molly is meant
+to be usable on a 24-row terminal. `Alt-B`, `View ▸ Tab bar`, or
+`tab bar = off` in the `[view]` section of your
+[configuration](#configuration) file decline it entirely.
+
+When there are more tabs than fit, molly shows a window of them around the
+current buffer with a `‹` or `›` at the edge to say there are more that way
+— scrolled rather than squeezed, because tabs cut to three characters are
+harder to read than tabs you have to scroll past. Clicking an arrow steps one
+buffer in that direction.
+
+The status bar also carries a counter on the left:
 
     [2/3] two.c - 140 lines (modified)
 
@@ -722,6 +744,7 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     F5       Repaint the screen
     Ctrl-U   Toggle the line-number gutter
     Alt-M    Toggle the menu bar
+    Alt-B    Toggle the tab bar
     Tab      In a dialog: move to the next field, checkbox or button
     Shift-Tab  In a dialog: move back to the previous one
     Space    In a dialog: tick the checkbox or press the button with the keyboard
@@ -783,6 +806,7 @@ Names are matched on their words, so `line numbers`, `Line-Numbers` and
 | `editor` | `undo steps` | `32768` | How many undo steps to keep. |
 | `view` | `line numbers` | `off` | Show the line-number gutter (`Ctrl-U` toggles it). |
 | `view` | `menu bar` | `on` | Give the menu bar its row (`View ▸ Menu Bar` toggles it). |
+| `view` | `tab bar` | `on` | Show a tab per open file (`Alt-B` toggles it). Only ever drawn with two or more buffers open. |
 | `input` | `mouse` | `on` | Report the mouse to molly. Turning it off hands clicks and drag-select back to the terminal for good, rather than only while `Shift` is held — see [The Mouse](#the-mouse). |
 | `search` | `match case` | `off` | Starting state of the Find dialog's **Match case** checkbox. |
 | `search` | `regular expression` | `off` | Starting state of its **Regular expression** checkbox. |

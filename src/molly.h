@@ -601,6 +601,14 @@ enum cell_role {
   ROLE_TABBAR,           /* the band, and the tabs that are not current */
   ROLE_TAB_SELECTED,     /* the buffer being edited */
 
+  /* Splits. The status bar of the window with the keyboard keeps ROLE_STATUS,
+   * so one window is drawn exactly as it was before splits existed; a window
+   * without it is told apart by a quieter bar rather than by a marker in the
+   * text, because the bar is already the thing the eye goes to for "which file
+   * is this" and it is one row either way. */
+  ROLE_STATUS_UNFOCUSED, /* the status bar of a window that has not got focus */
+  ROLE_SPLIT,            /* the column between two windows side by side */
+
   /* Syntax highlighting. Eight roles for seven languages, which is the set that
    * falls out of what those languages actually distinguish rather than a palette
    * chosen first: two keyword classes (control words and type names), strings,
@@ -832,7 +840,7 @@ void regex_free(struct regex *re);
 int screen_gutter_width(void);
 int screen_poll_size(void);
 void ab_append(struct abuf *ab, const char *s, int len);
-void screen_draw_status_bar(void);
+void screen_draw_status_bar(int focused);
 void screen_draw_text_area(void);
 void screen_text_mouse(const struct mouse_event *ev);
 void screen_window_area(int *x, int *y, int *w, int *h);

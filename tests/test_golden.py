@@ -424,6 +424,75 @@ def main():
     check("resize-gutter", ["\x15", (14, 36)], rows=24, cols=80, final=(14, 36),
           files={"sample.txt": THREE_LINES})
 
+    # Window splits. Snapshots carry most of the weight here for the reason the
+    # roadmap predicted: what splits change is where every column of every row
+    # lands, and the long tail of that is off-by-one. A pty check that the text
+    # is on screen twice would pass with the separator in the wrong column, the
+    # gutter measured against the screen instead of the window, or the second
+    # window's status bar a row out.
+    SPLIT_RIGHT = "\x1b[18~"   # F7
+    SPLIT_BELOW = "\x1b[19~"   # F8
+    NEXT_WINDOW = "\x1b[17~"   # F6
+    CLOSE_WINDOW = "\x1b[20~"  # F9
+
+    check("split-right", [SPLIT_RIGHT], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES})
+    check("split-right-256", [SPLIT_RIGHT], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES},
+          env={"TERM": "xterm-256color"})
+    check("split-below", [SPLIT_BELOW], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES})
+    # Right, then below, so the second cut is inside the first one's half: the
+    # case a flat list of windows could not have produced at all.
+    check("split-nested", [SPLIT_RIGHT, SPLIT_BELOW], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES})
+    # The keyboard back in the first window, which is the only state in which
+    # the unfocused status bar is on the right-hand side -- and the one that
+    # shows the two bars are told apart at all.
+    check("split-focus", [SPLIT_RIGHT, NEXT_WINDOW], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES})
+    check("split-focus-256", [SPLIT_RIGHT, NEXT_WINDOW], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES},
+          env={"TERM": "xterm-256color"})
+    # The gutter in a split window. Its width is measured from the window and
+    # not from the screen, and the horizontal scroll and the cursor column are
+    # both measured from the gutter -- the three things the roadmap named.
+    check("split-gutter", ["\x15", SPLIT_RIGHT], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES})
+    # Two files, one per window, with the tab bar above both. The status bars
+    # are the only thing on screen that says which window holds which file.
+    check("split-two-files", [SPLIT_RIGHT, "\x1b[6;5~"], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES, "second.txt": "two\nlines\n"},
+          args=["sample.txt", "second.txt"])
+    # Wide characters and a tab in a window half the screen wide, because the
+    # alignment is measured in columns from the window's left edge.
+    check("split-wide", [SPLIT_RIGHT], rows=14, cols=48,
+          files={"sample.txt": WIDE})
+    # Narrow enough that the halves are near the minimum, and then too narrow
+    # to split at all -- which is a message rather than a window.
+    check("split-narrow", [SPLIT_RIGHT], rows=12, cols=26,
+          files={"sample.txt": THREE_LINES})
+    check("split-refused", [SPLIT_RIGHT], rows=12, cols=16,
+          files={"sample.txt": THREE_LINES})
+    # Closing puts the survivor back across the whole screen, parent split node
+    # and all, which is the half of the tree surgery nothing else would show.
+    check("split-closed", [SPLIT_RIGHT, CLOSE_WINDOW], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES})
+    # A resize under a split: the cut keeps its proportion rather than its
+    # column count, which is why the node stores a fraction.
+    check("split-resized", [SPLIT_RIGHT, (12, 40)], rows=16, cols=64,
+          final=(12, 40), files={"sample.txt": THREE_LINES})
+
+    # The Window menu. Everything but the two splits greys out with one window
+    # open, so this is the dimmed state and the one below is the live one.
+    check("menu-window", ["\x1bw"], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES})
+    check("menu-window-split", [SPLIT_RIGHT, "\x1bw"], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES})
+    check("menu-window-256", ["\x1bw"], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES},
+          env={"TERM": "xterm-256color"})
+
     print()
     if failed:
         for name, detail in failed:

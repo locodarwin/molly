@@ -1,5 +1,5 @@
 --- screen ---
- File  Edit  Search  View  Go  Help
+ File  Edit  Search  View  Go  Window  Help
 alpha               ┌───────────────────────────────────┐
 beta                │  Command palette…      Ctrl-Space │
 gamma               ├───────────────────────────────────┤
@@ -48,7 +48,7 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 13: 0-0 8/-  20-56 245/238  57-58 240/234
 14: 0-0 8/-  22-58 240/234
 --- modifiers ---
-1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u  39-39 u
 3: 23-23 u
 5: 23-23 u
 6: 23-23 u

@@ -1,0 +1,48 @@
+--- screen ---
+ File  Edit  Search  View  Go  Window  Help
+日本語 text             │日本語 text
+        tabbed          │        tabbed
+café combining          │café combining
+~                       │~
+~                       │~
+~                       │~
+~                       │~
+~                       │~
+~                       │~
+~                       │~
+~                       │~
+sample.txt - 3 lines    │sample.txt - 3 lines
+HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = f
+--- attrs ---
+gggggggggggggggggggggggggggggggggggggggggggggggg
+........................g
+........................g
+........................g
+g.......................gg
+g.......................gg
+g.......................gg
+g.......................gg
+g.......................gg
+g.......................gg
+g.......................gg
+g.......................gg
+gggggggggggggggggggggggggRRRRRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-47 7/0
+2: 24-24 8/-
+3: 24-24 8/-
+4: 24-24 8/-
+5: 0-0 8/-  24-25 8/-
+6: 0-0 8/-  24-25 8/-
+7: 0-0 8/-  24-25 8/-
+8: 0-0 8/-  24-25 8/-
+9: 0-0 8/-  24-25 8/-
+10: 0-0 8/-  24-25 8/-
+11: 0-0 8/-  24-25 8/-
+12: 0-0 8/-  24-25 8/-
+13: 0-23 7/8  24-24 8/-
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u  39-39 u
+--- cursor ---
+row 2 col 26 visible 1

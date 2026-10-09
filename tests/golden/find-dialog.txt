@@ -1,5 +1,5 @@
 --- screen ---
- File  Edit  Search  View  Go  Help
+ File  Edit  Search  View  Go  Window  Help
 alpha
 beta
 gamma
@@ -69,7 +69,7 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 21: 0-0 8/-
 22: 0-0 8/-
 --- modifiers ---
-1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u  39-39 u
 9: 38-41 b
 15: 30-37 b
 --- cursor ---

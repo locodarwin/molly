@@ -43,6 +43,11 @@
  * is a fixed size and no walk of the tree can allocate. */
 #define WINDOWS_MAX 64
 
+/* The separator's glyph: U+2502, the same light vertical the line-number gutter
+ * draws, because it is the same kind of line and a second one would be a second
+ * thing to recognise. */
+#define SPLIT_BAR "\xe2\x94\x82"
+
 /* The view state.c defines statically. Captured rather than exported, because
  * knowing which view not to free is this file's business and nobody else's. */
 static struct view *view_first;
@@ -454,7 +459,23 @@ void window_scroll_all(void) {
 
 /* ---- drawing ------------------------------------------------------------- */
 
-static void draw_node(struct window *w) {
+/* The column between two windows side by side.
+ *
+ * Over the whole node, status rows included, so the two bars read as two bars
+ * rather than as one long one with a change of shade in the middle. A stacked
+ * split needs nothing here: the upper window's status bar is already a line
+ * across the screen, which is why WIN_ROWS pays no row for a separator and
+ * WIN_COLS pays a column. */
+static void draw_separator(const struct window *w) {
+  int x = w->kid[0]->x + w->kid[0]->w;
+  int y;
+  if (w->kid[0]->w < 1 || x >= w->x + w->w) return;
+  grid_role(ROLE_SPLIT);
+  for (y = w->y; y < w->y + w->h; y++) grid_puts(y, x, SPLIT_BAR, 3);
+  grid_role(ROLE_TEXT);
+}
+
+static void draw_node(struct window *w, const struct view *focus) {
   if (w == NULL) return;
 
   if (w->kind == WIN_LEAF) {
@@ -465,18 +486,22 @@ static void draw_node(struct window *w) {
     if (w->w < 1 || w->h < 2) return;
     was = view_select(w->view);
     screen_draw_text_area();
-    screen_draw_status_bar();
+    screen_draw_status_bar(w->view == focus);
     view_select(was);
     return;
   }
 
-  draw_node(w->kid[0]);
-  draw_node(w->kid[1]);
+  if (w->kind == WIN_COLS) draw_separator(w);
+  draw_node(w->kid[0], focus);
+  draw_node(w->kid[1], focus);
 }
 
 void window_draw(const struct layer *self) {
   (void)self;
-  draw_node(E.winroot);
+  /* Which view has the keyboard is read once, before the walk: the walk lends
+   * each window the keyboard in turn so that the code written against V draws
+   * the right one, so asking inside it would answer "yes" every time. */
+  draw_node(E.winroot, E.curview);
 }
 
 /* ---- the mouse ----------------------------------------------------------- */

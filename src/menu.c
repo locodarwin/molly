@@ -70,6 +70,15 @@ static const struct menu_item go_items[] = {
   /* N and P, since Go has nothing else competing for either. */
   {"buffer.next", 0}, {"buffer.prev", 0},
 };
+/* S and B, the first letters of the words that differ -- "Split right" and
+ * "Split below" both begin with S, and it is the second word that says which is
+ * which. N and P for the pair that walks them, as in the Go menu. C for Close,
+ * and O for Only, which is the whole of what is left. */
+static const struct menu_item window_items[] = {
+  {"window.split-right", 6}, {"window.split-below", 6}, SEP,
+  {"window.next", 0}, {"window.prev", 0}, SEP,
+  {"window.close", 0}, {"window.only", 0},
+};
 static const struct menu_item help_items[] = {
   {"view.help", 0},
 };
@@ -82,6 +91,7 @@ static const struct menu menus[] = {
   {"Search", 0, search_items, COUNT(search_items)},
   {"View",   0, view_items,   COUNT(view_items)},
   {"Go",     0, go_items,     COUNT(go_items)},
+  {"Window", 0, window_items, COUNT(window_items)},
   {"Help",   0, help_items,   COUNT(help_items)},
 };
 

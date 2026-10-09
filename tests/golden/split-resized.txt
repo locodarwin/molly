@@ -1,0 +1,42 @@
+--- screen ---
+ File  Edit  Search  View  Go  Window  H
+alpha               │alpha
+beta                │beta
+gamma               │gamma
+~                   │~
+~                   │~
+~                   │~
+~                   │~
+~                   │~
+~                   │~
+sample.txt - 3 lines│sample.txt - 3 line
+HELP: Ctrl-S = save | Ctrl-Q = quit | Ct
+--- attrs ---
+gggggggggggggggggggggggggggggggggggggggg
+....................g
+....................g
+....................g
+g...................gg
+g...................gg
+g...................gg
+g...................gg
+g...................gg
+g...................gg
+gggggggggggggggggggggRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-39 7/0
+2: 20-20 8/-
+3: 20-20 8/-
+4: 20-20 8/-
+5: 0-0 8/-  20-21 8/-
+6: 0-0 8/-  20-21 8/-
+7: 0-0 8/-  20-21 8/-
+8: 0-0 8/-  20-21 8/-
+9: 0-0 8/-  20-21 8/-
+10: 0-0 8/-  20-21 8/-
+11: 0-19 7/8  20-20 8/-
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u  39-39 u
+--- cursor ---
+row 2 col 22 visible 1

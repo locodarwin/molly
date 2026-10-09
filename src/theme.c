@@ -59,6 +59,15 @@ static const struct theme_entry theme_256[ROLE_COUNT] = {
   /* ROLE_TABBAR           */ {245, 235, 0, 0},
   /* ROLE_TAB_SELECTED     */ {231, 239, 0, 1},
 
+  /* The focused window's bar is reverse video, which is the terminal's own idea
+   * of maximum contrast and what molly's one status bar always was. An
+   * unfocused one is a stated pair instead: light grey on dark grey reads as a
+   * bar that is still a bar, but quieter, and it does so whether the terminal's
+   * background is light or dark -- which reverse video cannot be relied on for
+   * once it is competing against itself one row away. */
+  /* ROLE_STATUS_UNFOCUSED */ {250, 240, 0, 0},
+  /* ROLE_SPLIT            */ {240, DEFAULT_COLOR, 0, 0},
+
   /* Syntax, on the terminal's own background: code is the one thing on screen
    * that is not a panel, so a background here would fight whatever the user has
    * chosen. Comments are the dimmest thing in the file on purpose -- they are
@@ -97,6 +106,12 @@ static const struct theme_entry theme_16[ROLE_COUNT] = {
   /* ROLE_MENU_DISABLED    */ {0,  8, 0, 0},
   /* ROLE_TABBAR           */ {7,  0, 0, 0},
   /* ROLE_TAB_SELECTED     */ {15, 8, 0, 1},
+
+  /* The same pair, out of the sixteen: light grey on the bright black that is
+   * the only dim background there is. The separator takes the colour the gutter
+   * bar already uses, because it is the same kind of line. */
+  /* ROLE_STATUS_UNFOCUSED */ {7, 8, 0, 0},
+  /* ROLE_SPLIT            */ {8, DEFAULT_COLOR, 0, 0},
 
   /* Eight roles onto eight usable foregrounds, which is the whole of what
    * sixteen colours leaves once the background is the terminal's. Comments take

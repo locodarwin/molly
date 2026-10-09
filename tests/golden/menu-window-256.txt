@@ -1,0 +1,55 @@
+--- screen ---
+ File  Edit  Search  View  Go  Window  Help
+alpha                         ┌──────────────────────────────┐
+beta                          │  Split right              F7 │
+gamma                         │  Split below              F8 │
+~                             ├──────────────────────────────┤
+~                             │  Next window              F6 │
+~                             │  Previous window    Shift-F6 │
+~                             ├──────────────────────────────┤
+~                             │  Close window             F9 │
+~                             │  Only this window            │
+~                             └──────────────────────────────┘
+~
+~
+~
+sample.txt - 3 lines                                 Ln 1, Col 1
+HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | F3 = next
+--- attrs ---
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+..............................gggggggggggggggggggggggggggggggg
+..............................gggggggggggggggggggggggggggggggggg
+..............................gggggggggggggggggggggggggggggggggg
+g.............................gggggggggggggggggggggggggggggggggg
+g.............................gggggggggggggggggggggggggggggggggg
+g.............................gggggggggggggggggggggggggggggggggg
+g.............................gggggggggggggggggggggggggggggggggg
+g.............................gggggggggggggggggggggggggggggggggg
+g.............................gggggggggggggggggggggggggggggggggg
+g.............................gggggggggggggggggggggggggggggggggg
+g...............................gggggggggggggggggggggggggggggggg
+g
+g
+RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-29 252/235  30-37 234/110  38-63 252/235
+2: 30-61 245/238
+3: 30-30 245/238  31-60 234/110  61-61 245/238  62-63 240/234
+4: 30-30 245/238  31-60 252/238  61-61 245/238  62-63 240/234
+5: 0-0 8/-  30-61 245/238  62-63 240/234
+6: 0-0 8/-  30-30 245/238  31-60 243/238  61-61 245/238  62-63 240/234
+7: 0-0 8/-  30-30 245/238  31-60 243/238  61-61 245/238  62-63 240/234
+8: 0-0 8/-  30-61 245/238  62-63 240/234
+9: 0-0 8/-  30-30 245/238  31-60 243/238  61-61 245/238  62-63 240/234
+10: 0-0 8/-  30-30 245/238  31-60 243/238  61-61 245/238  62-63 240/234
+11: 0-0 8/-  30-61 245/238  62-63 240/234
+12: 0-0 8/-  32-63 240/234
+13: 0-0 8/-
+14: 0-0 8/-
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u  39-39 u
+3: 39-39 u
+4: 39-39 u
+--- cursor ---
+row 2 col 1 visible 0

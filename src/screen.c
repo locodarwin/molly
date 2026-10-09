@@ -215,7 +215,7 @@ void screen_draw_text_area(void) {
  * the file's name, its length and whether it is modified. With one window it
  * lands on exactly the row it always did, which is why this change is invisible
  * until something splits. */
-void screen_draw_status_bar(void) {
+void screen_draw_status_bar(int focused) {
   int y = V.screeny + V.screenrows;
   int x = V.screenx, w = V.screencols;
   char status[80], rstatus[80];
@@ -254,7 +254,7 @@ void screen_draw_status_bar(void) {
    * Olly got the same effect by erasing to end of line with reverse video
    * active, which worked but meant the bar's extent was implied by a terminal
    * side effect rather than stated. */
-  grid_role(ROLE_STATUS);
+  grid_role(focused ? ROLE_STATUS : ROLE_STATUS_UNFOCUSED);
   grid_fill(y, x, w, ' ');
   grid_puts(y, x, status, len);
   /* Right-align the cursor position when it fits; otherwise leave it off. */

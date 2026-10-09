@@ -1,5 +1,5 @@
 --- screen ---
- File  Edit  Search  View  Go  Help
+ File  Edit  Search  View  Go  Windo
 1 │ alpha
 2 │ beta
 3 │ gamma

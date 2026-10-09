@@ -1,0 +1,42 @@
+--- screen ---
+ File  Edit  Search  View
+alpha        │alpha
+beta         │beta
+gamma        │gamma
+~            │~
+~            │~
+~            │~
+~            │~
+~            │~
+~            │~
+sample.txt - │sample.txt -
+HELP: Ctrl-S = save | Ctrl
+--- attrs ---
+gggggggggggggggggggggggggg
+.............g
+.............g
+.............g
+g............gg
+g............gg
+g............gg
+g............gg
+g............gg
+g............gg
+ggggggggggggggRRRRRRRRRRRR
+
+--- colors ---
+1: 0-25 7/0
+2: 13-13 8/-
+3: 13-13 8/-
+4: 13-13 8/-
+5: 0-0 8/-  13-14 8/-
+6: 0-0 8/-  13-14 8/-
+7: 0-0 8/-  13-14 8/-
+8: 0-0 8/-  13-14 8/-
+9: 0-0 8/-  13-14 8/-
+10: 0-0 8/-  13-14 8/-
+11: 0-12 7/8  13-13 8/-
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u
+--- cursor ---
+row 2 col 15 visible 1

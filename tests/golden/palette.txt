@@ -1,5 +1,5 @@
 --- screen ---
- File  Edit  Search  View  Go  Help
+ File  Edit  Search  View  Go  Window  Help
 alpha
 beta╔══════════════════════════ Commands ══════════════════════════╗
 gamm║ ›                                                            ║
@@ -60,7 +60,7 @@ RRRRRRggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggRR
 18: 0-0 8/-  4-67 7/8  68-69 8/0
 19: 6-69 8/0
 --- modifiers ---
-1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u  39-39 u
 3: 32-39 b
 --- cursor ---
 row 4 col 9 visible 1

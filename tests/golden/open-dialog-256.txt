@@ -1,5 +1,5 @@
 --- screen ---
- File  Edit  Search  View  Go  Help
+ File  Edit  Search  View  Go  Window  Help
 alpha
 beta╔═════════════════════ Open File ══════════════════════╗
 gamm║ /tmp/molly-golden                                    ║
@@ -60,7 +60,7 @@ RRRRRRggggggggggggggggggggggggggggggggggggggggggggggggggggggggRR
 18: 0-0 8/-  4-59 245/238  60-61 240/234
 19: 6-61 240/234
 --- modifiers ---
-1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u  39-39 u
 3: 27-35 b
 --- cursor ---
 row 2 col 1 visible 0

@@ -1,0 +1,55 @@
+--- screen ---
+ File  Edit  Search  View  Go  Window  Help
+alpha                         ┌──────────────────────────────┐
+beta                          │  Split right              F7 │
+gamma                         │  Split below              F8 │
+~                             ├──────────────────────────────┤
+~                             │  Next window              F6 │
+~                             │  Previous window    Shift-F6 │
+~                             ├──────────────────────────────┤
+~                             │  Close window             F9 │
+~                             │  Only this window            │
+~                             └──────────────────────────────┘
+~
+~
+~
+sample.txt - 3 lines                                 Ln 1, Col 1
+HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | F3 = next
+--- attrs ---
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+..............................gggggggggggggggggggggggggggggggg
+..............................gggggggggggggggggggggggggggggggggg
+..............................gggggggggggggggggggggggggggggggggg
+g.............................gggggggggggggggggggggggggggggggggg
+g.............................gggggggggggggggggggggggggggggggggg
+g.............................gggggggggggggggggggggggggggggggggg
+g.............................gggggggggggggggggggggggggggggggggg
+g.............................gggggggggggggggggggggggggggggggggg
+g.............................gggggggggggggggggggggggggggggggggg
+g.............................gggggggggggggggggggggggggggggggggg
+g...............................gggggggggggggggggggggggggggggggg
+g
+g
+RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-29 7/0  30-37 15/4  38-63 7/0
+2: 30-61 7/8
+3: 30-30 7/8  31-60 15/4  61-61 7/8  62-63 8/0
+4: 30-30 7/8  31-60 15/8  61-61 7/8  62-63 8/0
+5: 0-0 8/-  30-61 7/8  62-63 8/0
+6: 0-0 8/-  30-30 7/8  31-60 0/8  61-61 7/8  62-63 8/0
+7: 0-0 8/-  30-30 7/8  31-60 0/8  61-61 7/8  62-63 8/0
+8: 0-0 8/-  30-61 7/8  62-63 8/0
+9: 0-0 8/-  30-30 7/8  31-60 0/8  61-61 7/8  62-63 8/0
+10: 0-0 8/-  30-30 7/8  31-60 0/8  61-61 7/8  62-63 8/0
+11: 0-0 8/-  30-61 7/8  62-63 8/0
+12: 0-0 8/-  32-63 8/0
+13: 0-0 8/-
+14: 0-0 8/-
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u  39-39 u
+3: 39-39 u
+4: 39-39 u
+--- cursor ---
+row 2 col 1 visible 0

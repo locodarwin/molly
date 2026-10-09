@@ -1206,7 +1206,12 @@ def test_help(tmpdir):
     def out(cols, rows=40, keys=(HELP,)):
         return run([MOLLY, path], list(keys), rows=rows, cols=cols).decode("utf-8", "replace")
 
-    wide = out(cols=80)
+    # Tall enough for the whole reference in two columns. 40 rows was enough
+    # until the WINDOWS group arrived and pushed the tail of VIEW below the
+    # fold -- the screen scrolls, so nothing was lost, but a test that reads one
+    # screenful has to be given a screen the reference fits on or it is checking
+    # the scroll position rather than the content.
+    wide = out(cols=80, rows=44)
     check("help has a title", "Keyboard Reference" in wide, True)
     # Every keybinding and group heading must be documented somewhere.
     #
@@ -1216,7 +1221,8 @@ def test_help(tmpdir):
     # a key reference that showed every alias would be twice as long for no
     # extra information.
     for token in ["FILES", "MOVEMENT", "SELECTION", "EDITING",
-                  "FIND & REPLACE", "CLIPBOARD", "HISTORY", "VIEW",
+                  "FIND & REPLACE", "CLIPBOARD", "HISTORY", "WINDOWS", "VIEW",
+                  "F6", "Shift-F6", "F7", "F8", "F9",
                   "Ctrl-S", "Ctrl-Q", "F1", "Ctrl-G", "Ctrl-F", "F3",
                   "Shift-F3", "Ctrl-T", "Ctrl-R", "Ctrl-Z", "Ctrl-Y", "Ctrl-C",
                   "Ctrl-X", "Ctrl-V", "Ctrl-A", "Ctrl-L", "F5", "Ctrl-U",
@@ -2962,6 +2968,170 @@ def test_syntax(tmpdir):
           any("synrc:2" in m and "[syntax c]" in m for m in msgs), True)
 
 
+def test_splits(tmpdir):
+    """Window splits: what reaches the screen, and what the keys do.
+
+    The geometry is a golden-screen matter and the tree is a unit-test matter.
+    What is checked here is what only a running editor can answer: that the keys
+    are bound, that two windows onto one buffer show each other's edits, that
+    each keeps its own cursor and its own gutter, that closing a buffer under a
+    window does not take the window with it, and that a click moves the
+    keyboard.
+    """
+    print("\nwindow splits: making and closing them")
+
+    # Bodies that do not contain their own file names, so a check asking "whose
+    # file is in this window" cannot pass on the text instead of on the bar.
+    #
+    # Run from the files' own directory and opened by bare name, because the
+    # status bar prints the name it was given cut to twenty columns -- and a
+    # temp path is longer than that, so every bar would read "/tmp/molly-test"
+    # and no check could tell the two windows apart.
+    work = os.path.join(tmpdir, "splits")
+    os.makedirs(work, exist_ok=True)
+    a, b = "wone.txt", "wtwo.txt"
+
+    def fresh():
+        with open(os.path.join(work, a), "w") as fh:
+            fh.write("alpha\nbeta\ngamma\n")
+        with open(os.path.join(work, b), "w") as fh:
+            fh.write("delta\n")
+
+    fresh()
+    here = os.getcwd()
+    os.chdir(work)
+    try:
+        _splits_body(a, b, fresh)
+    finally:
+        os.chdir(here)
+
+
+def _splits_body(a, b, fresh):
+
+    SPLIT_RIGHT = "\x1b[18~"    # F7
+    SPLIT_BELOW = "\x1b[19~"    # F8
+    NEXT_WIN = "\x1b[17~"       # F6
+    PREV_WIN = "\x1b[17;2~"     # Shift-F6
+    CLOSE_WIN = "\x1b[20~"      # F9
+    CLOSE_BUF = "\x17"          # Ctrl-W
+    GUTTER = "\x15"             # Ctrl-U
+
+    def rows_of(out, rows=24, cols=80):
+        scr = Screen(rows, cols)
+        scr.feed(out)
+        return scr.text()
+
+    def go(argv, keys, rows=24, cols=80):
+        return run([MOLLY] + argv, keys, rows=rows, cols=cols)
+
+    def click(x, y, btn=0):
+        return "\x1b[<%d;%d;%dM" % (btn, x + 1, y + 1)
+
+    # Side by side. The separator is the thing that says there are two windows
+    # rather than one window with the text twice.
+    out = go([a], [SPLIT_RIGHT])
+    text = rows_of(out)
+    check("F7 splits the window", text[1].count("alpha"), 2)
+    check("with a separator between the halves", "│" in text[1], True)
+    # Two status bars on the same row, which is what a side-by-side split means
+    # for the chrome: each window's own last row.
+    # Row 22 of 24: each window's last row, which with one window is where the
+    # screen-wide status bar always was and with two is where both of them are.
+    check("and a status bar in each half", text[22].count("wone.txt"), 2)
+
+    # Stacked. The upper window's status bar is the separator, so there is no
+    # separator row and the file name appears on two different rows.
+    out = go([a], [SPLIT_BELOW])
+    text = rows_of(out)
+    bars = [i for i, r in enumerate(text) if "wone.txt - 3 lines" in r]
+    check("F8 stacks two windows", len(bars), 2)
+    check("the upper one's bar is partway down", bars[0] < 20, True)
+    check("and there is no separator row between them",
+          text[bars[0] + 1].startswith("alpha"), True)
+
+    # Closing. The survivor goes back to the whole screen, which is the parent
+    # split node being removed with the window.
+    out = go([a], [SPLIT_RIGHT, CLOSE_WIN])
+    text = rows_of(out)
+    check("F9 closes the window", text[1].count("alpha"), 1)
+    check("and the survivor gets the width back", "│" in text[1], False)
+
+    out = go([a], [CLOSE_WIN])
+    check("closing the only window says so",
+          "only window" in rows_of(out)[23], True)
+
+    # Only this window, which is in the menu and has no chord: Alt-W, then O.
+    out = go([a], [SPLIT_RIGHT, SPLIT_BELOW, "\x1bw", "o"])
+    check("Only this window closes the rest",
+          "│" in rows_of(out)[1], False)
+
+    print("\nwindow splits: two views of one buffer")
+
+    # The whole point of splitting onto one file: an edit in one window is the
+    # same text in the other, because the buffer is shared and only the view is
+    # not.
+    out = go([a], [SPLIT_RIGHT, "ZZ"])
+    check("typing in one window shows in the other",
+          rows_of(out)[1].count("ZZalpha"), 2)
+
+    # And each window keeps its own cursor, so moving in one does not move the
+    # other -- which is what makes two views of one file worth having.
+    out = go([a], [SPLIT_RIGHT, "\x1b[B\x1b[B", NEXT_WIN, "X"])
+    text = rows_of(out)
+    check("each window keeps its own cursor position",
+          text[1].startswith("Xalpha"), True)
+    check("so the other window's cursor was somewhere else",
+          "Xgamma" in text[3], False)
+
+    # The gutter is per window, because it is a property of the view.
+    out = go([a], [SPLIT_RIGHT, GUTTER])
+    text = rows_of(out)
+    check("the gutter is on in one window only", text[1].count("1 │"), 1)
+    check("and the other half still starts with the text",
+          text[1].split("│")[0].strip(), "alpha")
+
+    print("\nwindow splits: the keyboard and the mouse")
+
+    # F6 and Shift-F6 walk the windows. Which window has the keyboard shows in
+    # where a typed character lands, since the two have different cursors.
+    out = go([a], [SPLIT_RIGHT, "\x1b[B", NEXT_WIN, PREV_WIN, "Q"])
+    check("Shift-F6 comes back to where F6 left",
+          rows_of(out)[2].count("Qbeta"), 2)
+
+    # A click moves the keyboard to the window clicked, and puts the cursor
+    # where it landed. Column 50 is in the right-hand window at 80 columns.
+    # Column 50 is past the end of "gamma", so the cursor lands at the end of
+    # the line rather than at the start of it -- which is what clicking in the
+    # blank to the right of a line does, and what makes the typed character
+    # arrive after the text and not before it.
+    out = go([a], [SPLIT_RIGHT, NEXT_WIN, click(50, 3), "Y"])
+    check("a click moves the keyboard to that window",
+          rows_of(out)[3].count("gammaY"), 2)
+
+    print("\nwindow splits: with several files open")
+
+    # Two windows, two files: the tab bar is above both and each status bar says
+    # which file its own window holds.
+    fresh()
+    out = go([a, b], [SPLIT_RIGHT, "\x1b[6;5~"])
+    text = rows_of(out)
+    check("one window per file", "alpha" in text[2] and "delta" in text[2], True)
+    check("and the tab bar is above both", "wone.txt" in text[1], True)
+    check("the left bar names the first file", "[1/2] wone.txt" in text[22], True)
+    check("the right bar names the second", "[2/2] wtwo.txt" in text[22], True)
+
+    # Closing a buffer that another window is showing must move that window,
+    # not leave it on freed memory. The second window ends up on the surviving
+    # buffer, which is the one thing splits add to closing a file.
+    fresh()
+    out = go([a, b], [SPLIT_RIGHT, "\x1b[6;5~", CLOSE_BUF])
+    text = rows_of(out)
+    check("closing a buffer under another window moves it too",
+          text[1].count("alpha"), 2)
+    check("and leaves no window on the file that went",
+          "wtwo.txt" in "".join(text), False)
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -3013,6 +3183,7 @@ def main():
         test_buffers(tmpdir)
         test_tabbar(tmpdir)
         test_syntax(tmpdir)
+        test_splits(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

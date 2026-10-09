@@ -1,5 +1,5 @@
 --- screen ---
- File  Edit  Search  View  Go  Help
+ File  Edit  Search  View  Go  Window  Help
 alpha
 beta╔══════════════════════════ Commands ══════════════════════════╗
 gamm║ › li                                                         ║
@@ -9,12 +9,12 @@ gamm║ › li                                                         ║
 ~   ║ Go to line…                                           Ctrl-G ║
 ~   ║ Insert line                                            Enter ║
 ~   ║ Select line                                           Ctrl-L ║
+~   ║ Split right                                               F7 ║
+~   ║ Split below                                               F8 ║
 ~   ║ Syntax highlighting                                    Alt-Y ║
+~   ║ Close window                                              F9 ║
+~   ║ Only this window                                             ║
 ~   ║ Regular expression                                     Alt-R ║
-~   ║ Cut                                                   Ctrl-X ║
-~   ║ Copy                                                  Ctrl-C ║
-~   ║ Paste                                                 Ctrl-V ║
-~   ║ Quit                                                  Ctrl-Q ║
 ~   ║ ↑↓ choose   Enter run   Esc cancel                           ║
 ~   ╚══════════════════════════════════════════════════════════════╝
 sample.txt - 3 lines                                         Ln 1, Col 1
@@ -52,7 +52,7 @@ RRRRRRggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggRR
 10: 0-0 8/-  4-4 7/8  5-66 15/8  67-67 7/8  68-69 8/0
 11: 0-0 8/-  4-4 7/8  5-66 15/8  67-67 7/8  68-69 8/0
 12: 0-0 8/-  4-4 7/8  5-66 15/8  67-67 7/8  68-69 8/0
-13: 0-0 8/-  4-4 7/8  5-5 15/8  6-65 0/8  66-66 15/8  67-67 7/8  68-69 8/0
+13: 0-0 8/-  4-4 7/8  5-66 15/8  67-67 7/8  68-69 8/0
 14: 0-0 8/-  4-4 7/8  5-5 15/8  6-65 0/8  66-66 15/8  67-67 7/8  68-69 8/0
 15: 0-0 8/-  4-4 7/8  5-5 15/8  6-65 0/8  66-66 15/8  67-67 7/8  68-69 8/0
 16: 0-0 8/-  4-4 7/8  5-66 15/8  67-67 7/8  68-69 8/0
@@ -60,7 +60,7 @@ RRRRRRggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggRR
 18: 0-0 8/-  4-67 7/8  68-69 8/0
 19: 6-69 8/0
 --- modifiers ---
-1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u  39-39 u
 3: 32-39 b
 --- cursor ---
 row 4 col 11 visible 1

@@ -1,5 +1,5 @@
 --- screen ---
- File  Edit  Search  View  Go  Help
+ File  Edit  Search  View  Go  Window  Help
 alpha ┌───────────────────────┐
 beta  │  Undo          Ctrl-Z │
 gamma │  Redo          Ctrl-Y │
@@ -48,7 +48,7 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 13: 0-0 8/-  8-32 8/0
 14: 0-0 8/-
 --- modifiers ---
-1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u  39-39 u
 6: 11-11 u
 7: 9-9 u
 10: 9-9 u

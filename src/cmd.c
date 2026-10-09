@@ -383,6 +383,44 @@ static int cmd_line_numbers(void) {
   return 0;
 }
 
+/* ---- windows -------------------------------------------------------------
+ *
+ * Named by where the new window lands rather than by the axis of the cut. "Split
+ * horizontally" is the one piece of editor vocabulary nobody agrees on -- vi
+ * splits horizontally and gets a window above another, every drawing program
+ * means the opposite -- and a user who has to guess which one molly means will
+ * guess wrong half the time. "Split right" and "Split below" cannot be read two
+ * ways. */
+static int cmd_window_split_right(void) {
+  window_split(WIN_COLS);
+  return 0;
+}
+
+static int cmd_window_split_below(void) {
+  window_split(WIN_ROWS);
+  return 0;
+}
+
+static int cmd_window_close(void) {
+  window_close_current();
+  return 0;
+}
+
+static int cmd_window_only(void) {
+  window_only();
+  return 0;
+}
+
+static int cmd_window_next(void) {
+  window_move_focus(1);
+  return 0;
+}
+
+static int cmd_window_prev(void) {
+  window_move_focus(-1);
+  return 0;
+}
+
 /* Opening a menu is a command like any other, one per menu, so Alt-F and F10 are
  * ordinary bindings rather than a special case in the dispatcher -- and the command
  * palette will be able to offer "File menu" alongside everything else.
@@ -396,7 +434,8 @@ static int cmd_menu_edit(void)   { return menu_open(1); }
 static int cmd_menu_search(void) { return menu_open(2); }
 static int cmd_menu_view(void)   { return menu_open(3); }
 static int cmd_menu_go(void)     { return menu_open(4); }
-static int cmd_menu_help(void)   { return menu_open(5); }
+static int cmd_menu_window(void) { return menu_open(5); }
+static int cmd_menu_help(void)   { return menu_open(6); }
 
 /* F10 opens the bar at the first menu, which is where every keyboard-driven menu bar
  * since the 1980s has started. */
@@ -426,6 +465,12 @@ static int linenumbers_on(void) { return V.linenum; }
 static int menubar_on(void) { return E.menubar; }
 static int tabbar_on(void) { return E.tabbar; }
 static int syntax_on(void) { return V.syntax; }
+/* With one window there is nothing to move to, nothing to close and nothing to
+ * be the only one of, so all four grey out together. Splitting stays available:
+ * whether there is room for it is a question about the window's size, and
+ * window_split() answers it with a message that says which way it would not
+ * fit -- which is more use than a greyed item that cannot say why. */
+static int several_windows(void) { return window_count() > 1; }
 
 /* The table. Order matters only for the help screen, which walks it in order
  * within each group. `label` is for the menu bar and the palette; `help` and
@@ -531,6 +576,31 @@ static const struct command commands[] = {
   {.name = "app.save-settings", .label = "Save settings",
    .help = "Save settings to mollyrc", .group = "VIEW", .run = cmd_save_settings},
 
+  /* The help screen's description column is seventeen columns wide, and
+   * "Split, new window right" and "Split, new window below" both cut to "Split,
+   * new window" -- two entries that read identically, one above the other. The
+   * word that distinguishes them has to be inside the budget. */
+  {.name = "window.split-right", .label = "Split right",
+   .help = "New window right", .group = "WINDOWS",
+   .run = cmd_window_split_right},
+  {.name = "window.split-below", .label = "Split below",
+   .help = "New window below", .group = "WINDOWS",
+   .run = cmd_window_split_below},
+  {.name = "window.next", .label = "Next window",
+   .help = "Next window", .group = "WINDOWS", .run = cmd_window_next,
+   .enabled = several_windows},
+  {.name = "window.prev", .label = "Previous window",
+   .help = "Previous window", .group = "WINDOWS", .run = cmd_window_prev,
+   .enabled = several_windows},
+  {.name = "window.close", .label = "Close window",
+   .help = "Close this window", .group = "WINDOWS", .run = cmd_window_close,
+   .enabled = several_windows},
+  /* Unbound, like Save settings: the menu and the palette are enough for
+   * something nobody needs mid-keystroke, and a chord spent here is a chord not
+   * spent on the four above. */
+  {.name = "window.only", .label = "Only this window",
+   .run = cmd_window_only, .enabled = several_windows},
+
   /* Hidden from the palette, all of them: the palette has no business offering to
    * open itself, and the menu openers are how you reach commands rather than commands
    * anyone means to run. */
@@ -543,6 +613,7 @@ static const struct command commands[] = {
   {.name = "menu.search", .label = "Search menu", .flags = CMD_HIDDEN, .run = cmd_menu_search},
   {.name = "menu.view", .label = "View menu", .flags = CMD_HIDDEN, .run = cmd_menu_view},
   {.name = "menu.go", .label = "Go menu", .flags = CMD_HIDDEN, .run = cmd_menu_go},
+  {.name = "menu.window", .label = "Window menu", .flags = CMD_HIDDEN, .run = cmd_menu_window},
   {.name = "menu.help", .label = "Help menu", .flags = CMD_HIDDEN, .run = cmd_menu_help},
 
   {.name = "app.resize", .run = cmd_resize},
@@ -863,6 +934,19 @@ static const struct binding default_bindings[] = {
    * as "colour" and "highlight" but belong to Help and to nothing. */
   {"alt-y",  "view.syntax"},
 
+  /* Windows, on the function keys from F6 up. F6 is where Turbo Vision put
+   * "next window" and where molly's model for all of this came from, and the
+   * four that follow it group with it: a user who finds one finds the rest by
+   * pressing the next key along, which is not true of any set of Alt letters
+   * still free. Nothing mnemonic is left anyway -- W is the Window menu's own
+   * Alt letter, S and V belong to Search and View, and C would sit one key away
+   * from Copy while meaning Close. */
+  {"f6",       "window.next"},
+  {"shift-f6", "window.prev"},
+  {"f7",       "window.split-right"},
+  {"f8",       "window.split-below"},
+  {"f9",       "window.close"},
+
   /* The palette, on two chords. Ctrl-Space is the one the roadmap settles on, and
    * Alt-X is there because not every terminal sends NUL for Ctrl-Space -- and because
    * Alt-X has meant "run a command by name" for forty years. X is not one of the
@@ -871,13 +955,17 @@ static const struct binding default_bindings[] = {
   {"alt-x",      "app.palette"},
 
   /* The menu bar: F10 as every keyboard-driven menu bar has had it, plus the eight
-   * reserved Alt letters -- six of which have a menu today. */
+   * reserved Alt letters -- seven of which have a menu today. */
   {"f10",    "menu.open"},
   {"alt-f",  "menu.file"},
   {"alt-e",  "menu.edit"},
   {"alt-s",  "menu.search"},
   {"alt-v",  "menu.view"},
   {"alt-g",  "menu.go"},
+  /* W, which was free: the eight letters the bar reserves were F, E, S, V, G, H
+   * and the T and O that Tools and Options will take, and a Window menu is the
+   * seventh of them to exist. */
+  {"alt-w",  "menu.window"},
   {"alt-h",  "menu.help"},
 
   {"resize", "app.resize"},
@@ -1202,6 +1290,14 @@ static const struct help_entry help_entries[] = {
 
   {"HISTORY",   NULL, NULL, "edit.undo"},
   {NULL,        NULL, NULL, "edit.redo"},
+
+  {"WINDOWS",   NULL, NULL, "window.split-right"},
+  {NULL,        NULL, NULL, "window.split-below"},
+  {NULL,        NULL, NULL, "window.next"},
+  {NULL,        NULL, NULL, "window.prev"},
+  {NULL,        NULL, NULL, "window.close"},
+  /* Only this window is not here: it has no chord, and the left column of this
+   * screen is a key. It is in the Window menu and in the palette. */
 
   {"VIEW",      NULL, NULL, "view.repaint"},
   {NULL,        NULL, NULL, "view.line-numbers"},

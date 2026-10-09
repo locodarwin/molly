@@ -1,5 +1,5 @@
 --- screen ---
- File  Edit  Search  View  Go  Help
+ File  Edit  Search  View  Go  Window  Help
 alpha
 be╔════════════ Keyboard Reference ════════════╗
 ga║ FILES                                      ║
@@ -72,7 +72,7 @@ RRRRgggggggggggggggggggggggggggggggggggggggggggggg
 22: 0-0 8/-  2-47 7/8  48-49 8/0
 23: 4-49 8/0
 --- modifiers ---
-1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u  39-39 u
 3: 16-33 b
 --- cursor ---
 row 2 col 1 visible 0

@@ -206,6 +206,38 @@ def main():
           files={"sample.txt": THREE_LINES})
     check("menu-bar-hidden-open", ["\x1bv", "m", "\x1b[21~"], rows=16, cols=64,
           files={"sample.txt": THREE_LINES})
+    # Several buffers open. Nothing captured the status bar's "[2/3]" counter,
+    # and until the tab bar exists that counter is the only thing on screen
+    # saying there is more than one file open at all -- so it is worth a snapshot
+    # of its own rather than relying on a pty check of one substring.
+    check("buffers-status", [], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES, "second.txt": "two\n",
+                 "third.txt": "three\n"},
+          args=["sample.txt", "second.txt", "third.txt"])
+    # And after switching, since the counter and the file name both move.
+    check("buffers-switched", ["\x1b[6;5~"], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES, "second.txt": "two\n",
+                 "third.txt": "three\n"},
+          args=["sample.txt", "second.txt", "third.txt"])
+    # With one file the counter is left off, which is the common case and the one
+    # a regression would be least likely to be noticed in.
+    check("buffers-single", [], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES})
+
+    # The Go menu, which the two buffer commands joined and which nothing had
+    # captured. Both of them grey out with one buffer open, so this snapshot is
+    # the dimmed state and the one below is the live one.
+    check("menu-go", ["\x1bg"], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES})
+    check("menu-go-buffers", ["\x1bg"], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES, "second.txt": "two\n"},
+          args=["sample.txt", "second.txt"])
+    check("menu-go-narrow", ["\x1bg"], rows=12, cols=26,
+          files={"sample.txt": THREE_LINES})
+    check("menu-go-256", ["\x1bg"], rows=16, cols=64,
+          files={"sample.txt": THREE_LINES},
+          env={"TERM": "xterm-256color"})
+
     # The Edit menu, which Select all and Select line joined. Nothing had
     # captured it either -- the same gap the View menu had, and the reason both
     # are here now: Cut and Copy are greyed out without a selection, so the

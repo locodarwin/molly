@@ -14,10 +14,19 @@
  * WINCH_KEY so the key enum stays a plain int. Reset on every call. */
 static int last_key_shift = 0;
 
+/* And with Ctrl. Same mechanism, added when Ctrl-PgUp and Ctrl-PgDn became the
+ * keys that switch buffers: the modifier rides in the same CSI parameter, and
+ * without reading it Ctrl-PgUp arrived as a plain PgUp and scrolled a page. */
+static int last_key_ctrl = 0;
+
 /* Whether the key just returned arrived with Shift held. Read once, right after
  * editor_read_key, by the code that decides whether to extend a selection. */
 int input_last_key_had_shift(void) {
   return last_key_shift;
+}
+
+int input_last_key_had_ctrl(void) {
+  return last_key_ctrl;
 }
 
 /* The mouse report that came with the last MOUSE_KEY. Out of band for the same
@@ -96,6 +105,7 @@ static int editor_read_key(void) {
   int nread;
   unsigned char c;
   last_key_shift = 0;
+  last_key_ctrl = 0;
   while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
     if (nread == -1 && errno != EAGAIN) die("read");
     /* VMIN=0/VTIME=1 already wakes this loop roughly every 100ms even with
@@ -149,7 +159,10 @@ static int editor_read_key(void) {
     char *semi = strchr(params, ';');
     if (semi != NULL) {
       int mod = atoi(semi + 1);
-      if (mod >= 2) last_key_shift = (mod - 1) & 0x01;
+      if (mod >= 2) {
+        last_key_shift = ((mod - 1) & 0x01) ? 1 : 0;
+        last_key_ctrl = ((mod - 1) & 0x04) ? 1 : 0;
+      }
     }
 
     switch (final) {

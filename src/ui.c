@@ -188,7 +188,18 @@ static int help_group_end(int g) {
 #define HELP_WIDE 72
 #define HELP_GAP 4        /* blank columns between the two columns */
 #define HELP_KEYW 14      /* width reserved for the key name */
-#define HELP_MAXROWS 48
+/* Enough rows for every entry in the command table's help layout, in the
+ * one-column arrangement where all of it lands in a single column: one line per
+ * entry, one per group heading, one blank between groups.
+ *
+ * It used to be 48, which was already two groups short of the content and had
+ * been quietly cutting VIEW off the bottom -- a silent truncation, because the
+ * builder simply stopped writing and the scroll limit was computed from what it
+ * had written, so End scrolled to the end of what fit rather than to the end of
+ * the help. Adding the BUFFERS group pushed CLIPBOARD past it too, which is how
+ * it was finally noticed. The guard below is so that the next time this is
+ * outgrown it says so on the screen instead. */
+#define HELP_MAXROWS 128
 #define HELP_MAXW 512
 
 static char help_lcol[HELP_MAXROWS][HELP_MAXW];
@@ -197,12 +208,15 @@ static char help_rcol[HELP_MAXROWS][HELP_MAXW];
 static void help_build_col(char col[HELP_MAXROWS][HELP_MAXW], int *rn,
                            int g0, int g1, int keyw, int descw) {
   int r = 0, g;
-  for (g = g0; g <= g1 && r < HELP_MAXROWS - 1; g++) {
+  int ran_out = 0;
+  for (g = g0; g <= g1; g++) {
+    if (r >= HELP_MAXROWS - 1) { ran_out = 1; break; }
     if (g > g0) { col[r][0] = '\0'; r++; }
     snprintf(col[r], HELP_MAXW, "%s", help_group_title[g]);
     r++;
     int i, end = help_group_end(g);
-    for (i = help_group_start[g]; i < end && r < HELP_MAXROWS - 1; i++) {
+    for (i = help_group_start[g]; i < end; i++) {
+      if (r >= HELP_MAXROWS - 1) { ran_out = 1; break; }
       const char *group, *desc;
       char key[64];
       help_entry_at(i, &group, key, sizeof(key), &desc);
@@ -210,6 +224,14 @@ static void help_build_col(char col[HELP_MAXROWS][HELP_MAXW], int *rn,
                keyw, keyw, key, descw, desc);
       r++;
     }
+    if (ran_out) break;
+  }
+  /* Say so rather than stop silently. A help screen that is missing its last
+   * two groups and does not mention it is indistinguishable from a help screen
+   * that is complete, which is how the old 48-row cap survived unnoticed. */
+  if (ran_out) {
+    snprintf(col[r], HELP_MAXW, "  (help truncated -- raise HELP_MAXROWS)");
+    r++;
   }
   *rn = r;
 }
@@ -583,19 +605,42 @@ char *editor_open_dialog(void) {
  * editor only ever edits one file, so everything that belonged to the old
  * one -- rows, cursor, selection, undo history, line-ending flags -- goes
  * with it. The caller guarantees no unsaved changes. */
-void editor_switch_file(char *path) {
-  int i;
-  for (i = 0; i < row_count(); i++) editor_free_row(row_at(i));
-  B.numrows = 0;
+/* Open `path` in a buffer of its own, and show it. Takes ownership of `path`.
+ *
+ * This replaces editor_switch_file(), which emptied the single buffer and loaded
+ * over the top of it -- and which is why Ctrl-O used to refuse outright while
+ * there were unsaved changes, since there was nowhere else for the file to go.
+ *
+ * A file that is already open is switched to rather than opened twice. Two
+ * buffers on one file would each have their own undo history and their own idea
+ * of what is on disk, and the second save would silently undo the first.
+ *
+ * The empty unnamed buffer molly starts with is reused rather than left behind,
+ * so `molly` then Ctrl-O gives one tab and not two. Anything the user has typed
+ * into it makes it not empty, and then it stays. */
+void editor_open_in_new_buffer(char *path) {
+  int already = buf_find_path(path);
+  struct buffer *cur = V.buf;
+
+  if (already >= 0) {
+    buf_show(already);
+    editor_set_status_message("Already open: %s (%d of %d)", path,
+                              buf_current() + 1, buf_count());
+    free(path);
+    return;
+  }
+
+  if (!(cur->filename == NULL && cur->numrows == 0 && !cur->dirty))
+    buf_show(buf_index_of(buf_new()));
+
+  editor_open(path);
   cursors_collapse();
   memset(&CUR, 0, sizeof CUR);
   V.drowoff = 0;
   V.coloff = 0;
-  editor_free_undo_redo();
-  B.eol_crlf = 0;
-  B.final_newline = 1;
-  editor_open(path);
+  screen_force_repaint();
+  editor_set_status_message("Opened %s - %d lines (%d of %d)",
+      B.filename ? B.filename : "(unnamed)", row_count(),
+      buf_current() + 1, buf_count());
   free(path);
-  editor_set_status_message("Opened %s - %d lines",
-      B.filename ? B.filename : "(unnamed)", row_count());
 }

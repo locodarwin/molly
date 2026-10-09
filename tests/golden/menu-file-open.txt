@@ -1,14 +1,14 @@
 --- screen ---
  File  Edit  Search  View  Go  Help
 ┌─────────────────┐
+│  New            │
 │  Open…          │
 │  Save           │
 ├─────────────────┤
+│  Close          │
+├─────────────────┤
 │  Quit           │
 └─────────────────┘
-~
-~
-~
 ~
 ~
 ~
@@ -23,10 +23,10 @@ ggggggggggggggggggggg
 ggggggggggggggggggggg
 ggggggggggggggggggggg
 ggggggggggggggggggggg
+ggggggggggggggggggggg
+ggggggggggggggggggggg
+ggggggggggggggggggggg
 g.ggggggggggggggggggg
-g
-g
-g
 g
 g
 g
@@ -37,13 +37,13 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 2: 0-18 7/8
 3: 0-0 7/8  1-17 15/4  18-18 7/8  19-20 8/0
 4: 0-0 7/8  1-17 15/8  18-18 7/8  19-20 8/0
-5: 0-18 7/8  19-20 8/0
-6: 0-0 7/8  1-17 15/8  18-18 7/8  19-20 8/0
-7: 0-18 7/8  19-20 8/0
-8: 0-0 8/-  2-20 8/0
-9: 0-0 8/-
-10: 0-0 8/-
-11: 0-0 8/-
+5: 0-0 7/8  1-17 15/8  18-18 7/8  19-20 8/0
+6: 0-18 7/8  19-20 8/0
+7: 0-0 7/8  1-17 15/8  18-18 7/8  19-20 8/0
+8: 0-18 7/8  19-20 8/0
+9: 0-0 7/8  1-17 15/8  18-18 7/8  19-20 8/0
+10: 0-18 7/8  19-20 8/0
+11: 0-0 8/-  2-20 8/0
 12: 0-0 8/-
 13: 0-0 8/-
 14: 0-0 8/-
@@ -51,6 +51,8 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u
 3: 3-3 u
 4: 3-3 u
-6: 3-3 u
+5: 3-3 u
+7: 3-3 u
+9: 3-3 u
 --- cursor ---
 row 2 col 1 visible 0

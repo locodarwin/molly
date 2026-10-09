@@ -4,7 +4,7 @@
 #include "molly.h"
 
 _Noreturn void die(const char *s) {
-  write_recovery_file();
+  write_recovery_all();
   write(STDOUT_FILENO, "\x1b[2J", 4);
   write(STDOUT_FILENO, "\x1b[H", 3);
   perror(s);
@@ -37,7 +37,10 @@ void disable_raw_mode(void) {
  * Phase 0's. */
 static void handle_fatal_signal(int sig) {
   static const char reset[] = "\x1b[?1006l\x1b[?1002l\x1b[?25h\x1b[2J\x1b[H";
-  write_recovery_file();
+  /* All of them, and still async-signal-safe: the loop is plain reads of the
+   * buffer list and a pointer assignment, and what it calls per buffer is the
+   * open/write/fsync/close it always was. */
+  write_recovery_all();
   tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.orig_termios);
   write(STDOUT_FILENO, reset, sizeof(reset) - 1);
   raise(sig);

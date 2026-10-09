@@ -5,19 +5,19 @@ be╔════════════ Keyboard Reference ══════�
 ga║ FILES                                      ║
 ~ ║   Ctrl-S         Save file                 ║
 ~ ║   Ctrl-O         Open a file               ║
+~ ║   Ctrl-N         New buffer                ║
+~ ║   Ctrl-W         Close this buffer         ║
 ~ ║   Ctrl-Q         Quit                      ║
 ~ ║   F1             This help screen          ║
+~ ║                                            ║
+~ ║ BUFFERS                                    ║
+~ ║   Ctrl-PgDn      Next buffer               ║
+~ ║   Ctrl-PgUp      Previous buffer           ║
 ~ ║                                            ║
 ~ ║ MENUS                                      ║
 ~ ║   F10            Open the menu bar         ║
 ~ ║   Alt-letter     Open that menu            ║
 ~ ║   Ctrl-Space     Command palette           ║
-~ ║   Shift+drag     Select with the terminal, ║
-~ ║                                            ║
-~ ║ MOVEMENT                                   ║
-~ ║   Arrows         Move cursor               ║
-~ ║   PgUp/PgDn      Page up / down            ║
-~ ║   Home/End       Line start / end          ║
 ~ ║ In prompts: Enter accepts   Esc cancels    ║
 ~ ║ PgUp/PgDn scroll   any other key returns   ║
 ~ ╚════════════════════════════════════════════╝

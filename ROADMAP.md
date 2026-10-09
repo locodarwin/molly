@@ -690,13 +690,26 @@ multi-row buffer: `b?` against a six-line file is 57 matches and both engines
 agree on every one. Its termination witness is unchanged and still the point —
 molly runs under `ulimit -v` and has to reach a clean quit.
 
-### Multiple buffers and tabs — **IN**
+### Multiple buffers and tabs — **IN** (buffers landed, tabs next)
 
 - **For:** the most-missed thing about olly, and mostly bookkeeping once Phase 0
-  separates buffer from view. Prerequisite for File→Close, the file explorer,
+  separates buffer from view. Prerequisite for File—Close, the file explorer,
   and grep results.
 - **Against:** every "are you sure?" path multiplies — unsaved changes on quit
   becomes a list, not a question. Crash recovery has to cover N buffers.
+- **Landed:** the buffer list, `File ▸ New`/`Close`, `Ctrl-PgUp`/`Ctrl-PgDn`,
+  several files from the command line, opening into a buffer of its own, a
+  remembered cursor position per buffer, and the `[2/3]` counter in the status
+  bar. It *was* mostly bookkeeping, for one reason worth recording: making `B` a
+  macro for `(*V.buf)` meant nearly two hundred existing references to the one
+  buffer kept working unchanged, and that definition — the current buffer is
+  the current view's — is the one splits need anyway.
+- **Both costs came true.** Crash recovery writes a file per unsaved buffer now,
+  and quit counts them all. The quit warning is a *message* with a count rather
+  than the list in a dialog this section asks for; that wants a dialog with
+  Save All / Discard / Cancel on it, which is a feature rather than a message.
+- **Still to come:** the tab bar, and a buffer-list dialog for picking one by
+  name rather than by walking the list.
 
 ### Window splits — **IN**
 
@@ -916,10 +929,21 @@ out of band for movement: a shifted *movement* extends the selection, which is
 true of every movement at once rather than being a binding, so the dispatcher
 tries `key | KEY_SHIFT` first and the bare key second.
 
-Of the chords Fresh newly claims, only `Ctrl-A` (select all) is bound so far.
-`Ctrl-W` (select word), `Ctrl-K` (delete to end of line) and `Ctrl-/` (toggle
-comment) need commands that do not exist yet, and a chord bound before there is
-something to bind it to is how a keymap acquires entries nobody can explain.
+Of the chords Fresh newly claims, `Ctrl-A` (select all) is bound. `Ctrl-K`
+(delete to end of line) and `Ctrl-/` (toggle comment) need commands that do not
+exist yet, and a chord bound before there is something to bind it to is how a
+keymap acquires entries nobody can explain.
+
+**`Ctrl-W` went to Close rather than to select-word**, which is a deliberate
+departure from the list above. Close-tab is what `Ctrl-W` means in every editor
+and browser with tabs; select-word does not exist and has no date; and the cost
+of being wrong is one line of `mollyrc`. `Ctrl-N` likewise went to New, as CUA
+has it — it was only ever an alias for find-next, and `F3` is the primary now.
+
+`Ctrl` also became nameable in a chord, on the same keys as `Shift` and for the
+same reason: the modifier rides in the CSI parameter, so `Ctrl-PgUp` arrives as
+itself while `Ctrl-Shift-L` cannot. Without it `Ctrl-PgUp` arrived as a plain
+`PgUp` and scrolled a page.
 
 **Every binding is remappable**, and that is a requirement rather than a feature,
 because it decides the shape of the keymap code. It means:

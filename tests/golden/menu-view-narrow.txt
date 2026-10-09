@@ -4,7 +4,7 @@
 │  Comman   Ctrl-Space │
 ├──────────────────────┤
 │  Line n       Ctrl-U │
-│✓ Menu b              │
+│✓ Menu b        Alt-M │
 ├──────────────────────┤
 │  Redraw           F5 │
 ├──────────────────────┤

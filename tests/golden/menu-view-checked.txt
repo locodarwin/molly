@@ -4,7 +4,7 @@
 2 │ beta            │  Command palette…   Ctrl-Space │
 3 │ gamma           ├────────────────────────────────┤
   │ ~               │✓ Line numbers           Ctrl-U │
-  │ ~               │✓ Menu bar                      │
+  │ ~               │✓ Menu bar                Alt-M │
   │ ~               ├────────────────────────────────┤
   │ ~               │  Redraw                     F5 │
   │ ~               ├────────────────────────────────┤

@@ -5,19 +5,19 @@ be╔═════════════════════════
 ga║ FILES                                 EDITING                            ║
 ~ ║   Ctrl-S         Save file              Enter          Insert new line   ║
 ~ ║   Ctrl-O         Open a file            Tab            Insert tab        ║
-~ ║   Ctrl-Q         Quit                   Bksp/Ctrl-H    Delete before     ║
-~ ║   F1             This help screen       Del            Delete at cursor  ║
-~ ║                                         Ctrl-T         Swap characters   ║
-~ ║ MENUS                                                                    ║
-~ ║   F10            Open the menu bar    FIND & REPLACE                     ║
-~ ║   Alt-letter     Open that menu         Ctrl-F         Find forward      ║
-~ ║   Ctrl-Space     Command palette        F3             Find next         ║
-~ ║   Shift+drag     Select with the t      Shift-F3       Find previous     ║
+~ ║   Ctrl-N         New buffer             Bksp/Ctrl-H    Delete before     ║
+~ ║   Ctrl-W         Close this buffer      Del            Delete at cursor  ║
+~ ║   Ctrl-Q         Quit                   Ctrl-T         Swap characters   ║
+~ ║   F1             This help screen                                        ║
+~ ║                                       FIND & REPLACE                     ║
+~ ║ BUFFERS                                 Ctrl-F         Find forward      ║
+~ ║   Ctrl-PgDn      Next buffer            F3             Find next         ║
+~ ║   Ctrl-PgUp      Previous buffer        Shift-F3       Find previous     ║
 ~ ║                                         Alt-R          Pattern search    ║
-~ ║ MOVEMENT                                Ctrl-R         Find & replace    ║
-~ ║   Arrows         Move cursor                                             ║
-~ ║   PgUp/PgDn      Page up / down       CLIPBOARD                          ║
-~ ║   Home/End       Line start / end       Ctrl-C         Copy selection    ║
+~ ║ MENUS                                   Ctrl-R         Find & replace    ║
+~ ║   F10            Open the menu bar                                       ║
+~ ║   Alt-letter     Open that menu       CLIPBOARD                          ║
+~ ║   Ctrl-Space     Command palette        Ctrl-C         Copy selection    ║
 ~ ║ In prompts: Enter accepts   Esc cancels                                  ║
 ~ ║ PgUp/PgDn scroll   any other key returns                                 ║
 ~ ╚══════════════════════════════════════════════════════════════════════════╝

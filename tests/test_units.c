@@ -1318,6 +1318,34 @@ static void test_mkdir_p(void) {
   }
 }
 
+/* ---- the help screen's data ----------------------------------------------- */
+
+/* Every line of the keyboard reference has to name a key.
+ *
+ * This is a rule rather than a preference: the left column of the help screen is
+ * the key, so an entry with nothing bound to it renders as a description beside
+ * an empty column, which reads as a bug rather than as "reachable another way".
+ * It has happened twice -- Match case when transpose took Ctrl-T, and the menu
+ * bar toggle, which never had a chord and sat below a row cap where nobody could
+ * see it. Both were fixed in different ways (one left the screen, one gained a
+ * binding), so what is checked here is the rule and not either fix. */
+static void test_help_entries(void) {
+  int i, blank = 0;
+  printf("\nhelp: every entry names a key\n");
+
+  keymap_init();
+  for (i = 0; i < help_entry_count(); i++) {
+    const char *group, *desc;
+    char key[64];
+    help_entry_at(i, &group, key, sizeof(key), &desc);
+    if (key[0] == '\0') {
+      printf("          entry %d has no key: \"%s\"\n", i, desc);
+      blank++;
+    }
+  }
+  check("no help entry has an empty key column", blank, 0);
+}
+
 /* ---- the buffer list ----------------------------------------------------- */
 
 /* The list is testable without a terminal because nothing in it draws: what it
@@ -1514,6 +1542,7 @@ int main(void) {
   test_regex_limits();
   test_regex_expand();
   test_fit_cols();
+  test_help_entries();
   test_buflist();
   test_chords();
   test_config_parse();

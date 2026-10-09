@@ -46,10 +46,35 @@ static int cmd_newline(void) {
 }
 
 static int cmd_quit(void) {
-  if (B.dirty && quit_times > 0) {
-    editor_set_status_message(
-        "WARNING!!! File has unsaved changes. Press Ctrl-Q %d more times to quit.",
-        quit_times);
+  /* Every buffer, not the current one. The roadmap's warning about this feature
+   * was that every "are you sure?" multiplies, and this is the first one: quit
+   * with three files open and one of them edited and the edited one may not be
+   * the one on screen. */
+  int dirty = buf_dirty_count();
+  if (dirty > 0 && quit_times > 0) {
+    int i;
+    const char *name = "a file";
+    for (i = 0; i < buf_count(); i++) {
+      if (!buf_at(i)->dirty) continue;
+      name = buf_at(i)->filename ? buf_at(i)->filename : "[No Name]";
+      break;
+    }
+    /* The first dirty one is named, because with one buffer open -- still the
+     * common case -- naming it is strictly more useful than saying "1 file", and
+     * with several the count is what matters and the name is a starting point.
+     *
+     * It is not a list in a dialog yet, which is what the roadmap asks for. That
+     * wants a dialog with Save All / Discard / Cancel on it, and it is a feature
+     * rather than a message. */
+    if (dirty == 1)
+      editor_set_status_message(
+          "WARNING!!! %s has unsaved changes. Press Ctrl-Q %d more times to quit.",
+          name, quit_times);
+    else
+      editor_set_status_message(
+          "WARNING!!! %d files have unsaved changes. "
+          "Press Ctrl-Q %d more times to quit.",
+          dirty, quit_times);
     quit_times--;
     /* The countdown must survive, and so must any selection: this keypress is a
      * warning rather than an action. */
@@ -57,7 +82,13 @@ static int cmd_quit(void) {
   }
   write_all(STDOUT_FILENO, "\x1b[2J", 4);
   write_all(STDOUT_FILENO, "\x1b[H", 3);
-  if (B.recovery_path[0] != '\0') unlink(B.recovery_path);
+  /* Every buffer's recovery file, for the same reason: leaving one behind means
+   * the next start offers to recover work the user has just chosen to discard. */
+  {
+    int i;
+    for (i = 0; i < buf_count(); i++)
+      if (buf_at(i)->recovery_path[0] != '\0') unlink(buf_at(i)->recovery_path);
+  }
   exit(0);
 }
 
@@ -67,17 +98,72 @@ static int cmd_save(void) {
 }
 
 static int cmd_open(void) {
-  /* One buffer, one file: the open dialog replaces the buffer, so it is refused
-   * while there is unsaved work rather than silently discarding it. */
-  if (B.dirty) {
-    editor_set_status_message(
-        "Open aborted: file has unsaved changes (Ctrl-S first)");
-    return 0;
-  }
   /* No repaint needed on the way out: the dialog is a layer, so popping it is
-   * enough and the grid works out what to redraw. */
+   * enough and the grid works out what to redraw.
+   *
+   * This used to refuse outright while the buffer was dirty, because opening
+   * replaced the one buffer there was and there was nowhere for the unsaved work
+   * to go. Opening into a buffer of its own is the answer to that, so the
+   * refusal is gone. */
   char *path = editor_open_dialog();
-  if (path != NULL) editor_switch_file(path);
+  if (path != NULL) editor_open_in_new_buffer(path);
+  return 0;
+}
+
+/* An empty buffer to type into. */
+static int cmd_new(void) {
+  buf_show(buf_index_of(buf_new()));
+  build_recovery_path();
+  saved_snapshot_take();
+  editor_set_status_message("New buffer (%d of %d)", buf_current() + 1,
+                            buf_count());
+  return 0;
+}
+
+/* Close the current buffer. Refuses once while it has unsaved changes, on its
+ * own confirmation rather than the quit countdown: pressing it twice by accident
+ * should not be able to lose a file, and sharing Ctrl-Q's counter would mean a
+ * refused close armed the quit.
+ *
+ * What is remembered is *which* buffer was warned about, by id, not a count. A
+ * counter would let a refusal on one dirty buffer be spent on another: warn on
+ * A, switch to B, press once, and B would close unwarned. Ids are never reused,
+ * so this cannot be confused by a buffer that has since been closed. Any
+ * unrelated keystroke clears it as well, in the dispatcher, exactly as one
+ * cancels Ctrl-Q's countdown. */
+static int close_warned_id = -1;
+
+static int cmd_close(void) {
+  if (B.dirty && close_warned_id != B.id) {
+    editor_set_status_message(
+        "%s has unsaved changes. Press again to close it anyway.",
+        B.filename ? B.filename : "[No Name]");
+    close_warned_id = B.id;
+    return CMD_KEEP_SELECTION | CMD_KEEP_QUIT_COUNT;
+  }
+  close_warned_id = -1;
+  /* The recovery file goes with the buffer: keeping it would offer to recover
+   * work on the next start that the user has just discarded. */
+  if (B.recovery_path[0] != '\0') unlink(B.recovery_path);
+  {
+    int n = buf_count();
+    buf_close(buf_current());
+    if (n == 1) editor_set_status_message("Closed - empty buffer");
+    else editor_set_status_message("Closed - now %s (%d of %d)",
+        B.filename ? B.filename : "[No Name]", buf_current() + 1, buf_count());
+  }
+  return 0;
+}
+
+static int cmd_buffer_next(void) {
+  if (buf_count() < 2) return 0;
+  buf_show((buf_current() + 1) % buf_count());
+  return 0;
+}
+
+static int cmd_buffer_prev(void) {
+  if (buf_count() < 2) return 0;
+  buf_show((buf_current() + buf_count() - 1) % buf_count());
   return 0;
 }
 
@@ -315,6 +401,9 @@ static int cmd_resize(void) {
 static int have_selection(void) { return CUR.sel_active; }
 static int have_clipboard(void) { return E.clipboard != NULL && E.clipsize > 0; }
 static int have_rows(void) { return row_count() > 0; }
+static int several_buffers(void) { return buf_count() > 1; }
+/* Close is always available: with one buffer open it empties it, which is a
+ * thing a user may well want and is what every editor with tabs does. */
 static int on_a_row(void) { return CUR.cy < row_count(); }
 static int linenumbers_on(void) { return V.linenum; }
 static int menubar_on(void) { return V.menubar; }
@@ -328,8 +417,19 @@ static const struct command commands[] = {
    .help = "Save file", .group = "FILES", .run = cmd_save},
   {.name = "file.open", .label = "Open…",
    .help = "Open a file", .group = "FILES", .run = cmd_open},
+  {.name = "file.new", .label = "New",
+   .help = "New buffer", .group = "FILES", .run = cmd_new},
+  {.name = "file.close", .label = "Close",
+   .help = "Close this buffer", .group = "FILES", .run = cmd_close},
   {.name = "file.quit", .label = "Quit",
    .help = "Quit", .group = "FILES", .run = cmd_quit},
+
+  {.name = "buffer.next", .label = "Next buffer",
+   .help = "Next buffer", .group = "BUFFERS", .run = cmd_buffer_next,
+   .enabled = several_buffers},
+  {.name = "buffer.prev", .label = "Previous buffer",
+   .help = "Previous buffer", .group = "BUFFERS", .run = cmd_buffer_prev,
+   .enabled = several_buffers},
   {.name = "view.help", .label = "Keyboard help",
    .help = "This help screen", .group = "FILES", .run = cmd_help},
 
@@ -486,14 +586,15 @@ static int ieq(const char *a, const char *b) {
   return *a == '\0' && *b == '\0';
 }
 
-/* Whether Shift on this key reaches molly as something of its own.
+/* Whether a modifier on this key reaches molly as something of its own.
  *
- * The CSI form carries a modifier parameter for the function keys and the
- * navigation keys ("\x1b[1;2C" is Shift-Right), so those can be bound shifted. A
- * letter cannot: Shift-A *is* 'A'. Nor can Ctrl plus Shift, because Ctrl-L and
- * Ctrl-Shift-L are the same byte on the wire -- which is why the roadmap's
- * suggestion of moving repaint to Ctrl-Shift-L could not be taken. */
-static int shift_is_distinguishable(int key) {
+ * The CSI forms carry a modifier parameter for the function keys and the
+ * navigation keys -- "\x1b[1;2C" is Shift-Right, "\x1b[5;5~" is Ctrl-PgUp -- so
+ * those can be bound with either. A letter cannot: Shift-A *is* 'A', and
+ * Ctrl-Shift-L is the same single byte as Ctrl-L, which is why the roadmap's
+ * suggestion of moving repaint to Ctrl-Shift-L could not be taken. Ctrl on a
+ * letter is still the control byte it has always been. */
+static int mods_are_reported(int key) {
   switch (key) {
     case ARROW_LEFT: case ARROW_RIGHT: case ARROW_UP: case ARROW_DOWN:
     case HOME_KEY: case END_KEY: case PAGE_UP: case PAGE_DOWN: case DEL_KEY:
@@ -503,16 +604,16 @@ static int shift_is_distinguishable(int key) {
   }
 }
 
-/* Parse a chord: "ctrl-s", "alt-x", "shift-f3", "f10", "left", "enter", or a
- * bare character. Returns the key code -- with KEY_SHIFT set if the chord named
- * Shift -- or -1 if it means nothing.
+/* Parse a chord: "ctrl-s", "alt-x", "shift-f3", "ctrl-pagedown", "f10", "left",
+ * "enter", or a bare character. Returns the key code -- with KEY_SHIFT and
+ * KEY_CTRL set as the chord named them -- or -1 if it means nothing.
  *
  * Case-insensitive, and the modifiers may be written in any order, so a config
  * file may say "Ctrl-S", "ctrl-s" or "shift-ctrl-f3". */
 int chord_parse(const char *s) {
   int i;
   int ctrl = 0, alt = 0, shift = 0;
-  int key;
+  int key, mods = 0;
 
   if (s == NULL || *s == '\0') return -1;
 
@@ -557,9 +658,19 @@ int chord_parse(const char *s) {
   if (key < 0) return -1;
 
   if (ctrl) {
-    unsigned char c = (unsigned char)toupper((unsigned char)s[0]);
-    if (s[1] != '\0' || c < 'A' || c > 'Z') return -1;
-    key = CTRL_KEY(c);
+    if (mods_are_reported(key)) {
+      /* A navigation or function key, where Ctrl arrives as a parameter: a flag
+       * on the key rather than a different key. */
+      mods |= KEY_CTRL;
+    } else {
+      /* A letter, where Ctrl is a byte. `key` is rewritten rather than flagged,
+       * which also means mods_are_reported() below now says no -- so
+       * "ctrl-shift-l" is refused, correctly, because the terminal cannot tell
+       * it from "ctrl-l". */
+      unsigned char c = (unsigned char)toupper((unsigned char)s[0]);
+      if (s[1] != '\0' || c < 'A' || c > 'Z') return -1;
+      key = CTRL_KEY(c);
+    }
   }
   if (alt) {
     if (s[1] != '\0' || (unsigned char)s[0] < 0x20 || (unsigned char)s[0] > 0x7e)
@@ -567,10 +678,10 @@ int chord_parse(const char *s) {
     key = ALT_KEY(s[0]);
   }
   if (shift) {
-    if (!shift_is_distinguishable(key)) return -1;
-    key |= KEY_SHIFT;
+    if (!mods_are_reported(key)) return -1;
+    mods |= KEY_SHIFT;
   }
-  return key;
+  return key | mods;
 }
 
 /* The display form of a chord: "Ctrl-S", "Alt-X", "F10", "PgUp". This is what the
@@ -578,9 +689,16 @@ int chord_parse(const char *s) {
 void chord_name(int key, char *dst, size_t n) {
   int i;
 
-  /* Shift is a prefix on whatever the rest of the key is called, so it is peeled
-   * off and the bare key named by the code below -- which is also what keeps
-   * "Shift-" out of every branch of it. */
+  /* The modifier flags are prefixes on whatever the rest of the key is called,
+   * so they are peeled off one at a time and the bare key named by the code
+   * below -- which is what keeps "Ctrl-" and "Shift-" out of every branch of it.
+   * Ctrl outside Shift, which is the order every editor prints them in. */
+  if (key & KEY_CTRL) {
+    char base[32];
+    chord_name(key & ~KEY_CTRL, base, sizeof(base));
+    snprintf(dst, n, "Ctrl-%s", base);
+    return;
+  }
   if (key & KEY_SHIFT) {
     char base[32];
     chord_name(KEY_BASE(key), base, sizeof(base));
@@ -652,6 +770,19 @@ struct binding { const char *chord; const char *cmd; };
 static const struct binding default_bindings[] = {
   {"ctrl-s", "file.save"},
   {"ctrl-o", "file.open"},
+  /* Ctrl-N for New and Ctrl-W for Close, which is what CUA says and what every
+   * editor and browser with tabs does. Both were spoken for on paper: Ctrl-N was
+   * olly's find-next, which keeps working as Ctrl-P's opposite number only
+   * because F3 is the primary now -- so it is free; and ROADMAP.md section 6
+   * earmarked Ctrl-W for select-word, which does not exist, and close-tab is the
+   * far more expected meaning. Both are one line of mollyrc away for anyone who
+   * disagrees. */
+  {"ctrl-n", "file.new"},
+  {"ctrl-w", "file.close"},
+  /* The universal pair for walking tabs, and the reason Ctrl became nameable in
+   * a chord at all. */
+  {"ctrl-pagedown", "buffer.next"},
+  {"ctrl-pageup",   "buffer.prev"},
   {"ctrl-q", "file.quit"},
   /* F1 first, so it is the one the menus and the help screen print. */
   {"f1",     "view.help"},
@@ -673,10 +804,12 @@ static const struct binding default_bindings[] = {
 
   {"ctrl-f", "search.find"},
   /* F3 first for the same reason F1 is: it is what gets printed. Shift-F3 is the
-   * binding that the Shift-in-a-chord work was for. */
+   * binding that the Shift-in-a-chord work was for.
+   *
+   * Ctrl-N is no longer here: New took it, as CUA has it. Ctrl-P stays, because
+   * it costs nothing and olly's fingers know it. */
   {"f3",       "search.next"},
   {"shift-f3", "search.prev"},
-  {"ctrl-n",   "search.next"},
   {"ctrl-p",   "search.prev"},
   {"alt-r",  "search.regex"},
   {"ctrl-r", "search.replace"},
@@ -693,6 +826,12 @@ static const struct binding default_bindings[] = {
 
   {"f5",     "view.repaint"},
   {"ctrl-u", "view.line-numbers"},
+  /* Alt-M for the menu bar. It had no chord at all, which the help screen showed
+   * as a blank key column beside a description -- invisible until the row cap
+   * there was raised and the VIEW group became reachable. M is free: the eight
+   * Alt letters the menu bar reserves are F, E, S, V, G, H and the T and O that
+   * Tools and Options will take. */
+  {"alt-m",  "view.menu-bar"},
 
   /* The palette, on two chords. Ctrl-Space is the one the roadmap settles on, and
    * Alt-X is there because not every terminal sends NUL for Ctrl-Space -- and because
@@ -931,12 +1070,15 @@ void editor_process_key(int c) {
     return;
   }
 
-  /* A shifted key gets one chance at a binding of its own before falling back to
-   * the unshifted one. Nothing binds "shift-right", so Shift-Right lands on
-   * move.right with `shift` still set and extends the selection below; "shift-f3"
-   * is bound, so Shift-F3 never reaches search.next. */
+  /* A key that arrived with modifiers gets one chance at a binding of its own
+   * before falling back to the bare key. Nothing binds "shift-right", so
+   * Shift-Right lands on move.right with `shift` still set and extends the
+   * selection below; "shift-f3" and "ctrl-pagedown" are bound, so neither
+   * reaches the unmodified key's command. */
+  int mods = (shift ? KEY_SHIFT : 0) |
+             (input_last_key_had_ctrl() ? KEY_CTRL : 0);
   const struct command *cmd = NULL;
-  if (shift) cmd = keymap_lookup(c | KEY_SHIFT);
+  if (mods) cmd = keymap_lookup(c | mods);
   if (cmd == NULL) cmd = keymap_lookup(c);
   int sel_move = (cmd != NULL && (cmd->flags & CMD_MOVEMENT));
   int res = 0;
@@ -968,7 +1110,10 @@ void editor_process_key(int c) {
     selection_clear();
   }
 
-  if (!(res & CMD_KEEP_QUIT_COUNT)) quit_times = KILO_QUIT_TIMES;
+  if (!(res & CMD_KEEP_QUIT_COUNT)) {
+    quit_times = KILO_QUIT_TIMES;
+    close_warned_id = -1;
+  }
 }
 
 /* ---- the help screen's data ---------------------------------------------- */
@@ -981,8 +1126,13 @@ void editor_process_key(int c) {
 static const struct help_entry help_entries[] = {
   {"FILES", NULL, NULL, "file.save"},
   {NULL,    NULL, NULL, "file.open"},
+  {NULL,    NULL, NULL, "file.new"},
+  {NULL,    NULL, NULL, "file.close"},
   {NULL,    NULL, NULL, "file.quit"},
   {NULL,    NULL, NULL, "view.help"},
+
+  {"BUFFERS", NULL, NULL, "buffer.next"},
+  {NULL,      NULL, NULL, "buffer.prev"},
 
   {"MENUS",      "F10",       "Open the menu bar", NULL},
   {NULL,         "Alt-letter", "Open that menu",   NULL},

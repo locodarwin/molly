@@ -1,0 +1,54 @@
+--- screen ---
+ File  Edit  Search  View  Go  Help
+alpha                     ┌──────────────────────────────┐
+beta                      │  Go to line…          Ctrl-G │
+gamma                     ├──────────────────────────────┤
+~                         │  Next buffer       Ctrl-PgDn │
+~                         │  Previous buffer   Ctrl-PgUp │
+~                         └──────────────────────────────┘
+~
+~
+~
+~
+~
+~
+~
+sample.txt - 3 lines                                 Ln 1, Col 1
+HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | F3 = next
+--- attrs ---
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+..........................gggggggggggggggggggggggggggggggg
+..........................gggggggggggggggggggggggggggggggggg
+..........................gggggggggggggggggggggggggggggggggg
+g.........................gggggggggggggggggggggggggggggggggg
+g.........................gggggggggggggggggggggggggggggggggg
+g.........................gggggggggggggggggggggggggggggggggg
+g...........................gggggggggggggggggggggggggggggggg
+g
+g
+g
+g
+g
+g
+RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-25 252/235  26-29 234/110  30-63 252/235
+2: 26-57 245/238
+3: 26-26 245/238  27-56 234/110  57-57 245/238  58-59 240/234
+4: 26-57 245/238  58-59 240/234
+5: 0-0 8/-  26-26 245/238  27-56 243/238  57-57 245/238  58-59 240/234
+6: 0-0 8/-  26-26 245/238  27-56 243/238  57-57 245/238  58-59 240/234
+7: 0-0 8/-  26-57 245/238  58-59 240/234
+8: 0-0 8/-  28-59 240/234
+9: 0-0 8/-
+10: 0-0 8/-
+11: 0-0 8/-
+12: 0-0 8/-
+13: 0-0 8/-
+14: 0-0 8/-
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u
+3: 29-29 u
+--- cursor ---
+row 2 col 1 visible 0

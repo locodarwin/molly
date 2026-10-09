@@ -32,6 +32,7 @@ UNDO = "\x1a"
 REDO = "\x19"
 GOTO = "\x07"
 TOGGLE_CASE = "\x1bsc"  # Search > Match case: the chord went to transpose
+NEXT = "\x1b[13~"      # F3: Ctrl-N is New now, as CUA has it
 REGEX = "\x1br"  # Alt-R: read the query as a pattern
 REPLACE = "\x12"
 FAILURES = []
@@ -456,11 +457,11 @@ def test_regex_search(tmpdir):
     check("a pattern that is nowhere reports not found",
           go("foo\n", [REGEX, "\x06", r"\d+", "\r"])[0].startswith("Not found"),
           True)
-    check("Ctrl-N steps to the next match",
-          go("x1x2x3\n", [REGEX, "\x06", r"\d", "\r", "\x0e"])[1], ("1", "4"))
+    check("F3 steps to the next match",
+          go("x1x2x3\n", [REGEX, "\x06", r"\d", "\r", NEXT])[1], ("1", "4"))
     check("Ctrl-P steps back to the previous one",
           go("x1x2x3\n",
-             [REGEX, "\x06", r"\d", "\r", "\x0e", "\x0e", "\x10"])[1],
+             [REGEX, "\x06", r"\d", "\r", NEXT, NEXT, "\x10"])[1],
           ("1", "4"))
     check("a pattern matches regardless of case by default",
           go("ABC\n", [REGEX, "\x06", "[a-z]+", "\r"])[0], "Found")
@@ -1228,11 +1229,19 @@ def test_help(tmpdir):
     narrow = out(cols=48)
     check("narrow starts at the top", "FILES" in narrow, True)
     # One column means more lines than fit, so the tail is scrolled to rather than
-    # shown. What matters is that nothing is dropped: End reaches the last group.
-    # (This used to fit without scrolling, before help gained a frame.)
+    # shown. What matters is that nothing is dropped: End reaches the *last*
+    # group, which is VIEW. Checking for a middle group would have passed while
+    # the bottom was being silently cut off, which is exactly what a 48-row cap
+    # was doing until the BUFFERS group pushed CLIPBOARD past it too.
     narrow_end = out(cols=48, keys=(HELP, END))
-    check("narrow drops nothing -- the end is reachable",
-          "Ctrl-V" in narrow_end and "CLIPBOARD" in narrow_end, True)
+    check("narrow drops nothing -- the last group is reachable",
+          "VIEW" in narrow_end and "Line numbers" in narrow_end, True)
+    check("and the builder did not run out of room",
+          "help truncated" in narrow_end, False)
+    # The two-column layout has to reach it as well.
+    wide_end = out(cols=80, keys=(HELP, END))
+    check("and so does the wide layout",
+          "VIEW" in wide_end and "help truncated" not in wide_end, True)
 
     # A short screen gains a scroll hint (content taller than the screen).
     short = out(cols=80, rows=8)
@@ -1431,22 +1440,34 @@ def test_cli_args(tmpdir):
           cursor_row(run([MOLLY, path, "+999"], [])), 5)
     check("a high line scrolls the last row into view",
           b"five" in run([MOLLY, path, "+999"], []), True)
-    # "+x" is not a line request: as the file it opens, as an extra it warns.
+    # "+x" is not a line request, so it is a (peculiar) file name -- which now
+    # means a buffer of its own rather than a warning. Files whose names begin
+    # with a plus stay reachable, which is the point of the rule.
+    def status_row_of(out, rows=24, cols=80):
+        scr = Screen(rows, cols)
+        scr.feed(out)
+        return scr.text()[rows - 2]
+
     out, _ = run([MOLLY, path, "+x"], [], status=True)
     check("+x is not swallowed as a line request",
-          any("+x" in m for m in status_lines(out)), True)
+          "[1/2]" in status_row_of(out), True)
 
-    # An argument beyond the file is reported rather than silently dropped.
+    # Every argument past the first used to be warned about and thrown away.
+    # They are buffers now, which is the whole point of the feature.
     extra = os.path.join(tmpdir, "other.txt")
+    with open(extra, "w") as fh:
+        fh.write("other body\n")
     out, _ = run([MOLLY, path, extra], [], status=True)
-    msgs = status_lines(out)
-    check("an extra argument warns on the status bar",
-          any("extra argument" in m for m in msgs), True)
-    check("the warning names the ignored argument",
-          any("other.txt" in m for m in msgs), True)
+    check("a second file opens rather than warning",
+          "[1/2]" in status_row_of(out), True)
+    check("and nothing is reported as ignored",
+          any("extra argument" in m for m in status_lines(out)), False)
+    check("with a message saying how many are open",
+          any("2 files open" in m for m in status_lines(out)), True)
+    # The same name repeated is still one buffer, so three of them is two.
     out, _ = run([MOLLY, path, extra, extra, extra], [], status=True)
-    check("several extras are counted",
-          any("3 extra arguments" in m for m in status_lines(out)), True)
+    check("a repeated name does not open twice",
+          "[1/2]" in status_row_of(out), True)
 
     # With no file at all, +N just starts an empty buffer at the top.
     out, _ = run([MOLLY, "+50"], [], status=True)
@@ -1506,11 +1527,18 @@ def test_open_dialog(tmpdir):
         check("the original buffer survives the cancel",
               b"zeta body" in out, True)
 
+        # This used to be refused outright -- opening replaced the one buffer
+        # there was, so there was nowhere for the unsaved work to go. Now the
+        # file arrives in a buffer of its own and the edited one is still there.
         out = run([MOLLY, zeta], ["X", OPEN])
-        check("unsaved changes refuse the dialog outright",
-              any("Open aborted" in m and "unsaved" in m
-                  for m in status_lines(out)), True)
-        check("and the browser never opens", b"Open File" in out, False)
+        check("unsaved changes no longer refuse the dialog",
+              any("Open aborted" in m for m in status_lines(out)), False)
+        check("and the browser opens", b"Open File" in out, True)
+        out = run([MOLLY, zeta], ["X", OPEN, DOWN, DOWN, "\r"])
+        check("the file opens alongside rather than over the edited one",
+              b"alpha body" in out, True)
+        check("which is still open behind it", b"[1/2]" in out or b"[2/2]" in out,
+              True)
 
         # After the switch, writes and history belong to the new file.
         run([MOLLY, alpha], [OPEN, DOWN, DOWN, DOWN, "\r", "!", SAVE,
@@ -1745,7 +1773,7 @@ def test_menu(tmpdir):
     check("Options is not shown while it is empty", "Options" in band, False)
 
     # F10 opens the first menu; Alt-letter opens a named one.
-    check("F10 opens the File menu", "Open" in screen([F10]).text()[2], True)
+    check("F10 opens the File menu", "New" in screen([F10]).text()[2], True)
     check("Alt-s opens the Search menu",
           "Find" in screen(["\x1bs"]).text()[2], True)
     check("Alt-e opens the Edit menu",
@@ -1805,7 +1833,7 @@ def test_menu(tmpdir):
     check("hidden: opening a menu puts the band back over row 1",
           "File" in overlay.text()[0], True)
     check("hidden: the drop-down is still there",
-          "Open" in overlay.text()[2], True)
+          "New" in overlay.text()[2], True)
 
 
 def test_prompt_field(tmpdir):
@@ -1933,7 +1961,7 @@ def test_palette(tmpdir):
 
     # Unfiltered, the list is the command table's own order rather than a ranking.
     check("the unfiltered list starts where the table does",
-          rows_of([PALETTE])[:3], ["Save", "Open…", "Quit"])
+          rows_of([PALETTE])[:4], ["Save", "Open…", "New", "Close"])
 
     # The filter narrows, and ranks a label match above a name-only one: "sav"
     # matches Save's label and search.prev's name, in that order.
@@ -2344,10 +2372,15 @@ def test_cua_keymap(tmpdir):
     check("and again the one after that", "Ln 3" in status_row(out), True)
     out = find_then(["\x1b[13~", "\x1b[1;2R"])
     check("Shift-F3 finds the previous one", "Ln 1" in status_row(out), True)
-    out = find_then(["\x0e"])
-    check("Ctrl-N is still an alias for next", "Ln 2" in status_row(out), True)
+    # Ctrl-N was olly's find-next and is New now, as CUA has it -- it was only
+    # ever an alias, and F3 is the primary. Ctrl-P stays.
     out = find_then(["\x1b[13~", "\x10"])
-    check("and Ctrl-P for previous", "Ln 1" in status_row(out), True)
+    check("Ctrl-P is still an alias for previous", "Ln 1" in status_row(out),
+          True)
+    out = find_then(["\x0e"])
+    check("and Ctrl-N no longer steps the search", "Ln 2" in status_row(out),
+          False)
+    check("because it makes a buffer instead", "[2/2]" in status_row(out), True)
 
     # F5 is repaint, which Ctrl-L used to be. A repaint is invisible by nature,
     # so what is checked is that the binding reached the command: the View menu
@@ -2434,6 +2467,179 @@ def test_cua_keymap(tmpdir):
               for line in screen_of(out)), False)
 
 
+# ------------------------------------------------------- many buffers ----
+
+def test_buffers(tmpdir):
+    """More than one file open at once, from the outside.
+
+    buflist.c's own tests cover the list; what only a pty shows is whether the
+    editor reaches it -- that several files on the command line become several
+    buffers, that Ctrl-PgDn moves between them without the plain key losing its
+    meaning, and that closing and quitting ask about the right files.
+    """
+    print("\nbuffers: several files at once")
+
+    a = os.path.join(tmpdir, "a.txt")
+    b = os.path.join(tmpdir, "b.txt")
+    c = os.path.join(tmpdir, "c.txt")
+    with open(a, "w") as fh:
+        fh.write("aaa\nAAA\nAaA\n")
+    with open(b, "w") as fh:
+        fh.write("bbb\n")
+    with open(c, "w") as fh:
+        fh.write("ccc\n")
+
+    CPGDN, CPGUP = "\x1b[6;5~", "\x1b[5;5~"
+    NEW, CLOSE = "\x0e", "\x17"
+
+    def screen_of(out, rows=24, cols=80):
+        scr = Screen(rows, cols)
+        scr.feed(out)
+        return scr.text()
+
+    def status_row(out, rows=24, cols=80):
+        return screen_of(out, rows, cols)[rows - 2]
+
+    def go(argv, keys, rows=24, cols=80):
+        return run([MOLLY] + argv, keys, rows=rows, cols=cols)
+
+    # Every file argument opens, where all but the first used to be thrown away
+    # with a warning.
+    out = go([a, b, c], [])
+    check("three files open as three buffers", "[1/3]" in status_row(out), True)
+    check("showing the first", screen_of(out)[TEXT_ROW - 1].startswith("aaa"),
+          True)
+    check("and saying so on the message bar",
+          any("3 files open" in m for m in status_lines(out)), True)
+
+    # One file says nothing: "[1/1]" would be noise on the common case.
+    out = go([a], [])
+    check("one file shows no counter", "[1/1]" in status_row(out), False)
+
+    # Switching.
+    out = go([a, b, c], [CPGDN])
+    check("Ctrl-PgDn moves to the next buffer", "[2/3]" in status_row(out), True)
+    check("and shows its text", screen_of(out)[TEXT_ROW - 1].startswith("bbb"),
+          True)
+    out = go([a, b, c], [CPGDN, CPGDN])
+    check("again moves to the third", "[3/3]" in status_row(out), True)
+    out = go([a, b, c], [CPGDN, CPGDN, CPGDN])
+    check("and wraps round to the first", "[1/3]" in status_row(out), True)
+    out = go([a, b, c], [CPGUP])
+    check("Ctrl-PgUp wraps backwards", "[3/3]" in status_row(out), True)
+
+    # The plain key must keep its own meaning: Ctrl-PgDn is a binding of its own
+    # and PgDn still pages within the file. This is the fallback the modifier
+    # work rests on, and getting it wrong would be invisible until someone
+    # pressed PgDn.
+    out = go([a, b, c], ["\x1b[6~"])
+    check("plain PgDn still pages within the buffer",
+          "[1/3]" in status_row(out), True)
+    # Ln 4 on a three-line file: a page is the text area's height, moved one row
+    # at a time, and the last of those lands on the phantom row past the end --
+    # which is where PgDn has always left the cursor. What matters here is only
+    # that it moved within the buffer instead of switching to another.
+    check("and moves the cursor", "Ln 4" in status_row(out), True)
+
+    # The remembered position, which is the reason struct buffer keeps one.
+    out = go([a, b, c], ["\x1b[B", "\x1b[B", CPGDN, CPGUP])
+    check("coming back to a buffer returns to where the cursor was",
+          "Ln 3" in status_row(out), True)
+
+    print("\nbuffers: new and close")
+
+    out = go([a], [NEW])
+    check("Ctrl-N makes a new buffer", "[2/2]" in status_row(out), True)
+    check("which is unnamed", "[No Name]" in status_row(out), True)
+    check("and empty", screen_of(out)[TEXT_ROW - 1].startswith("~"), True)
+
+    out = go([a, b], [CLOSE])
+    check("Ctrl-W closes a clean buffer", "[1/1]" in status_row(out), False)
+    check("leaving the other one showing",
+          screen_of(out)[TEXT_ROW - 1].startswith("bbb"), True)
+
+    # Closing the only buffer empties it rather than leaving nothing to draw.
+    out = go([a], [CLOSE])
+    check("closing the only buffer empties it",
+          "[No Name]" in status_row(out), True)
+    check("and molly is still running",
+          any("Closed" in m for m in status_lines(out)), True)
+
+    # A dirty buffer asks first, and the ask is about that buffer rather than a
+    # count that another buffer's refusal could spend.
+    out = go([a, b], ["X", CLOSE])
+    check("closing a dirty buffer asks first",
+          any("unsaved changes" in m for m in status_lines(out)), True)
+    check("and does not close it", "[1/2]" in status_row(out), True)
+    out = go([a, b], ["X", CLOSE, CLOSE])
+    check("pressing again closes it anyway",
+          screen_of(out)[TEXT_ROW - 1].startswith("bbb"), True)
+
+    # Warn on one, switch, and the other must still warn.
+    out = go([a, b], ["X", CLOSE, CPGDN, "Y", CLOSE])
+    check("a refusal on one buffer is not spent on another",
+          len([m for m in status_lines(out) if "unsaved changes" in m]), 2)
+
+    print("\nbuffers: opening into a buffer of its own")
+
+    # Ctrl-O used to refuse outright while the buffer was dirty, because it
+    # replaced the one buffer there was.
+    out = go([a], ["X", "\x0f", 2.0])
+    check("Ctrl-O no longer refuses while there are unsaved changes",
+          any("Open aborted" in m for m in status_lines(out)), False)
+
+    # A file that is already open is switched to rather than opened twice: two
+    # buffers on one file would each have their own undo history and their own
+    # idea of what is on disk, and the second save would silently undo the first.
+    #
+    # Driven through the command line rather than through Ctrl-O, because the
+    # open dialog is a file browser rather than a prompt -- there is no path to
+    # type into it -- and both routes call the same function.
+    out = go([a, a], [])
+    check("the same file named twice opens one buffer",
+          "[1/2]" in status_row(out), False)
+    check("and the one buffer is that file",
+          screen_of(out)[TEXT_ROW - 1].startswith("aaa"), True)
+    out = go([a, b, a], [])
+    check("a repeat among several still opens two",
+          "[1/2]" in status_row(out), True)
+
+    print("\nbuffers: quitting with unsaved work")
+
+    # The warning counts every buffer, not the one on screen. The edit is made in
+    # the second buffer and then we switch away from it, so a quit that only
+    # looked at the current buffer would let the file go.
+    out = go([a, b], [CPGDN, "X", CPGUP, "\x11"])
+    check("quit warns about a dirty buffer that is not the current one",
+          any("unsaved changes" in m for m in status_lines(out)), True)
+    out = go([a, b], ["X", CPGDN, "Y", CPGUP, "\x11"])
+    check("and counts them when there are several",
+          any("2 files have unsaved changes" in m for m in status_lines(out)),
+          True)
+    out, st = run([MOLLY, a, b], ["\x11"], status=True)
+    check("with nothing unsaved it quits at once",
+          os.WIFEXITED(st) and os.WEXITSTATUS(st) == 0, True)
+
+    print("\nbuffers: crash recovery covers all of them")
+
+    # A crash with two files edited used to save whichever was on screen and
+    # lose the other.
+    d = os.path.join(tmpdir, "d.txt")
+    e = os.path.join(tmpdir, "e.txt")
+    with open(d, "w") as fh:
+        fh.write("ddd\n")
+    with open(e, "w") as fh:
+        fh.write("eee\n")
+    run_until_signal([MOLLY, d, e], signal.SIGHUP, keys=["X", CPGDN, "Y"])
+    check("the buffer that was on screen has its recovery file",
+          os.path.exists(e + ".molly-recover"), True)
+    check("and so does the one that was not",
+          os.path.exists(d + ".molly-recover"), True)
+    for p in (d + ".molly-recover", e + ".molly-recover"):
+        if os.path.exists(p):
+            os.unlink(p)
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -2482,6 +2688,7 @@ def main():
         test_config(tmpdir)
         test_save_settings(tmpdir)
         test_cua_keymap(tmpdir)
+        test_buffers(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

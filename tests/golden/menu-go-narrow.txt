@@ -1,0 +1,42 @@
+--- screen ---
+ File  Edit  Search  View
+┌────────────────────────┐
+│  Go to lin      Ctrl-G │
+├────────────────────────┤
+│  Next buff   Ctrl-PgDn │
+│  Previous    Ctrl-PgUp │
+└────────────────────────┘
+~
+~
+~
+sample.txt - 3 lines
+HELP: Ctrl-S = save | Ctrl
+--- attrs ---
+gggggggggggggggggggggggggg
+gggggggggggggggggggggggggg
+gggggggggggggggggggggggggg
+gggggggggggggggggggggggggg
+gggggggggggggggggggggggggg
+gggggggggggggggggggggggggg
+gggggggggggggggggggggggggg
+g.gggggggggggggggggggggggg
+g
+g
+RRRRRRRRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-25 7/0
+2: 0-25 7/8
+3: 0-0 7/8  1-24 15/4  25-25 7/8
+4: 0-25 7/8
+5: 0-0 7/8  1-24 0/8  25-25 7/8
+6: 0-0 7/8  1-24 0/8  25-25 7/8
+7: 0-25 7/8
+8: 0-0 8/-  2-25 8/0
+9: 0-0 8/-
+10: 0-0 8/-
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u
+3: 3-3 u
+--- cursor ---
+row 2 col 1 visible 0

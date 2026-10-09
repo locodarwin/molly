@@ -35,6 +35,7 @@ and a searchable label, so nothing is reachable only by knowing a secret key.
 - [Search and Replace](#search-and-replace)
 - [Undo and Redo](#undo-and-redo)
 - [Opening Another File](#opening-another-file)
+- [Several Files at Once](#several-files-at-once)
 - [Saving and Quitting](#saving-and-quitting)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [Configuration](#configuration)
@@ -551,10 +552,72 @@ Directories are listed before files, each group alphabetically, with a
 trailing `/` on directory names. Every list offers `..` at the top as the way
 back up; other dot-files are hidden.
 
-The browser replaces the buffer, so it refuses to run while there are unsaved
-changes — save first, and the status bar tells you so. Molly still edits one
-file at a time: opening another file discards the previous buffer along with
-its undo history, and touches nothing on disk.
+A file opens in a buffer of its own, alongside anything already open — see
+[Several Files at Once](#several-files-at-once). Nothing is discarded, so the
+browser no longer refuses to run while there are unsaved changes. A file that is
+already open is switched to rather than opened a second time: two buffers on one
+file would each have their own undo history and their own idea of what is on
+disk, and the second save would silently undo the first.
+
+If the buffer you are in is empty and unnamed -- a fresh `molly` with nothing
+typed into it — the file opens into *that* buffer rather than beside it, so you
+get one tab and not two.
+
+## Several Files at Once
+
+Molly holds any number of files open at once. Each one is a **buffer**: its own
+text, its own cursor position, its own undo history and its own idea of what is
+on disk.
+
+    molly one.c two.c three.h
+
+Every file named on the command line opens in its own buffer, and the first is
+the one you land in. A name repeated opens once.
+
+    Ctrl-N        New empty buffer
+    Ctrl-W        Close this buffer
+    Ctrl-PgDn     Next buffer
+    Ctrl-PgUp     Previous buffer
+
+`File ▸ New`, `File ▸ Close` and `Go ▸ Next/Previous buffer` do the same, and so
+does the command palette.
+
+With more than one buffer open the status bar carries a counter on the left:
+
+    [2/3] two.c - 140 lines (modified)
+
+With one buffer there is no counter, because `[1/1]` is noise.
+
+Switching away and back returns you to where the cursor was, not to the top of
+the file.
+
+### Closing
+
+`Ctrl-W` closes the current buffer. If it has unsaved changes, molly says so and
+does nothing; press it again and it closes anyway. The warning is about *that*
+buffer — switching to another unsaved one and pressing `Ctrl-W` once will warn
+about that one too, rather than closing it because you already dismissed a
+warning elsewhere.
+
+Closing the only buffer empties it instead of leaving molly with nothing to
+draw, which is what every editor with tabs does.
+
+### Quitting
+
+`Ctrl-Q` counts **every** buffer, not the one on screen:
+
+    WARNING!!! 2 files have unsaved changes. Press Ctrl-Q 2 more times to quit.
+
+With one unsaved file the message names it. Any other keypress resets the
+countdown.
+
+### Crashes
+
+A crash or a `SIGHUP` writes a recovery file for every buffer that has unsaved
+changes, not only the one that was on screen. See
+[Recovery of unsaved work](#recovery-of-unsaved-work); the prompt comes up once
+per buffer that has data to recover, with that buffer on screen so you can see
+which file it is asking about.
 
 ## Saving and Quitting
 
@@ -610,7 +673,10 @@ If Molly is killed by one of those signals, or exits because it ran out of
 memory, and the buffer had unsaved changes, it writes what was in the buffer
 to a recovery file before it goes. The recovery file sits next to the file you
 were editing, named after it with a `.molly-recover` suffix (for an unnamed
-buffer it is `molly-recover.<pid>` in the current directory).
+buffer it is `molly-recover.<pid>` in the current directory, and
+`molly-recover.<pid>-<n>` for any further unnamed buffers, so two scratch
+buffers cannot write over each other's data). Every buffer with unsaved changes
+gets one, not only the one that was on screen.
 
 The next time you open that file, Molly notices the recovery file and asks:
 
@@ -633,6 +699,9 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     Ctrl-Space  Command palette (Alt-X does the same)
     Ctrl-S   Save file
     Ctrl-O   Open a file (directory browser)
+    Ctrl-N   New buffer
+    Ctrl-W   Close this buffer
+    Ctrl-PgDn / Ctrl-PgUp  Next / previous buffer
     Ctrl-Q   Quit (asks several times if there are unsaved changes)
     Ctrl-F   Open the Find dialog (case-insensitive by default)
     F3       Find next instance of the search
@@ -652,6 +721,7 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     F1       Show this help screen (Ctrl-? does the same)
     F5       Repaint the screen
     Ctrl-U   Toggle the line-number gutter
+    Alt-M    Toggle the menu bar
     Tab      In a dialog: move to the next field, checkbox or button
     Shift-Tab  In a dialog: move back to the previous one
     Space    In a dialog: tick the checkbox or press the button with the keyboard
@@ -748,16 +818,20 @@ any case:
 | Function keys | `F1` … `F12` |
 | Navigation | `Left`, `Right`, `Up`, `Down`, `Home`, `End`, `PgUp`, `PgDn`, `Del`, `Backspace`, `Enter`, `Tab`, `Shift-Tab`, `Esc` |
 | Shifted | `Shift-F3`, `Shift-Right`, `Shift-PgDn` |
+| Control on those | `Ctrl-PgUp`, `Ctrl-PgDn`, `Ctrl-F5`, `Ctrl-Right` |
 | A bare character | `a`, `}` |
 
 Two limits are worth knowing, because both come from the terminal rather than
 from molly:
 
-- **`Shift` can only be named on the function keys and the navigation keys.**
-  A terminal sends plain `A` for `Shift-A`, and sends the same single byte for
-  `Ctrl-Shift-L` as it does for `Ctrl-L`, so there is nothing there to bind.
-  Molly refuses those chords rather than accepting a binding that could never
-  fire. `Ctrl-Alt-` is refused for the same reason.
+- **`Shift` can only be named on the function keys and the navigation keys**,
+  and `Ctrl` on those keys means something different from `Ctrl` on a letter.
+  A terminal reports a modifier as a parameter inside those sequences, so
+  `Ctrl-PgUp` and `Shift-Right` arrive as themselves. On a letter there is no
+  parameter: `Shift-A` *is* `A`, and `Ctrl-Shift-L` is the same single byte as
+  `Ctrl-L`. Molly refuses the chords that could never fire rather than
+  accepting a binding that silently never happens. `Ctrl-Alt-` is refused for
+  the same reason.
 - **`Shift` with an arrow still extends the selection.** Nothing is bound to
   `Shift-Right`, so it falls through to `move.right` with the modifier noted,
   which is what extends a selection. Bind `Shift-Right` to something and you

@@ -96,11 +96,15 @@ static int arg_is_line(const char *s, long *out) {
  * The file is the first argument that is not a flag or a line request;
  * anything past that is reported on the status bar and ignored. */
 int main(int argc, char *argv[]) {
-  char *filename = NULL;
   long startline = 0;
   int have_line = 0;
-  char *first_extra = NULL;
-  int num_extra = 0;
+  /* Every non-flag argument is a file now, where all but the first used to be
+   * warned about and thrown away. `molly *.c` is the reason the feature exists,
+   * so argv is the first place it has to work. Held as indices into argv rather
+   * than copied: argv outlives main. */
+  int files[256];
+  int nfiles = 0;
+  int too_many = 0;
   int i;
   for (i = 1; i < argc; i++) {
     const char *a = argv[i];
@@ -115,12 +119,8 @@ int main(int argc, char *argv[]) {
       have_line = 1;
       continue;
     }
-    if (filename == NULL) {
-      filename = (char *)a;
-      continue;
-    }
-    if (first_extra == NULL) first_extra = (char *)a;
-    num_extra++;
+    if (nfiles < (int)(sizeof(files) / sizeof(files[0]))) files[nfiles++] = i;
+    else too_many++;
   }
 
   /* The configuration file, read before anything is applied and before the
@@ -170,11 +170,20 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  if (filename != NULL) editor_open(filename);
+  /* One buffer per file, in the order given, with the first left showing. The
+   * empty buffer molly starts with is reused for the first file rather than
+   * left behind, which is what editor_open_in_new_buffer does. */
+  for (i = 0; i < nfiles; i++)
+    editor_open_in_new_buffer(xstrdup(argv[files[i]]));
+  if (nfiles > 0) buf_show(0);
 
   if (have_line) {
     /* Same clamping as Ctrl-G: land on a real row, never on the phantom
-     * row past the last one; the refresh scrolls it into view. */
+     * row past the last one; the refresh scrolls it into view.
+     *
+     * Applied to the buffer on show, which with several files is the first one.
+     * A +N per file would want a +N between each pair of names on the command
+     * line, which is a command-line design question rather than this one. */
     int max_cy = (row_count() > 0) ? row_count() - 1 : 0;
     int target = (int)startline - 1;
     if (target < 0) target = 0;
@@ -186,13 +195,26 @@ int main(int argc, char *argv[]) {
 
   startup_message();
 
-  /* May replace the HELP message and paint its own frame while it waits for
-   * an answer. */
-  editor_check_recovery();
+  /* May replace the HELP message and paint its own frame while it waits for an
+   * answer -- once per buffer that has recovery data, since a crash with three
+   * files open can have left three of them. Each prompt names its own file
+   * because it is shown while that buffer is the one on screen. */
+  {
+    int cur = buf_current();
+    int b;
+    for (b = 0; b < buf_count(); b++) {
+      buf_show(b);
+      editor_check_recovery();
+    }
+    buf_show(cur);
+  }
 
-  if (num_extra > 0)
-    editor_set_status_message("Warning: ignored %d extra argument%s (e.g. %s)",
-        num_extra, num_extra > 1 ? "s" : "", first_extra);
+  if (too_many)
+    editor_set_status_message("Warning: ignored %d file%s past the first %d",
+        too_many, too_many > 1 ? "s" : "", nfiles);
+  else if (buf_count() > 1)
+    editor_set_status_message("%d files open - Ctrl-PgUp/PgDn to switch",
+        buf_count());
 
   /* A problem in mollyrc is worth more of the message bar than the greeting is.
    * The first one is shown in full, with a count when there were more, because a

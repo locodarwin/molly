@@ -42,7 +42,8 @@ struct menu {
  * menu, and the conventional alternative where it is not: Cut takes its 't' because
  * Copy has the 'C', exactly as every CUA menu since Windows 3 has done. */
 static const struct menu_item file_items[] = {
-  {"file.open", 0}, {"file.save", 0}, SEP, {"file.quit", 0},
+  {"file.new", 0}, {"file.open", 0}, {"file.save", 0},
+  SEP, {"file.close", 0}, SEP, {"file.quit", 0},
 };
 static const struct menu_item edit_items[] = {
   {"edit.undo", 0}, {"edit.redo", 0}, SEP,
@@ -62,7 +63,9 @@ static const struct menu_item view_items[] = {
   SEP, {"app.save-settings", 0},
 };
 static const struct menu_item go_items[] = {
-  {"goto.line", 0},
+  {"goto.line", 0}, SEP,
+  /* N and P, since Go has nothing else competing for either. */
+  {"buffer.next", 0}, {"buffer.prev", 0},
 };
 static const struct menu_item help_items[] = {
   {"view.help", 0},

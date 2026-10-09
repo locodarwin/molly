@@ -99,21 +99,29 @@ struct mouse_event {
 #define IS_ALT_KEY(k)    ((k) > ALT_KEY_BASE && (k) < ALT_KEY_BASE + 128)
 #define ALT_KEY_CHAR(k)  ((k) - ALT_KEY_BASE)
 
-/* Shift, as a bit on a key code, so that "shift-f3" is a chord the keymap can
- * bind. It is a flag rather than a block of its own codes because Shift is only
- * *distinguishable* on some keys: a terminal sends plain 'A' for Shift-A and the
- * same byte for Ctrl-L and Ctrl-Shift-L, so there is nothing to bind there. The
- * keys where it does arrive separately are the function keys and the navigation
- * keys, and chord_parse refuses it anywhere else rather than accepting a binding
- * that could never fire.
+/* Shift and Ctrl, as bits on a key code, so that "shift-f3" and "ctrl-pagedown"
+ * are chords the keymap can bind.
  *
- * Nothing in the input layer returns this bit. Shift still arrives out of band
- * (input_last_key_had_shift), because a shifted *movement* extends a selection
- * rather than running a different command; the dispatcher composes the two, by
- * trying `key | KEY_SHIFT` first and the bare key second. That fallback is what
- * keeps Shift-Right extending a selection while Shift-F3 is its own binding. */
+ * Flags rather than blocks of their own codes because both are only
+ * *distinguishable* on some keys. A terminal reports a modifier as a parameter
+ * inside the CSI forms -- which is the function keys and the navigation keys, so
+ * "\x1b[5;5~" is Ctrl-PgUp and "\x1b[1;2C" is Shift-Right. On a letter there is
+ * no parameter and nothing to report: Shift-A *is* 'A', and Ctrl-Shift-L is the
+ * same single byte as Ctrl-L. So Ctrl on a letter stays what it has always been,
+ * a control byte, and chord_parse refuses the combinations that could never fire
+ * rather than accepting a binding that silently never happens.
+ *
+ * Both still arrive out of band from the input layer
+ * (input_last_key_had_shift/_ctrl), because a shifted *movement* extends a
+ * selection rather than running a different command -- that is true of every
+ * movement at once rather than being a binding. The dispatcher composes the two:
+ * it tries the key with its modifiers first and the bare key second, which is
+ * what keeps Shift-Right extending a selection while Shift-F3 is its own
+ * binding. */
 #define KEY_SHIFT        0x4000
-#define KEY_BASE(k)      ((k) & ~KEY_SHIFT)
+#define KEY_CTRL         0x8000
+#define KEY_MODS         (KEY_SHIFT | KEY_CTRL)
+#define KEY_BASE(k)      ((k) & ~KEY_MODS)
 
 typedef struct erow {
   int size;
@@ -594,6 +602,7 @@ int tab_width(void);
 void tab_width_set(int n);
 void saved_snapshot_free(void);
 void saved_snapshot_take(void);
+void write_recovery_all(void);
 void write_recovery_file(void);
 
 /* cmd.c */
@@ -654,6 +663,7 @@ void grid_role(unsigned char role);
 void grid_shade(int x, int y, int w, int h, unsigned char role);
 
 /* input.c */
+int input_last_key_had_ctrl(void);
 int input_last_key_had_shift(void);
 int ui_wait_key(void);
 void input_last_mouse(struct mouse_event *out);
@@ -773,7 +783,7 @@ void theme_style(unsigned char role, struct style *out);
 char *editor_open_dialog(void);
 char *editor_prompt(char *prompt, void (*callback)(char *, int));
 void editor_help(void);
-void editor_switch_file(char *path);
+void editor_open_in_new_buffer(char *path);
 
 /* undo.c */
 int undo_can_redo(void);

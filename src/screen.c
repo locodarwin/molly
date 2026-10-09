@@ -188,8 +188,15 @@ static void draw_text_area(const struct layer *self) {
 static void draw_status_bar(const struct layer *self) {
   int y = self->y;
   char status[80], rstatus[80];
-  int len = snprintf(status, sizeof(status), "%.20s - %d lines %s",
-      B.filename ? B.filename : "[No Name]", row_count(),
+  /* With more than one buffer open the bar says which of them this is. It is
+   * left off entirely with one, because "[1/1]" is noise on the common case --
+   * and because until the tab bar exists this counter is the only thing on
+   * screen that says there are others at all. */
+  char which[24] = "";
+  if (buf_count() > 1)
+    snprintf(which, sizeof(which), "[%d/%d] ", buf_current() + 1, buf_count());
+  int len = snprintf(status, sizeof(status), "%s%.20s - %d lines %s",
+      which, B.filename ? B.filename : "[No Name]", row_count(),
       B.dirty ? "(modified)" : "");
   /* The character column: the Nth character in the line, not CUR.rx's
    * tab-stop- and glyph-width-aware display column, which jumps around

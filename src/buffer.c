@@ -92,6 +92,26 @@ void build_recovery_path(void) {
 /* Best effort, and safe to call from a signal handler: only open/write/fsync/
  * close and plain memory reads. Reading B.row while it is mid-mutation can at
  * worst drop or duplicate a few bytes, which beats losing the whole buffer. */
+/* Every dirty buffer's recovery file.
+ *
+ * This is what die() and the signal handlers call, and it has to cover all of
+ * them: a crash with three files open and two of them edited used to save the
+ * work in whichever one happened to be on screen and lose the other. The view
+ * is borrowed around each buffer in turn because write_recovery_file() is
+ * written against B, which is the view's buffer -- the same borrow buf_free()
+ * makes, and acceptable for the same reason, except that here the process is
+ * already on its way out. */
+void write_recovery_all(void) {
+  struct buffer *was = V.buf;
+  int i;
+  if (was == NULL) return;
+  for (i = 0; i < buf_count(); i++) {
+    V.buf = buf_at(i);
+    write_recovery_file();
+  }
+  V.buf = was;
+}
+
 void write_recovery_file(void) {
   /* There may be no buffer at all yet. die() calls this on its way out, and an
    * allocation failure while the buffer list itself is being built is exactly a

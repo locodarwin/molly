@@ -333,10 +333,10 @@ static int cmd_repaint(void) {
  * is a command before it is a setting: configuration arrives in Phase 2, and this
  * reads its default from there when it does. */
 static int cmd_menu_bar(void) {
-  V.menubar = !V.menubar;
+  E.menubar = !E.menubar;
   /* The text area moves by a row, so every column of every row shifts. */
   screen_force_repaint();
-  editor_set_status_message("Menu bar: %s", V.menubar ? "on" : "off");
+  editor_set_status_message("Menu bar: %s", E.menubar ? "on" : "off");
   return 0;
 }
 
@@ -358,11 +358,11 @@ static int cmd_save_settings(void) {
 }
 
 static int cmd_tab_bar(void) {
-  V.tabbar = !V.tabbar;
+  E.tabbar = !E.tabbar;
   /* The row appears or goes, so every row below it moves. */
   screen_force_repaint();
-  editor_set_status_message("Tab bar: %s%s", V.tabbar ? "on" : "off",
-      (V.tabbar && buf_count() < 2) ? " (shown once a second file is open)" : "");
+  editor_set_status_message("Tab bar: %s%s", E.tabbar ? "on" : "off",
+      (E.tabbar && buf_count() < 2) ? " (shown once a second file is open)" : "");
   return 0;
 }
 
@@ -423,8 +423,8 @@ static int several_buffers(void) { return buf_count() > 1; }
  * thing a user may well want and is what every editor with tabs does. */
 static int on_a_row(void) { return CUR.cy < row_count(); }
 static int linenumbers_on(void) { return V.linenum; }
-static int menubar_on(void) { return V.menubar; }
-static int tabbar_on(void) { return V.tabbar; }
+static int menubar_on(void) { return E.menubar; }
+static int tabbar_on(void) { return E.tabbar; }
 static int syntax_on(void) { return V.syntax; }
 
 /* The table. Order matters only for the help screen, which walks it in order

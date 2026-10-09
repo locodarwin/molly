@@ -429,7 +429,7 @@ static void dropdown_layout(struct layer *l) {
   const struct menu *m = &menus[open_menu];
   int w = menu_width(m);
   int h = m->nitems + 2;
-  int bar_y = V.menubar ? 0 : 0;   /* the band's row either way; see menu_open */
+  int bar_y = E.menubar ? 0 : 0;   /* the band's row either way; see menu_open */
 
   if (w > grid_cols()) w = grid_cols();
   l->x = title_col[open_menu] - 1;

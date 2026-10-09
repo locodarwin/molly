@@ -854,6 +854,22 @@ void syntax_retype(void) {
   B.syn_valid = 0;
 }
 
+/* Make sure every row the current view is about to show has been lexed.
+ *
+ * Called once per window per frame, from window_scroll_all(), after the scroll
+ * has settled the visible range and before anything is painted. Not from inside
+ * the draw loop: this allocates, and a row's colouring depends on the row above
+ * it, so lexing one row at a time as the loop reached it would be the same work
+ * in a worse order. One row past the bottom, because `syn_out` of the last
+ * visible row is what the next scroll step starts from. */
+void syntax_ensure_view(void) {
+  int last;
+  if (V.buf == NULL || !V.syntax) return;
+  last = V.drowoff + V.screenrows;
+  if (last >= row_count()) last = row_count() - 1;
+  if (last >= 0) syntax_ensure(last);
+}
+
 /* The role for one byte of a row's render string, for the draw loop.
  *
  * Returns ROLE_TEXT for anything not coloured: no filetype, a row that has not
@@ -861,7 +877,7 @@ void syntax_retype(void) {
  * special case for highlighting being off, which is why this is a function here
  * rather than an `if` there. */
 unsigned char syntax_role_at(const erow *row, int i) {
-  /* `V.syntax` is read here and not only in syntax_sync_view: turning
+  /* `V.syntax` is read here and not only in syntax_ensure_view: turning
    * highlighting off has to stop the colours being *drawn*, and rows lexed
    * while it was on keep their roles until they are next edited. Checking only
    * at the lexing end left the text coloured after the toggle. */

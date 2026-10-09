@@ -18,24 +18,31 @@ void editor_cleanup(void) {
    * After the frees above rather than before, because several of them still read
    * through B, and B is the current view's buffer. */
   buflist_cleanup();
-  free(V.cursors);
-  V.cursors = NULL;
-  V.ncursors = 0;
-  V.cursorcap = 0;
-  V.primary = 0;
+  /* The windows last, because their views are what B resolves through and the
+   * frees above still read it. This takes the cursor lists with them -- which
+   * is the one thing this function used to do by hand, for the one view there
+   * was. */
+  window_cleanup();
 }
 
 void init_editor(void) {
-  /* The buffer list first, because it is what gives the view something to point
-   * at -- and B *is* the view's buffer, so until this runs there is no B to
+  /* The window tree first, because V is whichever view it has focused and
+   * buflist_init() below points that view at the first buffer. One window,
+   * around the view state.c defines statically.
+   *
+   * Then the buffer list, because it is what gives the view something to point
+   * at -- and B *is* the view's buffer, so until that runs there is no B to
    * initialise. buf_new() sets a buffer's starting state, which is why the
    * per-buffer assignments that used to be here are gone. */
+  window_init();
   buflist_init();
   theme_init();
   screen_init_layers();
   keymap_init();
   syntax_init();
-  cursors_init();
+  /* No cursors_init() here any more: window_init() gives the first view its
+   * cursor list, because "a view has at least one cursor" is a property of a
+   * view and not a step in starting the editor. */
   V.drowoff = 0;
   V.coloff = 0;
   E.statusmsg[0] = '\0';

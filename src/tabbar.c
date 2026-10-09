@@ -59,7 +59,7 @@ static int tab_cols(const struct buffer *b) {
 
 /* Does the tab bar have a row this frame? */
 int tabbar_rows(void) {
-  return (V.tabbar && buf_count() > 1) ? 1 : 0;
+  return (E.tabbar && buf_count() > 1) ? 1 : 0;
 }
 
 /* Which buffer to start drawing from, so that the current one is visible.

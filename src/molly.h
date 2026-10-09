@@ -260,10 +260,48 @@ struct view {
   int screenrows;
   int screencols;
   int linenum;             /* line-number gutter shown (Ctrl-U toggles it) */
-  int menubar;             /* menu bar occupies a row (View > Menu Bar toggles it) */
-  int tabbar;              /* tab bar wanted; it only takes a row with 2+ buffers */
   int syntax;              /* colour the text by filetype */
   int gutter_w;            /* gutter width in columns for this frame, 0 when off */
+  int screenx, screeny;    /* top-left cell of this view's text area on the grid */
+
+  /* Where the cursor was when this view last scrolled, so editor_scroll can tell
+   * a cursor that has moved from a view that was scrolled with the wheel and
+   * should stay put. These were two file-scope statics in view.c -- which is
+   * exactly the kind of global that had to become per-view before there could be
+   * a second window: scrolling one would have told the other that its own cursor
+   * had moved. -1 means "not scrolled yet", so a new view snaps to its cursor. */
+  int last_scroll_cx, last_scroll_cy;
+};
+
+/* --- windows: the tree the views hang off ------------------------------------
+ *
+ * A window is either a leaf, which shows one view, or a split of two children.
+ * That makes the shape of the screen a binary tree, which is what lets "split
+ * this one again" work whichever way the first split went: splitting right and
+ * then below is a WIN_COLS node whose second child is a WIN_ROWS node, and no
+ * case in the layout has to know how deep it is.
+ *
+ * A flat list of windows would have been less code and would have capped molly
+ * at one row or one column of them forever. The tree costs about forty lines
+ * more than the list and nothing else.
+ *
+ * `frac` rather than a stored column count: a split keeps its *proportion* when
+ * the terminal is resized, and nothing has to remember the size it was laid out
+ * at last time in order to scale. It is 500 -- an even split -- for every node
+ * molly makes today; it is the field a grow/shrink command sets. */
+enum win_kind {
+  WIN_LEAF,   /* shows `view` */
+  WIN_COLS,   /* kid[0] left of kid[1], with a separator column between */
+  WIN_ROWS    /* kid[0] above kid[1]; kid[0]'s status row is the separator */
+};
+
+struct window {
+  int kind;
+  struct view *view;        /* WIN_LEAF only */
+  struct window *kid[2];
+  struct window *parent;    /* NULL at the root */
+  int frac;                 /* kid[0]'s share of the split axis, in 1/1000ths */
+  int x, y, w, h;           /* this frame's rect; window_layout() fills it in */
 };
 
 /* Shared by every buffer and view. */
@@ -286,13 +324,37 @@ struct editorConfig {
   struct buffer **bufs;
   int nbufs, bufcap;
   int next_buf_id;    /* the id the next buffer made will take */
+
+  /* The window tree and the view that has the keyboard. See window.c.
+   *
+   * `curview` is never NULL: state.c gives it the address of a view it defines
+   * statically, before main runs, so that every null-check written against
+   * `V.buf` still means what it says. Splits allocate the views after the first;
+   * window.c knows which one it must not free. */
+  struct window *winroot;
+  struct view *curview;
+
+  /* Chrome that belongs to the screen and not to a window. Both were fields on
+   * struct view, which was right while there was one view and wrong the moment
+   * there were two: the rows the menu and tab bars take are above every window,
+   * so which window has focus cannot be what decides whether they are there. */
+  int menubar;        /* the menu bar occupies a row */
+  int tabbar;         /* a tab bar is wanted; it only takes a row with 2+ buffers */
 };
 
 
-/* The editor's state. One view for now; struct view is shaped so that becomes a
- * list without the rest of molly noticing. */
+/* The editor's state. */
 extern struct editorConfig E;
-extern struct view V;
+
+/* The current view: whichever window has the keyboard.
+ *
+ * This was a global struct of its own, and every one of some three hundred
+ * `V.something` references assumed there was only ever one window. Making it a
+ * macro for the focused view -- exactly what was done to B when buffers became
+ * plural -- is what let all of them stay as they were while the number of
+ * windows stopped being one. The two definitions stack: B is the current view's
+ * buffer, so "the current buffer" follows the focus with no further work. */
+#define V (*E.curview)
 
 /* The current buffer: whichever one the current view is looking at.
  *
@@ -767,8 +829,13 @@ struct regex *regex_compile(const char *pat, int flags, const char **err);
 void regex_free(struct regex *re);
 
 /* screen.c */
+int screen_gutter_width(void);
 int screen_poll_size(void);
 void ab_append(struct abuf *ab, const char *s, int len);
+void screen_draw_status_bar(void);
+void screen_draw_text_area(void);
+void screen_text_mouse(const struct mouse_event *ev);
+void screen_window_area(int *x, int *y, int *w, int *h);
 void editor_draw_text_row(int y, erow *row, const struct drow *d, int sel0, int sel1);
 void editor_refresh_screen(void);
 void editor_set_status_message(const char *fmt, ...);
@@ -826,6 +893,7 @@ int syntax_set_line(const char *lang, const char *key, const char *value,
                     const char **err);
 void syntax_cleanup(void);
 void syntax_ensure(int upto);
+void syntax_ensure_view(void);
 void syntax_init(void);
 void syntax_invalidate_from(int row);
 void syntax_retype(void);
@@ -891,6 +959,25 @@ int utf8_fit_cols(const char *s, int cols, int *out_cols);
 int utf8_is_cont(unsigned char c);
 int utf8_prev(const char *s, int i);
 int utf8_str_cols(const char *s);
+
+/* window.c */
+int window_close_current(void);
+int window_count(void);
+int window_index_of(const struct view *v);
+int window_mouse(const struct layer *self, const struct mouse_event *ev);
+int window_split(int kind);
+struct view *view_select(struct view *v);
+struct view *window_view_at(int i);
+void window_cleanup(void);
+void window_draw(const struct layer *self);
+void window_focus(int i);
+void window_init(void);
+void window_layout(void);
+void window_layout_rect(int x, int y, int w, int h);
+void window_move_focus(int delta);
+void window_only(void);
+void window_repoint_views(struct buffer *from, struct buffer *to);
+void window_scroll_all(void);
 
 /* view.c */
 int drow_of_cursor(const struct cursor *c);

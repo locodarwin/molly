@@ -31,6 +31,11 @@ void ab_append(struct abuf *ab, const char *s, int len) {
 static int chrome_rows_above(void);
 static int chrome_rows_below(void);
 
+/* One window needs a text row and a status row; below that the layout would be
+ * handing out negative heights. The grid clips, so a terminal this small draws
+ * a mess rather than crashing -- which is the same thing molly did before. */
+#define WIN_AREA_MIN_ROWS 2
+
 static int force_full;
 static int last_wsrows;
 static int last_wscols;
@@ -42,7 +47,7 @@ static int last_wscols;
  * to 0 when the window is too narrow to leave even one text column, so a
  * 3-column terminal never asks the row renderer to fit text into a
  * non-positive width. */
-static int gutter_width(void) {
+int screen_gutter_width(void) {
   if (!V.linenum) return 0;
   int digits = 1, n = row_count();
   while (n >= 10) { n /= 10; digits++; }
@@ -58,15 +63,20 @@ static int gutter_width(void) {
 #define GUTTER_SEP "\xe2\x94\x82"
 
 /* Text row: the line number right-aligned, then " | " drawn with the bar glyph:
- * "123 | ". Occupies exactly gutter_w columns. */
+ * "123 | ". Occupies exactly gutter_w columns.
+ *
+ * Columns are counted from V.screenx and not from zero. These three functions
+ * already read the view for the gutter's width, the horizontal scroll and the
+ * text width, so where the view starts on the screen is one more measurement
+ * from the same place -- and it is 0 for every window until one is split. */
 static void gutter_draw_number(int y, int filerow, int gutter_w) {
   char num[32];
   int n;
   if (gutter_w <= 0) return;
   n = snprintf(num, sizeof(num), "%*d ", gutter_w - 3, filerow + 1);
   grid_role(ROLE_GUTTER);
-  grid_puts(y, 0, num, n);
-  grid_puts(y, gutter_w - 2, GUTTER_SEP " ", 4);
+  grid_puts(y, V.screenx, num, n);
+  grid_puts(y, V.screenx + gutter_w - 2, GUTTER_SEP " ", 4);
   grid_role(ROLE_TEXT);
 }
 
@@ -75,12 +85,12 @@ static void gutter_draw_number(int y, int filerow, int gutter_w) {
 static void gutter_draw_tilde(int y, int gutter_w) {
   grid_role(ROLE_GUTTER);
   if (gutter_w <= 0) {
-    grid_puts(y, 0, "~", 1);
+    grid_puts(y, V.screenx, "~", 1);
   } else {
     char blank[32];
     int n = snprintf(blank, sizeof(blank), "%*s ", gutter_w - 3, "");
-    grid_puts(y, 0, blank, n);
-    grid_puts(y, gutter_w - 2, GUTTER_SEP " ~", 5);
+    grid_puts(y, V.screenx, blank, n);
+    grid_puts(y, V.screenx + gutter_w - 2, GUTTER_SEP " ~", 5);
   }
   grid_role(ROLE_TEXT);
 }
@@ -131,7 +141,7 @@ void editor_draw_text_row(int y, erow *row, const struct drow *d,
 
   gutter_draw_number(y, d->filerow, gw);
 
-  int x = gw + left_pad;  /* the pad columns stay blank */
+  int x = V.screenx + gw + left_pad;  /* the pad columns stay blank */
   int dcol = col;         /* absolute display column of the character at i */
   int vis = left_pad;     /* visible columns emitted so far */
   while (i < rs && vis < text_cols) {
@@ -153,19 +163,25 @@ void editor_draw_text_row(int y, erow *row, const struct drow *d,
   grid_role(ROLE_TEXT);
 }
 
-/* The text area. Rows are drawn relative to the layer, so the menu bar appearing
- * above it is a change to the layout and not to this function. */
-static void draw_text_area(const struct layer *self) {
+/* The text area of the current view, at the rect window_layout() gave it.
+ *
+ * It took a layer until there were splits, which meant one text area at a fixed
+ * place on the screen. Now the rect comes from the view, there is one of these
+ * per window, and window.c calls it once per leaf with that leaf's view
+ * current -- so the menu bar appearing above, or a second window appearing
+ * beside, are both changes to the layout rather than to this function. */
+void screen_draw_text_area(void) {
   int y;
   int gw = V.gutter_w;
   int text_cols = TEXT_COLS();
-  for (y = 0; y < self->h; y++) {
+  int x0 = V.screenx, y0 = V.screeny;
+  for (y = 0; y < V.screenrows; y++) {
     struct drow d;
     int filerow;
     drow_at(y + V.drowoff, &d);
     filerow = d.filerow;
     if (filerow >= row_count()) {
-      if (row_count() == 0 && y == self->h / 3) {
+      if (row_count() == 0 && y == V.screenrows / 3) {
         char text[96];
         int welcomelen = snprintf(text, sizeof(text),
                                   "Molly editor -- version %s", MOLLY_VERSION);
@@ -174,25 +190,34 @@ static void draw_text_area(const struct layer *self) {
         if (pad > 0) {
           /* The tilde keeps its column and the greeting is centered in what is
            * left, which is why the text starts one column past the prefix. */
-          gutter_draw_tilde(self->y + y, gw);
-          grid_puts(self->y + y, (gw ? gw + 1 : 1) + pad, text, welcomelen);
+          gutter_draw_tilde(y0 + y, gw);
+          grid_puts(y0 + y, x0 + (gw ? gw + 1 : 1) + pad, text, welcomelen);
         } else {
           /* Too narrow to center: the greeting takes the row. */
-          grid_puts(self->y + y, 0, text, welcomelen);
+          grid_puts(y0 + y, x0, text, welcomelen);
         }
       } else {
-        gutter_draw_tilde(self->y + y, gw);
+        gutter_draw_tilde(y0 + y, gw);
       }
     } else {
       int s0, s1;
       selection_row_rx(filerow, &s0, &s1);
-      editor_draw_text_row(self->y + y, row_at(filerow), &d, s0, s1);
+      editor_draw_text_row(y0 + y, row_at(filerow), &d, s0, s1);
     }
   }
 }
 
-static void draw_status_bar(const struct layer *self) {
-  int y = self->y;
+/* The status bar of the current view, on the window's last row.
+ *
+ * One per window rather than one per screen, which is what makes a split
+ * readable at all: with two files side by side the question "which is which"
+ * has to be answerable without moving the keyboard, and the bar already says
+ * the file's name, its length and whether it is modified. With one window it
+ * lands on exactly the row it always did, which is why this change is invisible
+ * until something splits. */
+void screen_draw_status_bar(void) {
+  int y = V.screeny + V.screenrows;
+  int x = V.screenx, w = V.screencols;
   char status[80], rstatus[80];
   /* With more than one buffer open the bar says which of them this is. It is
    * left off entirely with one, because "[1/1]" is noise on the common case --
@@ -223,18 +248,18 @@ static void draw_status_bar(const struct layer *self) {
           CUR.cy + 1, charcol + 1, selection_bytes())
       : snprintf(rstatus, sizeof(rstatus), "Ln %d, Col %d",
           CUR.cy + 1, charcol + 1);
-  if (len > self->w) len = self->w;
+  if (len > w) len = w;
 
   /* The whole bar is reverse video, so it is filled first and written over.
    * Olly got the same effect by erasing to end of line with reverse video
    * active, which worked but meant the bar's extent was implied by a terminal
    * side effect rather than stated. */
   grid_role(ROLE_STATUS);
-  grid_fill(y, self->x, self->w, ' ');
-  grid_puts(y, self->x, status, len);
+  grid_fill(y, x, w, ' ');
+  grid_puts(y, x, status, len);
   /* Right-align the cursor position when it fits; otherwise leave it off. */
-  if (self->w - len >= rlen)
-    grid_puts(y, self->x + self->w - rlen, rstatus, rlen);
+  if (w - len >= rlen)
+    grid_puts(y, x + w - rlen, rstatus, rlen);
   grid_role(ROLE_TEXT);
 }
 
@@ -270,24 +295,37 @@ int screen_poll_size(void) {
   changed = (wsrows != last_wsrows || wscols != last_wscols);
   last_wsrows = wsrows;
   last_wscols = wscols;
-  /* The text area is what is left after the chrome above and below it. Forgetting
-   * the row above pushed the status and message bars off the bottom of the grid. */
-  V.screenrows = wsrows - chrome_rows_above() - chrome_rows_below();
-  if (V.screenrows < 1) V.screenrows = 1;
-  V.screencols = wscols;
+  /* No longer the place a view learns its size: the terminal's rows are shared
+   * out between windows, which is window_layout()'s job. What is kept here is
+   * the terminal's own size, which is what the layout divides up. */
   return changed;
 }
 
+/* The rect the window tree has to lay itself out in: the whole terminal less
+ * the chrome above it and the message bar below. The status bar is not in that
+ * reckoning any more -- each window carries its own on its last row, so one
+ * window still puts a status bar exactly where the screen-wide one used to be
+ * and gets the message bar underneath it. */
+void screen_window_area(int *x, int *y, int *w, int *h) {
+  int top = chrome_rows_above();
+  *x = 0;
+  *y = top;
+  *w = last_wscols;
+  *h = last_wsrows - top - chrome_rows_below();
+  if (*h < WIN_AREA_MIN_ROWS) *h = WIN_AREA_MIN_ROWS;
+  if (*w < 1) *w = 1;
+}
+
 /* The size at startup. Unlike screen_poll_size there is no last known size to
- * fall back on, so a failed query is fatal. */
+ * fall back on, so a failed query is fatal. Ends with a layout pass, so that
+ * the geometry every view reads is valid before the first frame -- and before
+ * anything can ask whether there is room to split. */
 void screen_init_size(void) {
-  if (get_window_size(&V.screenrows, &V.screencols) == -1)
+  if (get_window_size(&last_wsrows, &last_wscols) == -1)
     die("get_window_size");
-  V.screenrows -= chrome_rows_above() + chrome_rows_below();
-  if (V.screenrows < 1) V.screenrows = 1;
-  last_wsrows = V.screenrows + chrome_rows_above() + chrome_rows_below();
-  last_wscols = V.screencols;
   force_full = 1;
+  V.gutter_w = screen_gutter_width();
+  window_layout();
 }
 
 /* Release the renderer's buffers. Teardown lives here so that editor_cleanup
@@ -302,8 +340,13 @@ void screen_cleanup(void) {
  * extends a selection from where the press landed, which is the same anchor-plus-
  * cursor model the Shift+arrow keys use, so cutting and copying work on a
  * mouse-made selection without knowing it was made with a mouse. The wheel scrolls
- * the view without moving the cursor, as every other editor does. */
-static int text_area_mouse(const struct layer *self, const struct mouse_event *ev) {
+ * the view without moving the cursor, as every other editor does.
+ *
+ * Which window the event is in was decided before this is called: window.c
+ * finds the leaf, moves the keyboard there and lends it to this, so everything
+ * below reads the view it should and the cell-to-position arithmetic is the
+ * same whether there is one window or six. */
+void screen_text_mouse(const struct mouse_event *ev) {
   int drow, filerow, rcol;
 
   if (ev->type == MOUSE_WHEEL_UP || ev->type == MOUSE_WHEEL_DOWN) {
@@ -311,19 +354,19 @@ static int text_area_mouse(const struct layer *self, const struct mouse_event *e
     V.drowoff += step;
     if (V.drowoff > drow_total()) V.drowoff = drow_total();
     if (V.drowoff < 0) V.drowoff = 0;
-    return 1;
+    return;
   }
-  if (ev->type == MOUSE_RELEASE) return 1;  /* nothing to do, but it is ours */
-  if (ev->button != MOUSE_BUTTON_LEFT) return 1;
+  if (ev->type == MOUSE_RELEASE) return;  /* nothing to do, but it is ours */
+  if (ev->button != MOUSE_BUTTON_LEFT) return;
 
   /* Screen cell to buffer position. The gutter is not text: a click in it lands at
    * the start of the line, which is what clicking a line number should do. */
-  drow = ev->y - self->y + V.drowoff;
+  drow = ev->y - V.screeny + V.drowoff;
   filerow = drow;                 /* identity while nothing wraps; see struct drow */
   if (filerow < 0) filerow = 0;
   if (filerow > row_count()) filerow = row_count();
 
-  rcol = ev->x - self->x - V.gutter_w + V.coloff;
+  rcol = ev->x - V.screenx - V.gutter_w + V.coloff;
   if (rcol < 0) rcol = 0;
 
   if (ev->type == MOUSE_PRESS) {
@@ -331,7 +374,7 @@ static int text_area_mouse(const struct layer *self, const struct mouse_event *e
     CUR.cy = filerow;
     CUR.cx = (filerow < row_count())
         ? editor_row_rx_to_cx(row_at(filerow), rcol) : 0;
-    return 1;
+    return;
   }
 
   /* MOUSE_DRAG: seed the anchor on the first movement, then track. */
@@ -343,14 +386,12 @@ static int text_area_mouse(const struct layer *self, const struct mouse_event *e
   CUR.cy = filerow;
   CUR.cx = (filerow < row_count())
       ? editor_row_rx_to_cx(row_at(filerow), rcol) : 0;
-  return 1;
 }
 
 /* The chrome's layers, pushed once and then only resized. Their indices are kept
  * so the layout pass can move them; everything above them on the stack is pushed
  * by whatever is showing it. */
-static int layer_text = -1;
-static int layer_status = -1;
+static int layer_windows = -1;
 static int layer_message = -1;
 static int layer_menubar = -1;
 static int layer_tabbar = -1;
@@ -363,22 +404,23 @@ static int layer_tabbar = -1;
  * reflowing the whole screen by a row every time a menu opens would be worse than
  * briefly covering a line of text. */
 static int chrome_rows_above(void) {
-  return (V.menubar ? 1 : 0) + tabbar_rows();
+  return (E.menubar ? 1 : 0) + tabbar_rows();
 }
 
 static int chrome_rows_below(void) {
-  return 2;  /* status bar, message bar */
+  return 1;  /* the message bar; each window carries its own status row */
 }
 
 void screen_init_layers(void) {
   struct layer l;
   memset(&l, 0, sizeof(l));
-  l.draw = draw_text_area;
-  l.mouse = text_area_mouse;
-  layer_text = layer_push(&l);
+  /* One layer for every window. The tree decides what goes where inside it, so
+   * splitting is not a change to the layer stack -- which is what keeps menus,
+   * dialogs and the help screen working over a split without knowing about it. */
+  l.draw = window_draw;
+  l.mouse = window_mouse;
+  layer_windows = layer_push(&l);
   l.mouse = NULL;
-  l.draw = draw_status_bar;
-  layer_status = layer_push(&l);
   l.draw = draw_message_bar;
   layer_message = layer_push(&l);
   /* Above the chrome, so that while the bar is hidden an open menu's band covers the
@@ -391,7 +433,7 @@ void screen_init_layers(void) {
   l.draw = menu_bar_draw;
   l.mouse = menu_bar_mouse;
   layer_menubar = layer_push(&l);
-  if (layer_text < 0 || layer_status < 0 || layer_message < 0 ||
+  if (layer_windows < 0 || layer_message < 0 ||
       layer_menubar < 0 || layer_tabbar < 0)
     die("screen_init_layers");
 
@@ -404,37 +446,19 @@ void screen_init_layers(void) {
 
 /* Give the chrome its bounds for this frame. One place does the row arithmetic
  * that the three draw functions each used to do for themselves. */
-/* Make sure every row about to be drawn has been lexed.
- *
- * Here rather than inside the draw loop because it allocates and because it has
- * to run for the whole visible range before any of it is painted: a row's
- * colouring depends on the row above, so lexing one row at a time as the loop
- * reached it would be the same work in a worse order. One row past the bottom,
- * because `syn_out` of the last visible row is what the next scroll step starts
- * from. */
-static void syntax_sync_view(void) {
-  int last;
-  if (!V.syntax) return;
-  last = V.drowoff + V.screenrows;
-  if (last >= row_count()) last = row_count() - 1;
-  if (last >= 0) syntax_ensure(last);
-}
-
 static void screen_layout(void) {
-  int top = chrome_rows_above();
-  int text_h = V.screenrows;
-  layer_set_bounds(layer_text, 0, top, V.screencols, text_h);
-  layer_set_bounds(layer_status, 0, top + text_h, V.screencols, 1);
-  layer_set_bounds(layer_message, 0, top + text_h + 1, V.screencols, 1);
+  int wx, wy, ww, wh;
+  screen_window_area(&wx, &wy, &ww, &wh);
+  layer_set_bounds(layer_windows, wx, wy, ww, wh);
+  layer_set_bounds(layer_message, 0, wy + wh, ww, 1);
   /* The band occupies row zero when shown, and nothing at all when hidden -- except
    * while a menu is open, when it appears over the first text row. A layer with no
    * height is skipped by both drawing and hit-testing. */
-  layer_set_bounds(layer_menubar, 0, 0, V.screencols,
-                   (V.menubar || menu_is_open()) ? 1 : 0);
+  layer_set_bounds(layer_menubar, 0, 0, ww,
+                   (E.menubar || menu_is_open()) ? 1 : 0);
   /* Directly under the band when there is one, and at row zero when there is
-   * not. Its row is already counted in `top`, so this is where that row is. */
-  layer_set_bounds(layer_tabbar, 0, V.menubar ? 1 : 0, V.screencols,
-                   tabbar_rows());
+   * not. Its row is already counted in the window area's origin. */
+  layer_set_bounds(layer_tabbar, 0, E.menubar ? 1 : 0, ww, tabbar_rows());
 }
 
 /* Bring the view and the grid in step with the terminal, without drawing anything.
@@ -446,25 +470,28 @@ static void screen_layout(void) {
  * 40-column one, which put its title off the right-hand edge and left it there,
  * because nothing repaints again until the next keystroke. */
 void screen_sync_size(void) {
+  int wx, wy, ww, wh;
   if (screen_poll_size()) force_full = 1;
-  V.gutter_w = gutter_width();
+  /* Share the terminal out between the windows, which is also where each view
+   * learns its own size and its own gutter width. */
+  window_layout();
+  screen_window_area(&wx, &wy, &ww, &wh);
   /* A size change drops the grid's contents, so it repaints in full by itself. */
-  grid_resize(chrome_rows_above() + V.screenrows + chrome_rows_below(),
-              V.screencols);
+  grid_resize(wy + wh + chrome_rows_below(), ww);
 }
 
 void editor_refresh_screen(void) {
   screen_sync_size();
-  editor_scroll();
+  /* Every window, not only the focused one: an edit in one moves the text under
+   * another showing the same buffer. Scrolling settles the visible range, which
+   * is what the lexing inside it then has to cover, so both happen here and
+   * before anything is painted. */
+  window_scroll_all();
 
   if (force_full) {
     grid_invalidate();
     force_full = 0;
   }
-
-  /* After editor_scroll, which is what settles the visible range, and before
-   * anything is painted. */
-  syntax_sync_view();
 
   screen_layout();
   grid_begin();
@@ -473,8 +500,8 @@ void editor_refresh_screen(void) {
    * claimed it, which an input field does: while a prompt is open the cursor belongs
    * in the prompt, not back in the text behind it. */
   if (!grid_cursor_claimed())
-    grid_cursor_to(chrome_rows_above() + drow_of_cursor(&CUR) - V.drowoff,
-                   (CUR.rx - V.coloff) + V.gutter_w);
+    grid_cursor_to(V.screeny + drow_of_cursor(&CUR) - V.drowoff,
+                   V.screenx + (CUR.rx - V.coloff) + V.gutter_w);
   grid_flush();
 }
 

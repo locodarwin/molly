@@ -165,16 +165,16 @@ static void apply_line_numbers(int v) {
 static int live_line_numbers(void) { return V.linenum; }
 
 static void apply_menu_bar(int v) {
-  V.menubar = v;
+  E.menubar = v;
   screen_force_repaint();
 }
-static int live_menu_bar(void) { return V.menubar; }
+static int live_menu_bar(void) { return E.menubar; }
 
 static void apply_tab_bar(int v) {
-  V.tabbar = v;
+  E.tabbar = v;
   screen_force_repaint();
 }
-static int live_tab_bar(void) { return V.tabbar; }
+static int live_tab_bar(void) { return E.tabbar; }
 
 static void apply_syntax(int v) {
   V.syntax = v;

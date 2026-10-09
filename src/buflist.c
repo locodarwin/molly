@@ -187,34 +187,37 @@ void buf_show(int i) {
  * of the tab bar. */
 int buf_close(int i) {
   struct buffer *b = buf_at(i);
-  int was_current;
 
   if (b == NULL) return buf_current();
-  was_current = (b == V.buf);
 
   if (E.nbufs == 1) {
     /* Emptied rather than closed. A fresh unnamed buffer in the same slot, so
-     * the view keeps a valid pointer and nothing else has to know. */
+     * every view keeps a valid pointer and nothing else has to know.
+     *
+     * The replacement is made and listed before the old one is freed, which is
+     * the other way round from how this read when there was one window: the
+     * views have to be moved off the dying buffer, and moving them needs
+     * somewhere to move them to. */
     int id = b->id;
+    struct buffer *fresh = xmalloc(sizeof(**E.bufs));
+    buf_reset(fresh, id);
+    E.bufs[0] = fresh;
+    window_repoint_views(b, fresh);
     buf_free(b);
-    E.bufs[0] = xmalloc(sizeof(**E.bufs));
-    buf_reset(E.bufs[0], id);
-    V.buf = E.bufs[0];
-    cursors_collapse();
-    memset(&CUR, 0, sizeof CUR);
-    V.drowoff = 0;
-    V.coloff = 0;
     build_recovery_path();
     saved_snapshot_take();
     screen_force_repaint();
     return 0;
   }
 
-  if (was_current) {
-    /* Point the view somewhere valid *before* the buffer goes, so that the free
-     * below -- which borrows V.buf -- has somewhere to put it back. */
+  {
+    /* Every view showing this buffer, not just the focused one: with splits open
+     * there may be several, and one left pointing at freed memory would draw
+     * whatever is in it now rather than failing anywhere near here. Done before
+     * the free for the same reason -- and it leaves V.buf valid, which the free
+     * below depends on because it borrows it. */
     int to = (i + 1 < E.nbufs) ? i + 1 : i - 1;
-    buf_show(to);
+    window_repoint_views(b, buf_at(to));
   }
 
   buf_free(b);
@@ -239,6 +242,7 @@ void buflist_init(void) {
 }
 
 void buflist_cleanup(void) {
+  int i, n;
   /* Backwards, so that each buf_free() borrows a V.buf that is still alive --
    * except for the last one, which is the view's own and leaves it NULL. */
   while (E.nbufs > 0) {
@@ -248,5 +252,9 @@ void buflist_cleanup(void) {
   free(E.bufs);
   E.bufs = NULL;
   E.bufcap = 0;
+  /* Every view, not only the current one: a split leaves several pointing at
+   * buffers that have just gone. */
+  n = window_count();
+  for (i = 0; i < n; i++) window_view_at(i)->buf = NULL;
   V.buf = NULL;
 }

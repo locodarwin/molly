@@ -1197,7 +1197,7 @@ static void test_config_write(void) {
   /* The editor normally has the bar on; screen_init_layers is what turns it on
    * and no unit test runs it, so say so here rather than let this read as a
    * default. */
-  V.menubar = 1;
+  E.menubar = 1;
 
   {
     const char *err = NULL;
@@ -1348,6 +1348,197 @@ static void test_help_entries(void) {
   check("no help entry has an empty key column", blank, 0);
 }
 
+/* ---- the window tree ----------------------------------------------------- */
+
+/* Splits are testable without a terminal for the same reason the buffer list is:
+ * what the tree does is hold windows, say which has the keyboard, and share a
+ * rect out between them. Nothing in that draws.
+ *
+ * The rect is supplied by the test. In the editor the layout is recomputed from
+ * the terminal size every frame -- which is what makes a resize, a split and a
+ * close all end in the same walk -- and a split or a close therefore lays out
+ * again before it returns. There is no terminal here, so each of those calls
+ * has to be followed by handing the tree the screen this test is reasoning
+ * about. 80x22 is the text area of an 80x24 terminal with a menu bar. */
+static void win_screen(void) {
+  window_layout_rect(0, 1, 80, 22);
+}
+
+static void test_windows(void) {
+  printf("\nwindows: the tree, and the screen shared out between it\n");
+
+  window_init();
+  buflist_init();
+  win_screen();
+
+  check("a fresh editor has one window", window_count(), 1);
+  check("and it has the keyboard", window_index_of(E.curview), 0);
+  check("it starts where the chrome ends", V.screeny, 1);
+  check("and takes the whole width", V.screencols, 80);
+  /* One row of the window is its own status bar, which is why a single window
+   * puts that bar exactly where the screen-wide one used to be. */
+  check("its text area is a row shorter than the window", V.screenrows, 21);
+
+  /* ---- side by side ---- */
+  check("splitting right succeeds", window_split(WIN_COLS), 1);
+  win_screen();
+  check("there are two windows", window_count(), 2);
+  check("and the new one has the keyboard", window_index_of(E.curview), 1);
+  check("both show the same buffer",
+        window_view_at(0)->buf == window_view_at(1)->buf, 1);
+  check("the left one starts at column zero", window_view_at(0)->screenx, 0);
+  check("and gets half the width", window_view_at(0)->screencols, 40);
+  /* 40 columns, a separator column, 39 columns: the separator belongs to
+   * neither window, which is why the two widths do not add up to 80. */
+  check("the right one starts past the separator",
+        window_view_at(1)->screenx, 41);
+  check("and gets what is left", window_view_at(1)->screencols, 39);
+  check("both are as tall as the area", window_view_at(1)->screenrows, 21);
+  check("and both start on the same row", window_view_at(1)->screeny, 1);
+
+  /* ---- the keyboard moves between them ---- */
+  window_move_focus(1);
+  check("next window wraps round to the first", window_index_of(E.curview), 0);
+  window_move_focus(1);
+  check("and back to the second", window_index_of(E.curview), 1);
+  window_move_focus(-1);
+  check("previous window goes the other way", window_index_of(E.curview), 0);
+  window_focus(1);
+  check("or the window can be named outright", window_index_of(E.curview), 1);
+
+  /* ---- each window keeps its own place in the file ---- */
+  window_view_at(0)->drowoff = 7;
+  check("scrolling one does not scroll the other",
+        window_view_at(1)->drowoff, 0);
+
+  /* ---- closing ---- */
+  check("closing it succeeds", window_close_current(), 1);
+  win_screen();
+  check("one window again", window_count(), 1);
+  check("the survivor has the keyboard", window_index_of(E.curview), 0);
+  /* The parent split node went with the window, so the survivor is back to the
+   * full width rather than to half of it with nothing beside it. */
+  check("and the full width back", V.screencols, 80);
+  check("closing the only window is refused", window_close_current(), 0);
+
+  /* ---- stacked ---- */
+  check("splitting below succeeds", window_split(WIN_ROWS), 1);
+  win_screen();
+  check("two windows again", window_count(), 2);
+  check("the top one starts at the top", window_view_at(0)->screeny, 1);
+  /* 11 rows each: 10 of text and the status bar. No separator row, because the
+   * upper window's status bar already is one. */
+  check("and gets half the rows", window_view_at(0)->screenrows, 10);
+  check("the bottom one starts below it", window_view_at(1)->screeny, 12);
+  check("and gets the rest", window_view_at(1)->screenrows, 10);
+  check("both keep the full width", window_view_at(1)->screencols, 80);
+
+  /* ---- nesting ---- */
+  check("the bottom one splits again", window_split(WIN_COLS), 1);
+  win_screen();
+  check("three windows", window_count(), 3);
+  check("the untouched one is unchanged", window_view_at(0)->screencols, 80);
+  check("the split one is halved", window_view_at(1)->screencols, 40);
+  check("and its new neighbour takes the rest",
+        window_view_at(2)->screencols, 39);
+  check("which starts past the separator", window_view_at(2)->screenx, 41);
+  check("and shares the bottom row band", window_view_at(2)->screeny, 12);
+
+  /* Order is screen order: left before right, top before bottom. */
+  check("only this window leaves one", (window_only(), window_count()), 1);
+  win_screen();
+  check("and gives it everything", V.screencols, 80);
+  check("including the rows", V.screenrows, 21);
+
+  buflist_cleanup();
+}
+
+/* A split that would make a window too small to use is refused rather than
+ * made. The alternative is a window the user has to close again, which is worse
+ * than being told no -- and the numbers are the only thing standing between a
+ * 24-row terminal and a stack of status bars. */
+static void test_windows_too_small(void) {
+  printf("\nwindows: a split that will not fit\n");
+
+  window_init();
+  buflist_init();
+
+  /* 16 columns: two eight-column windows would fit, but not the separator. */
+  window_layout_rect(0, 0, 16, 10);
+  check("16 columns is one column short", window_split(WIN_COLS), 0);
+  check("so there is still one window", window_count(), 1);
+  window_layout_rect(0, 0, 17, 10);
+  check("17 is enough", window_split(WIN_COLS), 1);
+  check("and there are two", window_count(), 2);
+
+  window_init();
+  buflist_init();
+  /* Three rows: two windows need two each, a row of text and a status bar. */
+  window_layout_rect(0, 0, 80, 3);
+  check("three rows will not stack", window_split(WIN_ROWS), 0);
+  window_layout_rect(0, 0, 80, 4);
+  check("four will", window_split(WIN_ROWS), 1);
+  win_screen();
+
+  buflist_cleanup();
+}
+
+/* Closing a buffer that another window is showing.
+ *
+ * This is the one thing splits add to the buffer list, and it is the kind of
+ * bug that does not announce itself: a window left pointing at a freed buffer
+ * draws whatever is in that memory now, rather than failing anywhere near the
+ * close. */
+static void test_windows_buffer_closed(void) {
+  printf("\nwindows: a buffer closing under another window\n");
+
+  window_init();
+  buflist_init();
+  win_screen();
+  buf_new();
+  check("two buffers", buf_count(), 2);
+
+  window_split(WIN_COLS);
+  win_screen();
+  buf_show(1);
+  check("the focused window moved to the second buffer",
+        V.buf == buf_at(1), 1);
+  check("and the other window stayed on the first",
+        window_view_at(0)->buf == buf_at(0), 1);
+
+  {
+    struct buffer *survivor = buf_at(1);
+    buf_close(0);
+    check("closing the first leaves one buffer", buf_count(), 1);
+    check("and the window that was showing it moved",
+          window_view_at(0)->buf == survivor, 1);
+    check("as did the other one", window_view_at(1)->buf == survivor, 1);
+  }
+
+  /* Emptying the last buffer replaces it, so the same repointing has to happen
+   * on that path too -- and it is the path where the replacement has to exist
+   * before the old one is freed. */
+  {
+    struct buffer *before = buf_at(0);
+    buf_close(0);
+    check("closing the last one empties it instead", buf_count(), 1);
+    check("into a different buffer", buf_at(0) != before, 1);
+    check("that both windows are looking at",
+          window_view_at(0)->buf == buf_at(0) &&
+          window_view_at(1)->buf == buf_at(0), 1);
+  }
+
+  buflist_cleanup();
+  check("cleanup leaves no window pointing at a buffer",
+        window_view_at(0)->buf == NULL && window_view_at(1)->buf == NULL, 1);
+
+  /* Stand the editor back up. These tests share one process, and the ones after
+   * this assume a live current buffer -- tab_width_set() walks its rows, and
+   * with the list torn down B.numrows is read through a null view buffer. */
+  window_init();
+  buflist_init();
+}
+
 /* ---- the buffer list ----------------------------------------------------- */
 
 /* The list is testable without a terminal because nothing in it draws: what it
@@ -1360,8 +1551,8 @@ static void test_help_entries(void) {
 static void test_buflist(void) {
   printf("\nbuffers: the list\n");
 
+  window_init();
   buflist_init();
-  cursors_init();
 
   check("a fresh editor has exactly one buffer", buf_count(), 1);
   check("and the view is looking at it", V.buf == buf_at(0), 1);
@@ -1405,6 +1596,7 @@ static void test_buflist(void) {
 
   /* Closing one that is not current must not disturb which buffer is current,
    * even though the list shifts under it. */
+  window_init();
   buflist_init();
   buf_new();
   buf_new();
@@ -1420,6 +1612,7 @@ static void test_buflist(void) {
   buflist_cleanup();
 
   /* Closing the current one moves to the next along. */
+  window_init();
   buflist_init();
   buf_new();
   buf_new();
@@ -1434,6 +1627,7 @@ static void test_buflist(void) {
   buflist_cleanup();
 
   /* Closing the last one in the list has no next, so it moves back. */
+  window_init();
   buflist_init();
   buf_new();
   buf_show(1);
@@ -1448,6 +1642,7 @@ static void test_buflist(void) {
   /* The only buffer is emptied rather than closed, because an editor with no
    * buffer has nothing to draw and every caller would need a null check for a
    * state the user cannot usefully be in. */
+  window_init();
   buflist_init();
   {
     char *name = xstrdup("/tmp/whatever.txt");
@@ -1466,6 +1661,7 @@ static void test_buflist(void) {
 
   /* An index nobody has is a no-op rather than a crash: the tab bar and the
    * mouse both compute one, and a stale click should do nothing. */
+  window_init();
   buflist_init();
   check("closing a buffer that does not exist is harmless",
         buf_close(7), 0);
@@ -1475,6 +1671,7 @@ static void test_buflist(void) {
 
   printf("\nbuffers: finding and counting\n");
 
+  window_init();
   buflist_init();
   buf_new();
   buf_at(0)->filename = xstrdup("/tmp/one.txt");
@@ -1493,8 +1690,8 @@ static void test_buflist(void) {
 
   /* Switching away and back returns to where the cursor was, which is the whole
    * reason the position is kept on the buffer at all. */
+  window_init();
   buflist_init();
-  cursors_init();
   buf_new();
   buf_show(0);
   editor_insert_row(0, "one", 3);
@@ -1525,8 +1722,8 @@ static void test_buflist(void) {
 
   /* Leave one buffer behind, because every test after this one expects an
    * editor with somewhere to put text. */
+  window_init();
   buflist_init();
-  cursors_init();
 }
 
 /* ---- syntax highlighting -------------------------------------------------- */
@@ -1797,6 +1994,9 @@ int main(void) {
   test_syntax_markdown();
   test_syntax_misc();
   test_buflist();
+  test_windows();
+  test_windows_too_small();
+  test_windows_buffer_closed();
   test_chords();
   test_config_parse();
   test_config_keys();

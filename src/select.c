@@ -30,6 +30,15 @@ static int selection_range(int *ax, int *ay, int *bx, int *by) {
   return 1;
 }
 
+/* The current cursor's selection in document order, for the one caller outside
+ * this file that needs it: cursors.c, which has to know where the text an edit
+ * is about to replace *ends* in order to move the cursors after it. Public
+ * rather than a second copy of the ordering above, because getting that
+ * ordering wrong in two places is exactly the bug it exists to prevent. */
+int selection_span(int *ax, int *ay, int *bx, int *by) {
+  return selection_range(ax, ay, bx, by);
+}
+
 /* Bytes spanned by the selection, counting one per internal line break. Used
  * only for the status-bar count, so whether a line break is "one byte" is a
  * display choice rather than a correctness one. */

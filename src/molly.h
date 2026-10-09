@@ -162,6 +162,16 @@ struct cursor {
 };
 
 
+/* The editing operations a multi-cursor edit can be. Named rather than passed as
+ * a function pointer because they do not share a signature -- typing carries a
+ * character and the rest carry nothing -- and because cursors.c has to treat
+ * the forward delete differently from the others. See src/cursors.c. */
+#define MC_INSERT      0
+#define MC_INDENT      1
+#define MC_NEWLINE     2
+#define MC_DELETE_BACK 3
+#define MC_DELETE_FWD  4
+
 #define UC_INSERT 0
 #define UC_DELETE 1
 #define UC_JOIN 2
@@ -940,6 +950,7 @@ void search_cleanup(void);
 /* select.c */
 char *selection_dup(int *outlen);
 int selection_bytes(void);
+int selection_span(int *ax, int *ay, int *bx, int *by);
 void clipboard_set(const char *s, int len);
 void clipboard_sync_system(void);
 void editor_paste(void);
@@ -1067,6 +1078,13 @@ int editor_row_cx_to_rx(erow *row, int cx);
 int editor_row_rx_to_cx(erow *row, int rx);
 void cursors_collapse(void);
 void cursors_init(void);
+
+/* cursors.c */
+int cursors_add(int cy, int cx);
+int cursors_add_sel(int cy, int cx, int ex);
+void cursors_dedup(void);
+void cursors_edit(int what, int arg);
+void cursors_sort(void);
 void drow_at(int index, struct drow *out);
 void editor_move_cursor(int key);
 void editor_scroll(void);

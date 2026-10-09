@@ -2382,6 +2382,266 @@ static void test_indent(void) {
   buflist_init();
 }
 
+/* N cursors: the list staying ordered and distinct, and one edit landing at
+ * every one of them.
+ *
+ * A unit test and not a pty session because what has to be proved is the
+ * position arithmetic -- that a cursor still to come survives an edit earlier
+ * in the document -- and that is a question about the buffer afterwards, not
+ * about what a terminal drew. The keystrokes get their own pty tests. */
+
+/* Put the editor in a known state with `body` in the buffer and one cursor. */
+static void mc_load(const char *body) {
+  window_init();
+  buflist_init();
+  syntax_init();
+  free(B.filename);
+  B.filename = NULL;
+  syntax_retype();
+  while (B.numrows > 0) editor_delete_row(0);
+  {
+    const char *p = body;
+    while (*p != '\0') {
+      const char *nl = strchr(p, '\n');
+      int n = nl ? (int)(nl - p) : (int)strlen(p);
+      editor_insert_row(row_count(), (char *)p, (size_t)n);
+      if (!nl) break;
+      p = nl + 1;
+    }
+  }
+  V.ncursors = 1;
+  V.primary = 0;
+  memset(&V.cursors[0], 0, sizeof(struct cursor));
+  B.undo.locked = 0;
+}
+
+/* The buffer as one string, which is what an edit at N cursors is judged by. */
+static char *mc_text(void) {
+  static char out[4096];
+  int i, n = 0;
+  out[0] = '\0';
+  for (i = 0; i < B.numrows; i++) {
+    int len = B.row[i].size;
+    if (n + len + 2 > (int)sizeof(out)) break;
+    memcpy(out + n, B.row[i].chars, (size_t)len);
+    n += len;
+    if (i + 1 < B.numrows) out[n++] = '\n';
+  }
+  out[n] = '\0';
+  return out;
+}
+
+static void test_cursors_list(void) {
+  printf("\ncursors: the list stays ordered and distinct\n");
+
+  mc_load("alpha\nbeta\ngamma\n");
+
+  check("a fresh view has one cursor", V.ncursors, 1);
+  check("adding one says so", cursors_add(2, 1), 1);
+  check("and the list grows", V.ncursors, 2);
+  check("adding one where a cursor already is does not",
+        cursors_add(2, 1), 0);
+  check("and the list does not grow", V.ncursors, 2);
+
+  /* Document order, with the primary following its own cursor through the
+   * sort rather than staying on an index. */
+  CUR.cy = 0;
+  CUR.cx = 3;
+  check("adding a third", cursors_add(1, 2), 1);
+  cursors_sort();
+  check("the list is in document order", V.cursors[0].cy, 0);
+  check("second", V.cursors[1].cy, 1);
+  check("third", V.cursors[2].cy, 2);
+  check("and the primary followed its cursor", V.primary, 0);
+  check("which is still where it was", CUR.cx, 3);
+
+  /* Two cursors at one position would insert twice there, so they merge. */
+  V.cursors[2].cy = 1;
+  V.cursors[2].cx = 2;
+  cursors_dedup();
+  check("duplicates are dropped", V.ncursors, 2);
+  check("and the primary survives", V.primary, 0);
+  check("still where it was", CUR.cx, 3);
+
+  /* A cursor carrying a selection wins over a bare duplicate: the selection is
+   * what the next keystroke is meant to replace. */
+  mc_load("alpha\n");
+  check("a cursor with a selection is added", cursors_add_sel(0, 1, 4), 1);
+  check("there are two", V.ncursors, 2);
+  V.cursors[0].cy = 0;
+  V.cursors[0].cx = 4;
+  cursors_dedup();
+  check("the bare duplicate loses", V.ncursors, 1);
+  check("and the selection is what is left", V.cursors[0].sel_active, 1);
+  check("with its anchor", V.cursors[0].sx, 1);
+
+  /* The ceiling is a guard, not a limit anyone reaches by hand. */
+  mc_load("alpha\n");
+  {
+    int i;
+    for (i = 0; i < 600; i++) cursors_add(0, i);
+    check("the list stops growing at its ceiling", V.ncursors, 512);
+    check("and says no once it is full", cursors_add(0, 9999), 0);
+  }
+}
+
+static void test_cursors_edit(void) {
+  printf("\ncursors: one edit at every cursor\n");
+
+  /* Typing. Three cursors on one row: the two later ones have to survive the
+   * byte the first one inserted, which is the whole point of the rule. */
+  mc_load("abcdef\n");
+  CUR.cy = 0;
+  CUR.cx = 1;
+  cursors_add(0, 3);
+  cursors_add(0, 5);
+  cursors_edit(MC_INSERT, '-');
+  check_str("typing lands at all three", mc_text(), "a-bc-de-f");
+  check("and each cursor moved past what it typed", V.cursors[0].cx, 2);
+  check("the second", V.cursors[1].cx, 5);
+  check("the third", V.cursors[2].cx, 8);
+
+  /* One undo step for the lot: the group the driver opens swallows every
+   * record, and editor_undo pops a group at a time. */
+  editor_undo();
+  check_str("and all three undo together", mc_text(), "abcdef");
+
+  /* Cursors on different rows: the first one's edit must not move the others,
+   * which it does not, because nothing an insert does reaches another row. */
+  mc_load("one\ntwo\nthree\n");
+  CUR.cy = 0;
+  CUR.cx = 0;
+  cursors_add(1, 0);
+  cursors_add(2, 0);
+  cursors_edit(MC_INSERT, '>');
+  check_str("typing reaches every row", mc_text(), ">one\n>two\n>three");
+
+  /* Enter at N cursors. Every split pushes the rows below it down, so the
+   * cursors still to come are a row further on each time -- the case a single
+   * global position would get wrong after the first one. */
+  mc_load("ab\ncd\n");
+  CUR.cy = 0;
+  CUR.cx = 1;
+  cursors_add(1, 1);
+  cursors_edit(MC_NEWLINE, 0);
+  check_str("Enter splits at both", mc_text(), "a\nb\nc\nd");
+  check("the first cursor is on its new row", V.cursors[0].cy, 1);
+  check("and the second followed the rows that moved", V.cursors[1].cy, 3);
+
+  editor_undo();
+  check_str("and both splits undo at once", mc_text(), "ab\ncd");
+
+  /* Backspace mid-row: the removed byte is behind the cursor, so everything
+   * after it comes back one column. */
+  mc_load("abcdef\n");
+  CUR.cy = 0;
+  CUR.cx = 2;
+  cursors_add(0, 4);
+  cursors_add(0, 6);
+  cursors_edit(MC_DELETE_BACK, 0);
+  check_str("Backspace takes one from each", mc_text(), "ace");
+  check("and the cursors are where the text is", V.cursors[0].cx, 1);
+  check("the second", V.cursors[1].cx, 2);
+  check("the third", V.cursors[2].cx, 3);
+
+  /* Backspace at column zero joins rows, which moves every row below up and
+   * re-anchors the joined row's text onto the end of the one above. */
+  mc_load("ab\ncd\nef\n");
+  V.cursors[0].cy = 1;
+  V.cursors[0].cx = 0;
+  cursors_add(2, 1);
+  cursors_edit(MC_DELETE_BACK, 0);
+  check_str("a join and a plain delete together", mc_text(), "abcd\nf");
+  check("the joining cursor sits where the rows met", V.cursors[0].cy, 0);
+  check("at the right column", V.cursors[0].cx, 2);
+  check("and the one below followed the row that moved", V.cursors[1].cy, 1);
+
+  /* Delete forward is the one operation whose removed range ends somewhere
+   * other than the cursor it started at. */
+  mc_load("abcdef\n");
+  CUR.cy = 0;
+  CUR.cx = 0;
+  cursors_add(0, 2);
+  cursors_add(0, 4);
+  cursors_edit(MC_DELETE_FWD, 0);
+  check_str("Delete takes the character in front of each", mc_text(), "bdf");
+  check("and the cursors do not move past what is left", V.cursors[0].cx, 0);
+  check("the second", V.cursors[1].cx, 1);
+  check("the third", V.cursors[2].cx, 2);
+
+  /* Delete at the end of a row joins the next one on. */
+  mc_load("ab\ncd\nef\n");
+  V.cursors[0].cy = 0;
+  V.cursors[0].cx = 2;
+  cursors_add(2, 0);
+  cursors_edit(MC_DELETE_FWD, 0);
+  check_str("a forward join and a plain delete", mc_text(), "abcd\nf");
+  check("the joining cursor stays put", V.cursors[0].cy, 0);
+  check("and the other followed the row that moved up", V.cursors[1].cy, 1);
+
+  /* An operation that does nothing must not move anything. Backspace at the
+   * very top of the buffer is the no-op worth checking, because the cursor it
+   * runs at is the earliest one and every other cursor is after it. */
+  mc_load("abc\ndef\n");
+  V.cursors[0].cy = 0;
+  V.cursors[0].cx = 0;
+  cursors_add(1, 1);
+  cursors_edit(MC_DELETE_BACK, 0);
+  check_str("a no-op at the first cursor leaves the rest alone",
+            mc_text(), "abc\nef");
+  check("and the cursor that did work is where it should be",
+        V.cursors[1].cx, 0);
+
+  printf("\ncursors: a selection at every cursor\n");
+
+  /* The Ctrl-D case: each cursor has selected an occurrence, and typing
+   * replaces all of them. The replaced runs are different lengths from what
+   * replaces them, which is what the cursors after have to survive. */
+  mc_load("red fish red fish\n");
+  V.cursors[0].cy = 0;
+  V.cursors[0].cx = 3;
+  V.cursors[0].sel_active = 1;
+  V.cursors[0].sy = 0;
+  V.cursors[0].sx = 0;
+  cursors_add_sel(0, 9, 12);
+  cursors_edit(MC_INSERT, 'X');
+  check_str("typing replaces every selection", mc_text(), "X fish X fish");
+  check("and the selections are gone", V.cursors[0].sel_active, 0);
+  check("both of them", V.cursors[1].sel_active, 0);
+  check("the second cursor is after what it typed", V.cursors[1].cx, 8);
+
+  editor_undo();
+  check_str("and the whole replacement undoes at once",
+            mc_text(), "red fish red fish");
+
+  /* Backspace with selections deletes the selections and stops -- one cursor
+   * does that already, and N of them must not also eat a character each. */
+  mc_load("red fish red fish\n");
+  V.cursors[0].cy = 0;
+  V.cursors[0].cx = 3;
+  V.cursors[0].sel_active = 1;
+  V.cursors[0].sy = 0;
+  V.cursors[0].sx = 0;
+  cursors_add_sel(0, 9, 12);
+  cursors_edit(MC_DELETE_BACK, 0);
+  check_str("Backspace over selections deletes just those",
+            mc_text(), " fish  fish");
+
+  /* A selection the edit does not touch keeps covering the same characters:
+   * the anchor travels with the cursor across an edit earlier in the file. */
+  mc_load("abcdef\n");
+  V.cursors[0].cy = 0;
+  V.cursors[0].cx = 1;
+  cursors_add_sel(0, 3, 5);
+  cursors_edit(MC_INSERT, '-');
+  /* "abcdef" becomes "a-bcdef" at the first cursor, which pushes the second
+   * cursor's selection from [3,5) to [4,6) -- still the same two characters,
+   * "de" -- and typing then replaces them. A selection left on byte offsets
+   * would have replaced "cd" instead. */
+  check_str("an earlier insert moves a later selection along",
+            mc_text(), "a-bc-f");
+}
+
 int main(void) {
   test_loop_sources();
   test_wait_key_services_sources();
@@ -2405,6 +2665,8 @@ int main(void) {
   test_syntax_markdown();
   test_syntax_misc();
   test_indent();
+  test_cursors_list();
+  test_cursors_edit();
   test_buflist();
   test_filter();
   test_windows();

@@ -863,7 +863,9 @@ static void test_fit_cols(void) {
   check_fit("\xe6\x9c\xa8", 1, 0, 0);   /* it does not, so nothing is taken */
   check_fit("a\xe6\x9c\xa8", 2, 1, 1);  /* 'a' fits, the wide char does not */
   check_fit("a\xe6\x9c\xa8", 3, 4, 3);  /* both fit */
-  check_fit("a\xe6\x9c\xa8b", 3, 4, 3); /* and the 'b' does not */
+  /* Written as two literals on purpose: "\xa8b" reads as one hex escape, so
+   * the 'b' would vanish into it and this check would test the line above. */
+  check_fit("a\xe6\x9c\xa8" "b", 3, 4, 3); /* and the 'b' does not */
 
   /* A negative budget is treated as no room, rather than read as a huge one. */
   check_fit("abc", -1, 0, 0);

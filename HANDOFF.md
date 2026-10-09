@@ -1,7 +1,7 @@
 # Handoff
 
-Written 2026-10-08 at `f03c53e`, which is `main`. `origin/main` is still at
-`459c740`: nothing from this session has been pushed.
+Written 2026-10-08 at `c8f436e`, which is `main` and `origin/main`: everything
+from this session is pushed.
 This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
@@ -278,6 +278,13 @@ landed; the features come later.
 
 These all cost real time in the last session.
 
+- **Judge warning-cleanliness from a clean build.** An incremental `make test`
+  does not recompile what it has not touched, so a warning in a test file can
+  sit there for several green runs. One was:
+  `"a\xe6\x9c\xa8b"` is not five bytes, because `\xa8b` reads as a single
+  out-of-range hex escape — the `b` never reached the string, and the check
+  named after it was re-testing the line above. `make clean && make test`
+  before claiming the tree is warning-free.
 - **Do not rebuild `./molly` while a test run is in flight.** It invalidated
   three separate runs before I noticed. `make test` recompiles the unit binary,
   so editing anything under `src/` or `tests/` mid-run counts as rebuilding.

@@ -1,12 +1,12 @@
 # Molly — A Command-Line Text Editor
 
-> **Note:** molly is at `0.1.0-dev`. Its **interface** is molly's own — a menu
-> bar, a mouse, framed dialogs and a command palette — while its **editing**
-> features are still the ones it inherited from
-> [olly](https://github.com/locodarwin/olly): one file at a time, plain-text
-> search, no syntax highlighting and no configuration file yet. This manual
-> describes what is there today and is accurate. For what is coming, and why in
-> that order, see [`ROADMAP.md`](ROADMAP.md).
+> **Note:** molly is at `0.1.0-dev`. The four things this note used to say it
+> did not have — more than one file open at once, regular-expression search,
+> syntax highlighting and a configuration file — it now has. What is still
+> missing is on the other side of the line: no window splits, no soft wrap, no
+> multi-cursor editing, no integrated terminal and no language server. This
+> manual describes what is there today and is accurate. For what is coming, and
+> why in that order, see [`ROADMAP.md`](ROADMAP.md).
 
 Molly is a small, dependency-free text editor for the terminal, written in C.
 It provides modeless editing in the style of tools like nano — type to insert,

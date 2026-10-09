@@ -1,6 +1,7 @@
 # Handoff
 
-Written 2026-10-08 at `35cf7dc`, which is `main`.
+Written 2026-10-08 at `b9d50ae`, which is `main`. `origin/main` is still at
+`459c740`: nothing from this session has been pushed.
 This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
@@ -9,21 +10,21 @@ hour if nobody tells you.
 
 ## Where we are
 
-Phases 0 and 1 are done. Phase 2 has three features finished end to end:
-regular expressions, the configuration file, and the CUA keymap. Molly searches
-and replaces with patterns on an engine of its own; it reads
-`~/.config/molly/mollyrc` and can write it back; and its keys are CUA and
-remappable.
+Phases 0 and 1 are done. Phase 2 has five features finished end to end: regular
+expressions, the configuration file, the CUA keymap, multiple buffers, and the
+tab bar. Molly searches and replaces with patterns on an engine of its own; it
+reads `~/.config/molly/mollyrc` and can write it back; its keys are CUA and
+remappable; and it holds any number of files open at once with a tab per file.
 
 **Measured, not remembered** (re-measure before quoting these anywhere):
 
 | | |
 | --- | --- |
-| Source | 10,143 lines, `src/molly.h` plus 24 `.c` files |
-| Checks | 858 — 480 pty, 46 golden screens, 332 unit |
+| Source | 11,059 lines, `src/molly.h` plus 26 `.c` files |
+| Checks | 984 — 547 pty, 61 golden screens, 376 unit |
 | Fuzz | 4,040 cases per `make test` (40 replace, 4,000 regex, seed 42) |
 | Warnings | clean under `-Wall -Wextra -Wpedantic -Wshadow`; `regex.c` also under `-Wconversion` |
-| OOM sweep | `make test-oom` green: 126 allocations failed in turn, 114 through `die()`, 12 kept running |
+| OOM sweep | `make test-oom` green: 129 allocations failed in turn, 117 through `die()`, 12 kept running |
 | Version | still `0.1.0-dev` |
 
 The gate is `make test`: the pty suite, the golden screens, both fuzzers and
@@ -31,8 +32,8 @@ the unit binary. `make test-oom` is the allocation-failure sweep and needs
 `cc` at runtime; it is not part of `make test`. Green at the last commit:
 
 ```text
-480 passed, 0 failed
-46 passed, 0 failed
+547 passed, 0 failed
+61 passed, 0 failed
 40 cases, 0 failed (seed 42)
 4000 cases, 0 failed (seed 42)
 ```
@@ -59,7 +60,11 @@ the unit binary. `make test-oom` is the allocation-failure sweep and needs
 - A **configuration file** (`src/config.c`, 724 lines): an INI parser that warns
   and carries on, a settings table that owns every default, atomic write-back,
   and a `[keys]` section. `View ▸ Save Settings` writes it.
-- A **CUA keymap**, fully remappable, with `Shift` nameable in a chord.
+- A **CUA keymap**, fully remappable, with `Shift` and `Ctrl` nameable in a
+  chord on the keys where a terminal reports them.
+- A **buffer list** (`src/buflist.c`, 252 lines) and a **tab bar**
+  (`src/tabbar.c`, 194 lines): any number of files open at once, each with its
+  own undo history and its own remembered cursor position.
 
 ### Decisions already settled — do not reopen without asking
 
@@ -80,6 +85,15 @@ Full table in `ROADMAP.md` §7. The ones that bite soonest:
   enabled in `enable_raw_mode` and taken back afterwards if the file said off.
   Both now have one home, applied by `config_apply()` straight after
   `init_editor()`.
+- **`B` is a macro for `(*V.buf)`** — the current buffer is the current
+  *view's* buffer. That is what let nearly two hundred `B.something` references
+  survive buffers becoming plural, and it is the only definition that still
+  works once there are splits. The buffer list holds **pointers**, not structs,
+  because `struct view` holds a `struct buffer *` and an array of structs would
+  move every buffer when it grew.
+- **Closing the last buffer empties it** rather than removing it. An editor with
+  no buffer has nothing to draw, and every caller would need a null check for a
+  state the user cannot usefully be in.
 - **Syntax definitions ship for Rust, C, C++, C#, Python, AutoIt (`.au3`) and
   Markdown.** Seven, decided 2026-10-08. Two of them are what make a cached
   per-row lexer state unavoidable rather than merely correct: AutoIt's
@@ -98,26 +112,43 @@ syntax definitions, was answered on 2026-10-08 and is recorded in §7.
 
 ### Next by dependency
 
-Item 1 of the previous handoff — the config file and the CUA keymap — is done.
-The rest of that order stands, and still wants confirming before it is started.
+Items 1 and 2 of the first handoff — the config file with the CUA keymap, and
+multiple buffers with tabs — are done. The rest of that order stands, and
+still wants confirming before it is started.
 
-1. **Multiple buffers and tabs.** Mostly bookkeeping now that buffer and view
-   are separate, and a prerequisite for File→Close, the explorer and grep
-   results. Expect every "are you sure?" path to become a list.
-2. **Window splits.** Free-ish after the grid and `struct view`, with a long
-   tail of off-by-one bugs — which is what the golden harness is for.
-3. **Syntax highlighting.** The rules are cheap; the cost is a cached lexer
+1. **Window splits.** The next one up, and what the buffer work was the
+   prerequisite for. The gutter, horizontal scroll and wide-character alignment
+   all measure against `TEXT_COLS()`, which reads globals that have to become
+   per-view; `ROADMAP.md` §5 names them. Expect a long tail of off-by-one bugs,
+   which is what the golden harness is for. `B` being `(*V.buf)` already means
+   "the current buffer" follows the current view with no further work.
+2. **Syntax highlighting.** The rules are cheap; the cost is a cached lexer
    state per row and invalidating it on edit. The seven languages are settled;
-   AutoIt and Markdown are the two that force the cached state.
-4. **Shell filter.** Best value-per-line left on the list after regex. Needs a
-   timeout, a cancel key and an output cap, and it is the first place molly runs
-   something on the user's behalf.
+   AutoIt's `#cs`/`#ce` blocks and Markdown's fenced code are the two that force
+   the cached state.
+3. **Shell filter.** Best value-per-line left on the list. Needs a timeout, a
+   cancel key and an output cap, and it is the first place molly runs something
+   on the user's behalf.
+
+Two smaller things these two features left behind, either of which is a
+self-contained commit and both of which share a shape:
+
+- **A buffer-list dialog**, for picking a buffer by name instead of walking the
+  list with Ctrl-PgDn. The toolkit already has `W_LIST`, and the open dialog is
+  the pattern to copy.
+- **The quit-with-unsaved-work dialog.** `ROADMAP.md` §5 asks for a *list*, not
+  a question; what is there is a message with a count. It wants Save All /
+  Discard / Cancel on it, and it would share most of its shape with the
+  buffer-list dialog — which is why they are worth doing together.
 
 ### Found along the way, not fixed
 
 - **Tabs versus spaces is not a setting yet.** `[editor] tab width` changes how
   a tab *renders*; molly still inserts a literal tab. "Insert spaces instead" is
   an editing change, and it belongs with the indentation work.
+- **The quit warning is a message, not a list.** `ROADMAP.md` §5 asks for a list
+  of the unsaved files; what is there counts them and names one. See the dialog
+  note above.
 - **The help screen's columns truncate on bytes, not columns.** `ui.c` cuts with
   `%.*s`, so a description with a multibyte character in it can be cut mid
   character. No shipped `.help` string has one, so nothing shows it today;
@@ -194,9 +225,23 @@ landed; the features come later.
   setting may name a function to read its live value back, which is what makes
   "toggle it, then save" work. A test that parses a file and writes it straight
   back out without applying it will see the live defaults, not the parsed values.
-- **Shift is only nameable where a terminal reports it** — the function and
+- **A modifier is only nameable where a terminal reports it** — the function and
   navigation keys. `shift-a` and `ctrl-shift-l` are refused at parse time, which
   is also why the roadmap's `Ctrl-Shift-L` for repaint could not be used.
+- **`B` is a macro, so freeing a buffer that is not current borrows `V.buf`.**
+  `buf_free()` points the view at the buffer it is freeing and puts it back
+  afterwards, because the undo and snapshot frees are written against `B`. It is
+  ugly and it is deliberate: the alternative is a buffer argument on every one of
+  those functions, which the planned piece-table rewrite will replace anyway.
+  `write_recovery_all()` borrows it the same way.
+- **`die()` can run before there is a buffer.** It calls
+  `write_recovery_all()`, and an allocation failure while the buffer list is
+  being built reaches it with `V.buf` still NULL. Anything new on the `die()`
+  path needs the same guard, and `make test-oom` is what catches a missing one.
+- **The tab bar costs the text area a row**, but only with two or more buffers
+  open. A test that reads a fixed screen row for the first line of text is right
+  with one buffer and one row out with two. `chrome_rows_above()` is the one
+  place that arithmetic lives.
 - **A new setting applied in `config_apply()` can silently defeat an env test
   hook.** `undo steps` becoming a setting made `MOLLY_UNDO_STEPS` useless,
   because `config_apply()` ran after `init_editor()` and put the cap back. The
@@ -210,6 +255,12 @@ These all cost real time in the last session.
 - **Do not rebuild `./molly` while a test run is in flight.** It invalidated
   three separate runs before I noticed. `make test` recompiles the unit binary,
   so editing anything under `src/` or `tests/` mid-run counts as rebuilding.
+- **Do not let a test fixture's contents contain its own file name.** Two of my
+  tab-bar checks asked "is this name on the tab row?" against files whose text
+  was their own name, so they passed whenever the row was missing entirely.
+- **A test that saves changes the fixture for every test after it.** One
+  tab-bar check pressed Ctrl-S, and three later ones compared the file against
+  contents it no longer had. Rewrite the fixtures, or use a private copy.
 - **Read the screen before writing the assertion.** Six of my first pty checks
   failed on my guesses rather than on molly: the gutter reads `1 │ alpha` and not
   four spaces, `Sel` is on the status row and not the message row, a selection of
@@ -259,6 +310,9 @@ dialog (Tab between field, the two checkboxes and the buttons, Space toggles),
 **Alt-R** to read the query as a pattern, **Ctrl-Space** (or Alt-X) for the palette,
 **Alt-F** and friends for the menus, **F1** for help, **Ctrl-A** / **Ctrl-L** /
 **Ctrl-T** for the new CUA keys, **F3** / **Shift-F3** to walk matches, and
-**View ▸ Save Settings** then a restart to watch a setting survive.
+**View ▸ Save Settings** then a restart to watch a setting survive. For the
+newest surfaces: `molly src/*.c` for the tab bar, **Ctrl-PgUp**/**Ctrl-PgDn** and
+a click on a tab to move between files, **Ctrl-N**/**Ctrl-W** for new and close,
+**Alt-B** to hide the tabs, and a narrow terminal to see them scroll.
 `MANUAL.md` has the regular-expression syntax table, what is not supported, what
 a search matches against, and the configuration reference.

@@ -383,6 +383,16 @@ static int cmd_line_numbers(void) {
   return 0;
 }
 
+/* Filter the selection, or the whole buffer, through a shell command.
+ *
+ * CMD_KEEP_SELECTION because the dispatcher would otherwise clear the
+ * selection on the way out -- which matters on the failure path, where the
+ * whole point is that the screen is left as it was found. */
+static int cmd_filter(void) {
+  editor_filter();
+  return CMD_KEEP_SELECTION;
+}
+
 /* ---- windows -------------------------------------------------------------
  *
  * Named by where the new window lands rather than by the axis of the cut. "Split
@@ -580,6 +590,14 @@ static const struct command commands[] = {
    * "Split, new window right" and "Split, new window below" both cut to "Split,
    * new window" -- two entries that read identically, one above the other. The
    * word that distinguishes them has to be inside the budget. */
+  /* "Filter through…" rather than "Filter through command…": the longer label
+   * widened the whole Edit menu by ten columns to say what the prompt says
+   * next anyway. The help description is seventeen columns and says `sh`
+   * because that is the useful part -- it is what makes a pipeline work. */
+  {.name = "edit.filter", .label = "Filter through…",
+   .help = "Filter through sh", .group = "EDITING", .run = cmd_filter,
+   .enabled = have_rows},
+
   {.name = "window.split-right", .label = "Split right",
    .help = "New window right", .group = "WINDOWS",
    .run = cmd_window_split_right},
@@ -897,6 +915,9 @@ static const struct binding default_bindings[] = {
   {"ctrl-a", "edit.select-all"},
   {"ctrl-l", "edit.select-line"},
   {"ctrl-t", "edit.transpose"},
+  /* Alt-| for the filter, which is where Fresh puts it and the only mnemonic
+   * there could be: the character is a pipe, and the command is a pipe. */
+  {"alt-|",  "edit.filter"},
 
   {"ctrl-f", "search.find"},
   /* F3 first for the same reason F1 is: it is what gets printed. Shift-F3 is the
@@ -1273,6 +1294,7 @@ static const struct help_entry help_entries[] = {
   {NULL,         "Bksp/Ctrl-H", "Delete before", NULL},
   {NULL,         NULL,          NULL,           "edit.delete-forward"},
   {NULL,         NULL,          NULL,           "edit.transpose"},
+  {NULL,         NULL,          NULL,           "edit.filter"},
 
   {"FIND & REPLACE", NULL, NULL, "search.find"},
   {NULL,             NULL, NULL, "search.next"},

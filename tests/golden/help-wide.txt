@@ -8,16 +8,16 @@ ga║ FILES                                 EDITING                            �
 ~ ║   Ctrl-N         New buffer             Bksp/Ctrl-H    Delete before     ║
 ~ ║   Ctrl-W         Close this buffer      Del            Delete at cursor  ║
 ~ ║   Ctrl-Q         Quit                   Ctrl-T         Swap characters   ║
-~ ║   F1             This help screen                                        ║
-~ ║                                       FIND & REPLACE                     ║
-~ ║ BUFFERS                                 Ctrl-F         Find forward      ║
-~ ║   Ctrl-PgDn      Next buffer            F3             Find next         ║
-~ ║   Ctrl-PgUp      Previous buffer        Shift-F3       Find previous     ║
-~ ║                                         Alt-R          Pattern search    ║
-~ ║ MENUS                                   Ctrl-R         Find & replace    ║
-~ ║   F10            Open the menu bar                                       ║
-~ ║   Alt-letter     Open that menu       CLIPBOARD                          ║
-~ ║   Ctrl-Space     Command palette        Ctrl-C         Copy selection    ║
+~ ║   F1             This help screen       Alt-|          Filter through sh ║
+~ ║                                                                          ║
+~ ║ BUFFERS                               FIND & REPLACE                     ║
+~ ║   Ctrl-PgDn      Next buffer            Ctrl-F         Find forward      ║
+~ ║   Ctrl-PgUp      Previous buffer        F3             Find next         ║
+~ ║                                         Shift-F3       Find previous     ║
+~ ║ MENUS                                   Alt-R          Pattern search    ║
+~ ║   F10            Open the menu bar      Ctrl-R         Find & replace    ║
+~ ║   Alt-letter     Open that menu                                          ║
+~ ║   Ctrl-Space     Command palette      CLIPBOARD                          ║
 ~ ║ In prompts: Enter accepts   Esc cancels                                  ║
 ~ ║ PgUp/PgDn scroll   any other key returns                                 ║
 ~ ╚══════════════════════════════════════════════════════════════════════════╝

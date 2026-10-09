@@ -3132,6 +3132,137 @@ def _splits_body(a, b, fresh):
           "wtwo.txt" in "".join(text), False)
 
 
+def write_file(tmpdir, name, content):
+    """A fixture file, returning its path -- for checks that read the screen
+    rather than the file afterwards and so cannot use edit()."""
+    path = os.path.join(tmpdir, name)
+    with open(path, "w") as fh:
+        fh.write(content)
+    return path
+
+
+def screen_rows(out, rows=24, cols=80):
+    """What molly drew, as a list of rows."""
+    scr = Screen(rows, cols)
+    scr.feed(out)
+    return scr.text()
+
+
+def test_filter(tmpdir):
+    """The shell filter, from the keyboard.
+
+    filter_run() itself is unit-tested -- the timeout, the output cap, the
+    cancel, the deadlock and the error reporting are all reachable without a
+    terminal. What is left for here is the editing half: what gets sent, what
+    happens to the answer, and what happens to the buffer when the command
+    fails.
+    """
+    print("\nshell filter: what gets sent and what comes back")
+
+    FILT = "\x1b|"          # Alt-|
+
+    def filt(original, cmd, extra=(), name="f.txt"):
+        return edit(tmpdir, original, [FILT, cmd, "\r"] + list(extra) + [SAVE],
+                    name=name)
+
+    # Nothing selected: the whole buffer. `sort` on a file is the commonest
+    # thing anyone will do with this, so it must not need a Ctrl-A first.
+    check("with nothing selected it filters the whole buffer",
+          filt("gamma\nalpha\nbeta\n", "sort"), "alpha\nbeta\ngamma\n")
+
+    # A pipeline, because the command goes to `sh -c` rather than being split
+    # on spaces.
+    check("a pipeline works", filt("b\na\n", "sort | tr a-z A-Z"), "A\nB\n")
+
+    # The trailing newline. The selection runs to the end of the last line and
+    # does not include its terminator, so the one the command adds has to come
+    # back off -- or every filter grows a blank line at the end of the file.
+    check("filtering through cat changes nothing at all",
+          filt("one\ntwo\n", "cat"), "one\ntwo\n")
+    check("and twice through cat still changes nothing",
+          filt("one\ntwo\n", "cat", extra=[FILT, "cat", "\r"]), "one\ntwo\n")
+
+    # A selection: only those lines. Three shift-downs from the top select the
+    # first three lines up to the start of the fourth, so the fourth must come
+    # out of it unsorted and in place.
+    check("a selection filters only itself",
+          edit(tmpdir, "ccc\nbbb\naaa\nzzz\n",
+               [SH_DOWN, SH_DOWN, SH_DOWN, FILT, "sort", "\r", SAVE]),
+          "aaa\nbbb\nccc\nzzz\n")
+
+    # One line, which is the case where the output has no newline in it at all.
+    check("one line through a command is one line",
+          edit(tmpdir, "hello\nworld\n",
+               [SH_END, FILT, "tr a-z A-Z", "\r", SAVE]),
+          "HELLO\nworld\n")
+
+    # More lines out than in, and fewer: the region grows and shrinks.
+    check("a command may produce more lines than it was given",
+          filt("a b c\n", "tr ' ' '\\n'"), "a\nb\nc\n")
+    check("or fewer", filt("a\na\nb\n", "uniq"), "a\nb\n")
+
+    print("\nshell filter: when it goes wrong, the text stays")
+
+    # A non-zero exit is reported and nothing is replaced. Not even the dirty
+    # flag moves, which is the check that nothing was touched and then undone.
+    check("a failing command does not replace the text",
+          filt("keep\nme\n", "exit 4"), "keep\nme\n")
+    check("and says what the status was",
+          "exited 4" in screen_rows(run(
+              [MOLLY, write_file(tmpdir, "i.txt", "keep\n")],
+              [FILT, "exit 4", "\r"]))[23], True)
+    check("a command that does not exist says so, in its own words",
+          "command not found" in screen_rows(run(
+              [MOLLY, write_file(tmpdir, "j.txt", "keep\n")],
+              [FILT, "nosuchcommand", "\r"]))[23], True)
+    check("and the buffer is not marked modified",
+          "(modified)" in screen_rows(run(
+              [MOLLY, write_file(tmpdir, "k.txt", "keep\n")],
+              [FILT, "nosuchcommand", "\r"]))[22], False)
+
+    # Esc at the prompt cancels before anything runs.
+    check("Esc at the prompt filters nothing",
+          edit(tmpdir, "keep\n", [FILT, "sort", "\x1b", SAVE]), "keep\n")
+
+    # An empty buffer has nothing to send.
+    check("an empty buffer is not filtered",
+          "Nothing to filter" in screen_rows(run(
+              [MOLLY, os.path.join(tmpdir, "empty.txt")], [FILT]))[23], True)
+
+    print("\nshell filter: undo, and running it again")
+
+    # One undo step for the whole thing. This is what made undo groups nest:
+    # the delete was a group and the inserts were a second one.
+    check("a filter undoes as one step",
+          filt("gamma\nalpha\n", "sort", extra=[UNDO]), "gamma\nalpha\n")
+    check("and redoes as one too",
+          filt("gamma\nalpha\n", "sort", extra=[UNDO, REDO]),
+          "alpha\ngamma\n")
+
+    # Enter on an empty prompt runs the last command again, the same idiom
+    # Ctrl-F already has for repeating a search.
+    check("an empty prompt repeats the last command",
+          filt("c\na\n", "sort", extra=[FILT, "\r"]), "a\nc\n")
+    check("and with no last command it does nothing",
+          edit(tmpdir, "keep\n", [FILT, "\r", SAVE]), "keep\n")
+
+    print("\nshell filter: the limits reach it from the config file")
+
+    # [shell] timeout, which the editor reads and filter_run enforces. One
+    # second is the smallest the setting allows, which is why this is the only
+    # check here that costs real time.
+    cfg = os.path.join(tmpdir, "shellrc")
+    with open(cfg, "w") as fh:
+        fh.write("[shell]\ntimeout = 1\n")
+    out = run([MOLLY, write_file(tmpdir, "l.txt", "keep\n")],
+              [FILT, "sleep 30", "\r"], settle=3.0,
+              env={"MOLLY_CONFIG": cfg})
+    check("a command that outlives the timeout is stopped",
+          "took too long" in screen_rows(out)[23], True)
+    check("and the text is left alone",
+          screen_rows(out)[1].startswith("keep"), True)
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -3184,6 +3315,7 @@ def main():
         test_tabbar(tmpdir)
         test_syntax(tmpdir)
         test_splits(tmpdir)
+        test_filter(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

@@ -188,6 +188,7 @@ struct undoState {
   size_t redo_bytes;
   int locked;
   int active_group;  /* group id new uchanges are stamped with, 0 = none */
+  int group_depth;   /* nesting depth of undo_group_begin/end */
   int group_seq;      /* last group id issued */
 };
 
@@ -834,6 +835,7 @@ void grid_role(unsigned char role);
 void grid_shade(int x, int y, int w, int h, unsigned char role);
 
 /* input.c */
+int input_escape_pressed(void);
 int input_last_key_had_ctrl(void);
 int input_last_key_had_shift(void);
 int ui_wait_key(void);
@@ -893,6 +895,7 @@ void screen_text_mouse(const struct mouse_event *ev);
 void screen_window_area(int *x, int *y, int *w, int *h);
 void editor_draw_text_row(int y, erow *row, const struct drow *d, int sel0, int sel1);
 void editor_refresh_screen(void);
+void editor_filter(void);
 void editor_set_status_message(const char *fmt, ...);
 void screen_cleanup(void);
 void screen_force_repaint(void);

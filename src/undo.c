@@ -89,12 +89,27 @@ void clear_redo(void) {
  * entries onto the redo stack, in that same pop order, leaves the redo
  * stack ready to replay the group in its original forward order. No extra
  * bookkeeping is needed for either direction. */
+/* Groups nest, by depth rather than by id.
+ *
+ * They did not, and the shape that wanted them to is "replace this selection
+ * with that text": the delete is a group of its own, so an operation built out
+ * of selection_delete() plus a run of inserts came out as two undo steps.
+ * Pasting over a selection was already doing that, which made README's claim
+ * that a paste undoes as one step true only when nothing was selected. The
+ * shell filter is the same shape and could not have been one step at all.
+ *
+ * The depth lives on the buffer rather than in a file static because
+ * active_group does, and two records of one nesting in different places is how
+ * they come to disagree. */
 void undo_group_begin(void) {
+  if (B.undo.group_depth++ > 0) return;
   B.undo.group_seq++;
   B.undo.active_group = B.undo.group_seq;
 }
 
 void undo_group_end(void) {
+  if (B.undo.group_depth > 0) B.undo.group_depth--;
+  if (B.undo.group_depth > 0) return;
   B.undo.active_group = 0;
   /* Without this, the next typed character could coalesce into the group's
    * trailing insert (see the !B.undo.locked check in editor_insert_char),

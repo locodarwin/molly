@@ -1,55 +1,57 @@
 --- screen ---
  File  Edit  Search  View  Go  Window  Help
-alpha ┌───────────────────────┐
-beta  │  Undo          Ctrl-Z │
-gamma │  Redo          Ctrl-Y │
-~     ├───────────────────────┤
-~     │  Cut           Ctrl-X │
-~     │  Copy          Ctrl-C │
-~     │  Paste         Ctrl-V │
-~     ├───────────────────────┤
-~     │  Select all    Ctrl-A │
-~     │  Select line   Ctrl-L │
-~     └───────────────────────┘
-~
-~
+alpha ┌───────────────────────────┐
+beta  │  Undo              Ctrl-Z │
+gamma │  Redo              Ctrl-Y │
+~     ├───────────────────────────┤
+~     │  Cut               Ctrl-X │
+~     │  Copy              Ctrl-C │
+~     │  Paste             Ctrl-V │
+~     ├───────────────────────────┤
+~     │  Select all        Ctrl-A │
+~     │  Select line       Ctrl-L │
+~     ├───────────────────────────┤
+~     │  Filter through…    Alt-| │
+~     └───────────────────────────┘
 sample.txt - 3 lines                                 Ln 1, Col 1
 HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | F3 = next
 --- attrs ---
 gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-......ggggggggggggggggggggggggg
-......ggggggggggggggggggggggggggg
-......ggggggggggggggggggggggggggg
-g.....ggggggggggggggggggggggggggg
-g.....ggggggggggggggggggggggggggg
-g.....ggggggggggggggggggggggggggg
-g.....ggggggggggggggggggggggggggg
-g.....ggggggggggggggggggggggggggg
-g.....ggggggggggggggggggggggggggg
-g.....ggggggggggggggggggggggggggg
-g.....ggggggggggggggggggggggggggg
-g.......ggggggggggggggggggggggggg
-g
-RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+......ggggggggggggggggggggggggggggg
+......ggggggggggggggggggggggggggggggg
+......ggggggggggggggggggggggggggggggg
+g.....ggggggggggggggggggggggggggggggg
+g.....ggggggggggggggggggggggggggggggg
+g.....ggggggggggggggggggggggggggggggg
+g.....ggggggggggggggggggggggggggggggg
+g.....ggggggggggggggggggggggggggggggg
+g.....ggggggggggggggggggggggggggggggg
+g.....ggggggggggggggggggggggggggggggg
+g.....ggggggggggggggggggggggggggggggg
+g.....ggggggggggggggggggggggggggggggg
+g.....ggggggggggggggggggggggggggggggg
+RRRRRRRRgggggggggggggggggggggggggggggRRRRRRRRRRRRRRRRRRRRRRRRRRR
 
 --- colors ---
 1: 0-5 252/235  6-11 234/110  12-63 252/235
-2: 6-30 245/238
-3: 6-6 245/238  7-29 243/238  30-30 245/238  31-32 240/234
-4: 6-6 245/238  7-29 243/238  30-30 245/238  31-32 240/234
-5: 0-0 8/-  6-30 245/238  31-32 240/234
-6: 0-0 8/-  6-6 245/238  7-29 243/238  30-30 245/238  31-32 240/234
-7: 0-0 8/-  6-6 245/238  7-29 243/238  30-30 245/238  31-32 240/234
-8: 0-0 8/-  6-6 245/238  7-29 243/238  30-30 245/238  31-32 240/234
-9: 0-0 8/-  6-30 245/238  31-32 240/234
-10: 0-0 8/-  6-6 245/238  7-29 234/110  30-30 245/238  31-32 240/234
-11: 0-0 8/-  6-6 245/238  7-29 252/238  30-30 245/238  31-32 240/234
-12: 0-0 8/-  6-30 245/238  31-32 240/234
-13: 0-0 8/-  8-32 240/234
-14: 0-0 8/-
+2: 6-34 245/238
+3: 6-6 245/238  7-33 243/238  34-34 245/238  35-36 240/234
+4: 6-6 245/238  7-33 243/238  34-34 245/238  35-36 240/234
+5: 0-0 8/-  6-34 245/238  35-36 240/234
+6: 0-0 8/-  6-6 245/238  7-33 243/238  34-34 245/238  35-36 240/234
+7: 0-0 8/-  6-6 245/238  7-33 243/238  34-34 245/238  35-36 240/234
+8: 0-0 8/-  6-6 245/238  7-33 243/238  34-34 245/238  35-36 240/234
+9: 0-0 8/-  6-34 245/238  35-36 240/234
+10: 0-0 8/-  6-6 245/238  7-33 234/110  34-34 245/238  35-36 240/234
+11: 0-0 8/-  6-6 245/238  7-33 252/238  34-34 245/238  35-36 240/234
+12: 0-0 8/-  6-34 245/238  35-36 240/234
+13: 0-0 8/-  6-6 245/238  7-33 252/238  34-34 245/238  35-36 240/234
+14: 0-0 8/-  6-34 245/238  35-36 240/234
+15: 8-36 240/234
 --- modifiers ---
 1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u  39-39 u
 10: 9-9 u
 11: 16-16 u
+13: 9-9 u
 --- cursor ---
 row 2 col 1 visible 0

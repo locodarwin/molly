@@ -51,7 +51,9 @@ static const struct menu_item edit_items[] = {
   /* S and L, which are the two letters this menu has not already spent: Undo
    * has U, Redo R, Cut its 't', Copy C and Paste P. Transpose is not here on
    * purpose -- it is a keyboard operation, and it is in the palette. */
-  {"edit.select-all", 0}, {"edit.select-line", 7},
+  {"edit.select-all", 0}, {"edit.select-line", 7}, SEP,
+  /* F, which is the only letter in "Filter" this menu has not spent. */
+  {"edit.filter", 0},
 };
 static const struct menu_item search_items[] = {
   {"search.find", 0}, {"search.next", 5}, {"search.prev", 5},

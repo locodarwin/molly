@@ -341,7 +341,18 @@ def main():
     # Search menu.
     check("menu-edit-selected", ["\x1b[1;2C", "\x1b[1;2C", "\x1be"],
           rows=16, cols=64, files={"sample.txt": THREE_LINES})
+    # Narrower *and* shorter than the drop-down. The Edit menu needs thirteen
+    # rows -- two borders, eight items and three separators -- and this screen
+    # has twelve with the band taking one of them, so the last item and the
+    # bottom border are cut off by the grid. The snapshot is here to make that
+    # visible rather than to approve of it: see the note in HANDOFF.md, which
+    # has the arithmetic. It became reachable when the filter joined this menu;
+    # before that the Edit menu fit this screen exactly.
     check("menu-edit-narrow", ["\x1be"], rows=12, cols=28,
+          files={"sample.txt": THREE_LINES})
+    # The same menu on a screen tall enough for it, which is what the narrow
+    # width alone was meant to be testing.
+    check("menu-edit-short-cols", ["\x1be"], rows=16, cols=28,
           files={"sample.txt": THREE_LINES})
     check("menu-edit-256", ["\x1be"], rows=16, cols=64,
           files={"sample.txt": THREE_LINES},

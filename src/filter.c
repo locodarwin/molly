@@ -437,3 +437,134 @@ done:
   }
   return result;
 }
+
+/* ======================================================================== *
+ *  The editing half.
+ *
+ *  Everything above this line is text in and text out: not one function up
+ *  there mentions a buffer, a selection or a key, which is what lets every
+ *  way a command can misbehave be a unit test instead of a pty session.
+ *  Below it is the part that knows what molly is -- the prompt, what gets
+ *  sent, and what happens to the answer.
+ * ======================================================================== */
+
+/* Esc while a command is running. */
+static int filter_cancelled(void) {
+  return input_escape_pressed();
+}
+
+/* Lines in a run of bytes, counting an unterminated last line as one. */
+static int count_lines(const char *s, int len) {
+  int i, n = 0;
+  for (i = 0; i < len; i++)
+    if (s[i] == '\n') n++;
+  if (len > 0 && s[len - 1] != '\n') n++;
+  return n;
+}
+
+/* Filter the selection -- or the whole buffer, when nothing is selected --
+ * through a command, and replace it with the output.
+ *
+ * With nothing selected it selects everything first rather than taking a
+ * separate path for the whole buffer: `sort` on a file is the commonest thing
+ * anyone will do with this, and one path through selection_dup() and
+ * selection_delete() is one path to get wrong. The selection is put back
+ * exactly as it was if anything goes wrong, so a failed filter leaves the
+ * screen as it found it.
+ *
+ * The command is not run on a non-zero exit. A filter means "replace my text
+ * with this", and a command that failed has almost certainly produced nothing
+ * or half of something -- `jq` on a syntax error writes the error and exits 5.
+ * Undo would get the text back, but not losing it is better than getting it
+ * back, and the status bar can say what the command said instead. The cost is
+ * that `grep`, which exits 1 when it matches nothing, cannot be used to empty
+ * a selection; emptying a selection is what Delete is for. */
+void editor_filter(void) {
+  /* The last command, so that running it again is Enter on an empty prompt --
+   * the same idiom Ctrl-F already has for repeating a search. */
+  static char last[512];
+  struct filter_io io;
+  struct cursor saved = CUR;
+  char cmd[512];
+  char *input, *text;
+  int len = 0, result, lines_in, lines_out, i;
+  int had_newline;
+
+  if (row_count() == 0) {
+    editor_set_status_message("Nothing to filter");
+    return;
+  }
+
+  input = editor_prompt("Filter through: %s (ESC to cancel)", NULL);
+  if (input == NULL) return;
+  if (input[0] == '\0') {
+    free(input);
+    if (last[0] == '\0') return;
+    snprintf(cmd, sizeof(cmd), "%s", last);
+  } else {
+    snprintf(cmd, sizeof(cmd), "%s", input);
+    free(input);
+  }
+
+  if (!CUR.sel_active) {
+    CUR.sy = 0;
+    CUR.sx = 0;
+    CUR.cy = row_count() - 1;
+    CUR.cx = row_at(CUR.cy)->size;
+    CUR.sel_active = 1;
+  }
+  text = selection_dup(&len);
+  if (text == NULL) {
+    CUR = saved;
+    editor_set_status_message("Nothing to filter");
+    return;
+  }
+  had_newline = (len > 0 && text[len - 1] == '\n');
+  lines_in = count_lines(text, len);
+
+  /* Drawn before the wait, not after it: this message is the only thing that
+   * says the editor is busy rather than wedged, and the only thing that says
+   * Esc will get out of it. */
+  editor_set_status_message("Running %.40s ... (ESC cancels)", cmd);
+  editor_refresh_screen();
+
+  memset(&io, 0, sizeof(io));
+  io.cmd = cmd;
+  io.in = text;
+  io.inlen = len;
+  io.timeout_ms = shell_timeout_ms();
+  io.max_out = shell_output_max();
+  result = filter_run(&io, filter_cancelled);
+  free(text);
+
+  if (result != FILTER_OK) {
+    CUR = saved;
+    editor_set_status_message("%.30s: %s", cmd,
+                              io.err[0] != '\0' ? io.err : "did not run");
+    filter_free(&io);
+    return;
+  }
+
+  snprintf(last, sizeof(last), "%s", cmd);
+
+  /* A command puts a line terminator after its last line. If what it was given
+   * did not have one, the output should not either, or filtering the end of a
+   * file through `sort` quietly grows a blank line every time. */
+  if (!had_newline && io.outlen > 0 && io.out[io.outlen - 1] == '\n')
+    io.outlen--;
+  lines_out = count_lines(io.out, io.outlen);
+
+  /* One undo step for the whole thing, which is what made undo groups nest:
+   * the delete is a group of its own and the inserts were a second one. */
+  undo_group_begin();
+  selection_delete();
+  for (i = 0; i < io.outlen; i++) {
+    if (io.out[i] == '\n') editor_insert_newline();
+    else editor_insert_char((unsigned char)io.out[i]);
+  }
+  undo_group_end();
+
+  editor_set_status_message("%.30s: %d line%s in, %d out", cmd,
+                            lines_in, lines_in == 1 ? "" : "s", lines_out);
+  filter_free(&io);
+}

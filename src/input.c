@@ -251,6 +251,22 @@ static int editor_read_key(void) {
  * that repaint on a resize keep working. It is checked first so a resize is not
  * held up behind a keystroke; a key that arrives at the same moment stays in the
  * terminal's buffer and is read on the next call. */
+/* Has Esc been pressed, without waiting for it?
+ *
+ * For code that is in the middle of something long and wants to be
+ * interruptible -- the shell filter, which consults this between polls of a
+ * running command. A blocking read here would hang the editor on the keyboard
+ * instead of on the command, so the question is asked of loop_wait with no
+ * timeout, which is the one place that knows how to ask it.
+ *
+ * It consumes the keystroke it finds, Esc or not. That is deliberate: keys
+ * pressed while a command is running have nowhere to go, and queuing them to
+ * be typed into the text afterwards would be worse than dropping them. */
+int input_escape_pressed(void) {
+  if (!(loop_wait(0) & LOOP_STDIN)) return 0;
+  return editor_read_key() == '\x1b';
+}
+
 int ui_wait_key(void) {
   for (;;) {
     int ready = loop_wait(LOOP_TICK_MS);

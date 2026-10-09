@@ -451,6 +451,11 @@ void window_scroll_all(void) {
 
   for (i = 0; i < n; i++) {
     E.curview = l[i]->view;
+    /* Before the scroll, which measures the cursor against the render string
+     * this may replace. The backstop for a buffer becoming current without its
+     * name or the default having changed -- switching tabs, or a split showing
+     * a second filetype. A no-op unless the width actually moved. */
+    indent_sync();
     editor_scroll();
     syntax_ensure_view();
   }

@@ -186,7 +186,15 @@ static void apply_mouse(int v) { term_mouse_set(v); }
 static int live_mouse(void) { return term_mouse_is_on(); }
 
 static void apply_tab_width(int v) { tab_width_set(v); }
-static int live_tab_width(void) { return tab_width(); }
+/* The defaults, not what is in force for the current buffer: each of these
+ * three can be overridden per filetype, and write-back has to save what was
+ * asked for globally rather than what the open file happens to want. */
+static int live_tab_width(void) { return tab_width_default(); }
+
+static void apply_insert_spaces(int v) { indent_set_insert_spaces(v); }
+static int live_insert_spaces(void) { return indent_insert_spaces_default(); }
+static void apply_auto_indent(int v) { indent_set_auto(v); }
+static int live_auto_indent(void) { return indent_auto_default(); }
 
 static void apply_undo_steps(int v) { undo_set_max_steps(v); }
 static int live_undo_steps(void) { return undo_max_steps(); }
@@ -214,6 +222,16 @@ static struct setting settings[] = {
   {"editor", "tab width", SET_INT, 1, 16, KILO_TAB_STOP, 0,
    "columns a tab character occupies (1-16)",
    apply_tab_width, live_tab_width},
+  /* Off, because it decides what bytes a save writes: a file indented with
+   * tabs must not quietly gain spaces because molly was started. Auto-indent
+   * is on, because it changes only what a keystroke does and a new line
+   * starting at column zero inside an indented block is nobody's preference. */
+  {"editor", "insert spaces", SET_BOOL, 0, 0, 0, 0,
+   "Tab inserts spaces as far as the next tab stop, not a tab character",
+   apply_insert_spaces, live_insert_spaces},
+  {"editor", "auto indent", SET_BOOL, 0, 0, 1, 0,
+   "a new line starts at the indentation of the line above it",
+   apply_auto_indent, live_auto_indent},
   {"editor", "undo steps", SET_INT, 1, 1000000, 32768, 0,
    "how many undo steps to keep",
    apply_undo_steps, live_undo_steps},

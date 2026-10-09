@@ -2187,6 +2187,198 @@ static void test_syntax_misc(void) {
   syntax_init();
 }
 
+/* The indentation model: where one indent step gets its shape, and what the two
+ * editing operations do with it.
+ *
+ * A unit test rather than a pty session for the same reason the shell filter's
+ * limits are: what has to be proved is the resolution -- filetype over default,
+ * unset falling through -- and that is a question about three functions, not
+ * about what a terminal shows. The keystrokes get a pty test of their own. */
+static void test_indent(void) {
+  const char *err = NULL;
+
+  printf("\nindentation: where a step gets its shape\n");
+
+  window_init();
+  buflist_init();
+  syntax_init();
+
+  /* No filetype: the [editor] defaults answer everything. */
+  free(B.filename);
+  B.filename = NULL;
+  syntax_retype();
+  check("with no filetype the default width answers", tab_width(), 8);
+  check("and the default flags", indent_insert_spaces(), 0);
+  check("auto-indent is on out of the box", indent_auto(), 1);
+
+  /* A filetype that says nothing about indentation still defers. */
+  free(B.filename);
+  B.filename = xstrdup("x.c");
+  syntax_retype();
+  check("a definition with no indent rule leaves the default", tab_width(), 8);
+  check("and does not invent a flag", indent_insert_spaces(), 0);
+
+  /* ...and one that does, wins. */
+  check("a per-filetype width is accepted",
+        syntax_set_line("c", "tab width", "4", &err), 1);
+  check("and a per-filetype flag",
+        syntax_set_line("c", "insert spaces", "on", &err), 1);
+  check("and the other one",
+        syntax_set_line("c", "auto indent", "off", &err), 1);
+  syntax_retype();
+  check("the filetype's width is what is in force", tab_width(), 4);
+  check("and the filetype's flags", indent_insert_spaces(), 1);
+  check("including the one that turns a default off", indent_auto(), 0);
+
+  /* The default is still the default, which is what write-back saves: the
+   * override must not become everybody's the first time settings are saved
+   * with a .c file open. */
+  check("the global default is untouched", tab_width_default(), 8);
+  check("and so are the global flags", indent_insert_spaces_default(), 0);
+  check("both of them", indent_auto_default(), 1);
+
+  /* A file of another type is unaffected by C's override. */
+  free(B.filename);
+  B.filename = xstrdup("x.py");
+  syntax_retype();
+  check("another filetype keeps the default width", tab_width(), 8);
+  check("and the default flags", indent_insert_spaces(), 0);
+
+  printf("\nindentation: a rule that is not one\n");
+  err = NULL;
+  check("a width of zero is refused",
+        syntax_set_line("c", "tab width", "0", &err), 0);
+  check_str("and says so", err, "tab width wants 1 to 16");
+  err = NULL;
+  check("so is one past the renderer's limit",
+        syntax_set_line("c", "tab width", "17", &err), 0);
+  err = NULL;
+  check("and a flag that is not a flag",
+        syntax_set_line("c", "insert spaces", "sometimes", &err), 0);
+  check_str("with its own message", err, "insert spaces wants on or off");
+  err = NULL;
+  check("and the other flag the same",
+        syntax_set_line("c", "auto indent", "maybe", &err), 0);
+  check_str("also with its own", err, "auto indent wants on or off");
+
+  printf("\nindentation: the render follows the width\n");
+  syntax_init();
+  free(B.filename);
+  B.filename = xstrdup("x.c");
+  syntax_retype();
+  editor_insert_row(0, "\tx", 2);
+  check("a tab renders at the default width", B.row[0].rsize, 9);
+
+  /* The width a filetype names reaches rows that were already rendered. This
+   * is what the per-buffer `tabw` exists for: without the re-render the cursor
+   * arithmetic would measure against a render string built at the old width. */
+  check("giving the filetype a width is accepted",
+        syntax_set_line("c", "tab width", "4", &err), 1);
+  syntax_retype();
+  check("and the row is re-rendered at it", B.row[0].rsize, 5);
+  check("which the buffer records", B.tabw, 4);
+
+  /* Moving the default does not move a buffer whose filetype named its own. */
+  tab_width_set(2);
+  check("the default moved", tab_width_default(), 2);
+  check("but this buffer did not", B.row[0].rsize, 5);
+  check("because the filetype still answers", tab_width(), 4);
+  tab_width_set(8);
+
+  printf("\nindentation: one step at the cursor\n");
+  syntax_init();
+  free(B.filename);
+  B.filename = NULL;
+  syntax_retype();
+  while (B.numrows > 0) editor_delete_row(0);
+  editor_insert_row(0, "ab", 2);
+  CUR.cy = 0;
+  CUR.cx = 2;
+
+  /* With the flag off a step is the tab character it has always been. */
+  indent_set_insert_spaces(0);
+  indent_insert_step();
+  check("a step with the flag off is one tab", B.row[0].size, 3);
+  check("and it is a tab", B.row[0].chars[2] == '\t', 1);
+  editor_undo();
+  check("which undoes in one step", B.row[0].size, 2);
+
+  /* With it on, a step reaches the next stop rather than inserting a fixed
+   * number of spaces -- so from column 2 of an 8-column stop it is six. */
+  indent_set_insert_spaces(1);
+  CUR.cx = 2;
+  indent_insert_step();
+  check("a step with the flag on reaches the next stop", B.row[0].size, 8);
+  check_str("in spaces", B.row[0].chars, "ab      ");
+  editor_undo();
+  check("and the run undoes as one step", B.row[0].size, 2);
+
+  /* From a stop, a step is a whole width. */
+  CUR.cx = 0;
+  while (B.numrows > 0) editor_delete_row(0);
+  editor_insert_row(0, "", 0);
+  CUR.cy = 0;
+  CUR.cx = 0;
+  indent_insert_step();
+  check("from column zero it is a whole width", B.row[0].size, 8);
+  indent_set_insert_spaces(0);
+
+  printf("\nindentation: a new line under the old one\n");
+  while (B.numrows > 0) editor_delete_row(0);
+  editor_insert_row(0, "    ab", 6);
+  CUR.cy = 0;
+  CUR.cx = 6;
+  indent_set_auto(1);
+  editor_newline_and_indent();
+  check("the new row carries the indentation down", B.numrows, 2);
+  check_str("as the same whitespace", B.row[1].chars, "    ");
+  check("and the cursor sits after it", CUR.cx, 4);
+
+  /* One undo step for the whole gesture: the split and the indent together.
+   * Two steps would mean Backspace leaving the indentation of a line you had
+   * just decided not to start. */
+  editor_undo();
+  check("and the whole gesture undoes at once", B.numrows, 1);
+  check_str("leaving the row as it was", B.row[0].chars, "    ab");
+
+  /* Enter inside the leading whitespace moves the rest of it down with the
+   * text rather than copying what it split off. */
+  CUR.cy = 0;
+  CUR.cx = 2;
+  editor_newline_and_indent();
+  check_str("a split inside the indent copies only what is behind the cursor",
+            B.row[1].chars, "    ab");
+  check("and the cursor is at its own indent", CUR.cx, 2);
+  editor_undo();
+
+  /* The flag off is the old behaviour exactly. */
+  indent_set_auto(0);
+  CUR.cy = 0;
+  CUR.cx = 6;
+  editor_newline_and_indent();
+  check_str("with auto-indent off the new row is empty", B.row[1].chars, "");
+  editor_undo();
+
+  /* And the mechanism underneath never indents, whoever calls it. This is what
+   * keeps paste and the shell filter from indenting text that arrives indented
+   * already -- both split rows through editor_insert_newline(). */
+  indent_set_auto(1);
+  CUR.cy = 0;
+  CUR.cx = 6;
+  editor_insert_newline();
+  check_str("the plain split does not indent, even with the flag on",
+            B.row[1].chars, "");
+  editor_undo();
+
+  /* Leave the editor as the rest of the suite expects to find it. */
+  indent_set_auto(1);
+  indent_set_insert_spaces(0);
+  tab_width_set(8);
+  syntax_init();
+  window_init();
+  buflist_init();
+}
+
 int main(void) {
   test_loop_sources();
   test_wait_key_services_sources();
@@ -2209,6 +2401,7 @@ int main(void) {
   test_syntax_autoit();
   test_syntax_markdown();
   test_syntax_misc();
+  test_indent();
   test_buflist();
   test_filter();
   test_windows();

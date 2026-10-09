@@ -225,6 +225,12 @@ struct buffer {
   const struct syntax *syn;
   int syn_valid;
 
+  /* The tab width this buffer's render strings were built at. Per buffer and
+   * not one global, because the width can come from the filetype and two
+   * windows can be showing two filetypes in the same frame. indent_sync()
+   * reconciles it with the width in force. */
+  int tabw;
+
   /* The last-saved contents, so "modified" means really different rather than
    * merely edited, and the mtime seen then, so an overwrite can be questioned. */
   erow *saved_rows;
@@ -766,8 +772,10 @@ void editor_row_delete_n(erow *row, int at, int n);
 void editor_row_insert_char(erow *row, int at, int c);
 void editor_row_insert_n(erow *row, int at, const char *s, size_t n);
 void editor_save(void);
+void editor_rerender_all(void);
 void editor_update_row(erow *row);
 int tab_width(void);
+int tab_width_default(void);
 void tab_width_set(int n);
 void saved_snapshot_free(void);
 void saved_snapshot_take(void);
@@ -808,6 +816,17 @@ void config_cleanup(void);
 void config_defaults(void);
 void config_dump(FILE *out);
 void config_parse_text(const char *text, const char *origin);
+
+/* indent.c */
+int indent_auto(void);
+int indent_auto_default(void);
+int indent_insert_spaces(void);
+int indent_insert_spaces_default(void);
+void editor_newline_and_indent(void);
+void indent_insert_step(void);
+void indent_set_auto(int v);
+void indent_set_insert_spaces(int v);
+void indent_sync(void);
 
 /* edit.c */
 void editor_del_char(void);
@@ -947,6 +966,9 @@ const char *syntax_lang_name(int i);
 const char *syntax_name(const struct syntax *s);
 const struct syntax *syntax_for_filename(const char *path);
 int syntax_lang_count(void);
+int syntax_auto_indent(const struct syntax *s);
+int syntax_insert_spaces(const struct syntax *s);
+int syntax_tab_width(const struct syntax *s);
 int syntax_set_line(const char *lang, const char *key, const char *value,
                     const char **err);
 void syntax_cleanup(void);

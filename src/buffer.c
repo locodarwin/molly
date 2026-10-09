@@ -139,23 +139,43 @@ void write_recovery_file(void) {
 }
 
 
-/* How many columns a tab occupies. A variable rather than KILO_TAB_STOP because
- * `[editor] tab width` is configurable, and it lives here because this is where
- * the render string that depends on it is built.
+/* How many columns a tab occupies: the `[editor] tab width` default, and the
+ * width in force for the current buffer once a filetype has had its say.
  *
- * Changing it re-renders every row, so the Options dialog can change it on a live
- * buffer and see the result, rather than it taking effect at the next start. That
- * is O(bytes in the buffer) for a setting nobody changes twice -- cheaper than
- * the alternative, which is a stale `render` that disagrees with the cursor
- * arithmetic measured against the new width. */
-static int tabw = KILO_TAB_STOP;
+ * The default lives here because this is where the render string that depends
+ * on it is built. The resolution lives in indent.c, which is also what knows
+ * when a buffer's rows have to be re-rendered to match -- see indent_sync().
+ *
+ * Changing the default re-renders the current buffer, so the Options dialog can
+ * change it on a live buffer and see the result rather than it taking effect at
+ * the next start. That is O(bytes in the buffer) for a setting nobody changes
+ * twice -- cheaper than the alternative, which is a stale `render` that
+ * disagrees with the cursor arithmetic measured against the new width. */
+static int tabw_default = KILO_TAB_STOP;
 
-int tab_width(void) { return tabw; }
+int tab_width(void) {
+  int w = (V.buf != NULL) ? syntax_tab_width(B.syn) : 0;
+  return (w > 0) ? w : tabw_default;
+}
+
+/* The default on its own, for write-back: tab_width() answers for the current
+ * buffer, so saving settings with a file of a filetype that names its own width
+ * open would write that filetype's width as everything's. */
+int tab_width_default(void) { return tabw_default; }
 
 void tab_width_set(int n) {
+  if (n < 1 || n > 16 || n == tabw_default) return;
+  tabw_default = n;
+  /* Not a loop over the rows: a buffer whose filetype names its own width does
+   * not move when the default does, and indent_sync() is what knows that. */
+  indent_sync();
+}
+
+/* Re-render every row of the current buffer. Only indent_sync() wants this, and
+ * only when the width those rows were built at has stopped being the right
+ * one. */
+void editor_rerender_all(void) {
   int i;
-  if (n < 1 || n > 16 || n == tabw) return;
-  tabw = n;
   for (i = 0; i < B.numrows; i++) editor_update_row(&B.row[i]);
 }
 
@@ -171,6 +191,11 @@ void editor_update_row(erow *row) {
 
   int tabs = 0;
   int j;
+  /* The width this buffer's rows are rendered at, not the one in force: a row
+   * updated mid-frame has to agree with the rows beside it, and indent_sync()
+   * is what moves the two together. Zero only before the first sync, where the
+   * resolved width is the honest answer. */
+  int tabw = (V.buf != NULL && B.tabw > 0) ? B.tabw : tab_width();
 
   for (j = 0; j < row->size; j++)
     if (row->chars[j] == '\t') tabs++;

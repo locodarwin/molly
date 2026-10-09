@@ -109,6 +109,14 @@ struct syntax {
 
   int numbers;
   int case_sensitive;
+
+  /* Indentation, or unset. A definition that says nothing about indentation
+   * must let `[editor]` show through rather than override it with a zero, so
+   * "unset" needs a value no answer uses: 0 for a width (a real one is 1-16)
+   * and -1 for the flags. */
+  int tab_width;      /* 0 = unset */
+  int insert_spaces;  /* -1 = unset */
+  int auto_indent;    /* -1 = unset */
 };
 
 static struct syntax langs[SYN_MAX_LANGS];
@@ -160,6 +168,9 @@ static struct syntax *lang_get(const char *name) {
    * and only AutoIt wants case folding, so both defaults are the common case. */
   s->numbers = 1;
   s->case_sensitive = 1;
+  /* Indentation is unset until a line says otherwise; see struct syntax. */
+  s->insert_spaces = -1;
+  s->auto_indent = -1;
   return s;
 }
 
@@ -314,6 +325,37 @@ int syntax_set_line(const char *lang, const char *key, const char *value,
     }
     return 1;
   }
+
+  /* The three indentation rules. Bounded here and not at the setting, because
+   * `[syntax c] tab width = 99` never reaches the settings table: the section
+   * carries the language, so the value is parsed on this side. The bound is
+   * the same 1-16 the setting uses, and it is spelled out in both places
+   * rather than shared, which is two lines against a header constant for a
+   * range that is a property of the renderer either way. */
+  if (strcmp(key, "tab width") == 0) {
+    int w = atoi(value);
+    if (w < 1 || w > 16) {
+      if (err) *err = "tab width wants 1 to 16";
+      return 0;
+    }
+    s->tab_width = w;
+    return 1;
+  }
+  if (strcmp(key, "insert spaces") == 0) {
+    if (!parse_bool_word(value, &s->insert_spaces)) {
+      if (err) *err = "insert spaces wants on or off";
+      return 0;
+    }
+    return 1;
+  }
+  if (strcmp(key, "auto indent") == 0) {
+    if (!parse_bool_word(value, &s->auto_indent)) {
+      if (err) *err = "auto indent wants on or off";
+      return 0;
+    }
+    return 1;
+  }
+
   if (err) *err = "unknown syntax rule";
   return 0;
 }
@@ -501,6 +543,21 @@ const struct syntax *syntax_for_filename(const char *path) {
 
 const char *syntax_name(const struct syntax *s) {
   return (s != NULL) ? s->name : NULL;
+}
+
+/* The indentation a definition asks for, or the unset value. Three functions
+ * rather than one struct returned by value, because indent.c wants each answer
+ * at a different moment and a buffer with no filetype at all has to read as
+ * unset -- which a NULL `s` gives for free here and would not through a struct
+ * the caller has to allocate. */
+int syntax_tab_width(const struct syntax *s) {
+  return (s != NULL) ? s->tab_width : 0;
+}
+int syntax_insert_spaces(const struct syntax *s) {
+  return (s != NULL) ? s->insert_spaces : -1;
+}
+int syntax_auto_indent(const struct syntax *s) {
+  return (s != NULL) ? s->auto_indent : -1;
 }
 
 /* ---- the lexer ------------------------------------------------------------- */
@@ -852,6 +909,11 @@ void syntax_retype(void) {
   if (V.buf == NULL) return;
   B.syn = syntax_for_filename(B.filename);
   B.syn_valid = 0;
+  /* The filetype is what the tab width can hang off, so a new name can mean a
+   * new width. Here rather than at the call sites, because every one of them
+   * changes the name for the same reason. On an open this runs before the rows
+   * are read, so they are rendered at the right width the first time. */
+  indent_sync();
 }
 
 /* Make sure every row the current view is about to show has been lexed.

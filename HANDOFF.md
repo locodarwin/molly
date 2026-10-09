@@ -1,6 +1,6 @@
 # Handoff
 
-Written 2026-10-08 at `b9d50ae`, which is `main`. `origin/main` is still at
+Written 2026-10-08 at `f03c53e`, which is `main`. `origin/main` is still at
 `459c740`: nothing from this session has been pushed.
 This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
@@ -10,21 +10,23 @@ hour if nobody tells you.
 
 ## Where we are
 
-Phases 0 and 1 are done. Phase 2 has five features finished end to end: regular
-expressions, the configuration file, the CUA keymap, multiple buffers, and the
-tab bar. Molly searches and replaces with patterns on an engine of its own; it
-reads `~/.config/molly/mollyrc` and can write it back; its keys are CUA and
-remappable; and it holds any number of files open at once with a tab per file.
+Phases 0 and 1 are done. Phase 2 has six features finished end to end: regular
+expressions, the configuration file, the CUA keymap, multiple buffers, the tab
+bar, and syntax highlighting. Molly searches and replaces with patterns on an
+engine of its own; it reads `~/.config/molly/mollyrc` and can write it back; its
+keys are CUA and remappable; it holds any number of files open at once with a
+tab per file; and it colours seven languages from table-driven definitions a
+config file can add to.
 
 **Measured, not remembered** (re-measure before quoting these anywhere):
 
 | | |
 | --- | --- |
-| Source | 11,059 lines, `src/molly.h` plus 26 `.c` files |
-| Checks | 984 — 547 pty, 61 golden screens, 376 unit |
+| Source | 12,196 lines, `src/molly.h` plus 27 `.c` files |
+| Checks | 1,106 — 576 pty, 70 golden screens, 460 unit |
 | Fuzz | 4,040 cases per `make test` (40 replace, 4,000 regex, seed 42) |
 | Warnings | clean under `-Wall -Wextra -Wpedantic -Wshadow`; `regex.c` also under `-Wconversion` |
-| OOM sweep | `make test-oom` green: 129 allocations failed in turn, 117 through `die()`, 12 kept running |
+| OOM sweep | `make test-oom` green: 141 allocations failed in turn, 129 through `die()`, 12 kept running |
 | Version | still `0.1.0-dev` |
 
 The gate is `make test`: the pty suite, the golden screens, both fuzzers and
@@ -32,8 +34,8 @@ the unit binary. `make test-oom` is the allocation-failure sweep and needs
 `cc` at runtime; it is not part of `make test`. Green at the last commit:
 
 ```text
-547 passed, 0 failed
-61 passed, 0 failed
+576 passed, 0 failed
+70 passed, 0 failed
 40 cases, 0 failed (seed 42)
 4000 cases, 0 failed (seed 42)
 ```
@@ -65,6 +67,9 @@ the unit binary. `make test-oom` is the allocation-failure sweep and needs
 - A **buffer list** (`src/buflist.c`, 252 lines) and a **tab bar**
   (`src/tabbar.c`, 194 lines): any number of files open at once, each with its
   own undo history and its own remembered cursor position.
+- **Syntax highlighting** (`src/syntax.c`): a table-driven lexer for Rust, C,
+  C++, C#, Python, AutoIt and Markdown, with per-row cached lexer state and lazy
+  invalidation. `[syntax lua]` in `mollyrc` is enough to add a language.
 
 ### Decisions already settled — do not reopen without asking
 
@@ -94,6 +99,14 @@ Full table in `ROADMAP.md` §7. The ones that bite soonest:
 - **Closing the last buffer empties it** rather than removing it. An editor with
   no buffer has nothing to draw, and every caller would need a null check for a
   state the user cannot usefully be in.
+- **Highlighting is computed over `render`, not `chars`** — a role per byte of
+  the tab-expanded string, which is what the draw loop walks. That is the
+  opposite of what a *search* matches, and deliberately so: one is a display
+  question and the other is not.
+- **An unterminated string does not span rows.** A stray quote colouring the
+  rest of a file turns a typo into what looks like a disaster. Block comments,
+  Python's triple quotes and Markdown's fences do span rows; a plain string
+  never does.
 - **Syntax definitions ship for Rust, C, C++, C#, Python, AutoIt (`.au3`) and
   Markdown.** Seven, decided 2026-10-08. Two of them are what make a cached
   per-row lexer state unavoidable rather than merely correct: AutoIt's
@@ -112,26 +125,27 @@ syntax definitions, was answered on 2026-10-08 and is recorded in §7.
 
 ### Next by dependency
 
-Items 1 and 2 of the first handoff — the config file with the CUA keymap, and
-multiple buffers with tabs — are done. The rest of that order stands, and
-still wants confirming before it is started.
+Three of the first handoff's items are done: the config file with the CUA
+keymap, multiple buffers with tabs, and syntax highlighting. What is left of
+that order still wants confirming before it is started.
 
-1. **Window splits.** The next one up, and what the buffer work was the
-   prerequisite for. The gutter, horizontal scroll and wide-character alignment
-   all measure against `TEXT_COLS()`, which reads globals that have to become
-   per-view; `ROADMAP.md` §5 names them. Expect a long tail of off-by-one bugs,
-   which is what the golden harness is for. `B` being `(*V.buf)` already means
-   "the current buffer" follows the current view with no further work.
-2. **Syntax highlighting.** The rules are cheap; the cost is a cached lexer
-   state per row and invalidating it on edit. The seven languages are settled;
-   AutoIt's `#cs`/`#ce` blocks and Markdown's fenced code are the two that force
-   the cached state.
-3. **Shell filter.** Best value-per-line left on the list. Needs a timeout, a
+1. **Window splits.** The gutter, horizontal scroll and wide-character
+   alignment all measure against `TEXT_COLS()`, which reads globals that have to
+   become per-view; `ROADMAP.md` §5 names them. Expect a long tail of off-by-one
+   bugs, which is what the golden harness is for. `B` being `(*V.buf)` already
+   means "the current buffer" follows the current view with no further work,
+   and the syntax watermark is per buffer rather than per view, so it needs no
+   change either.
+2. **Shell filter.** Best value-per-line left on the list. Needs a timeout, a
    cancel key and an output cap, and it is the first place molly runs something
    on the user's behalf.
+3. **Indentation and per-filetype defaults.** Auto-indent, and tabs-versus-
+   spaces, which is not a setting yet. Filetypes now exist for it to hang off:
+   `syntax_for_filename()` is the hook, and `[syntax c] tab width = 4` would be
+   the shape.
 
-Two smaller things these two features left behind, either of which is a
-self-contained commit and both of which share a shape:
+Smaller things the last three features left behind, each a self-contained
+commit:
 
 - **A buffer-list dialog**, for picking a buffer by name instead of walking the
   list with Ctrl-PgDn. The toolkit already has `W_LIST`, and the open dialog is
@@ -140,6 +154,9 @@ self-contained commit and both of which share a shape:
   a question; what is there is a message with a count. It wants Save All /
   Discard / Cancel on it, and it would share most of its shape with the
   buffer-list dialog — which is why they are worth doing together.
+- **Italic for comments.** `ROADMAP.md` said italic would be what a comment
+  wants; the colour is doing that work instead, because italic means a fourth
+  cell modifier, the SGR for it, and `tests/screen.py` learning to read it.
 
 ### Found along the way, not fixed
 
@@ -228,6 +245,15 @@ landed; the features come later.
 - **A modifier is only nameable where a terminal reports it** — the function and
   navigation keys. `shift-a` and `ctrl-shift-l` are refused at parse time, which
   is also why the roadmap's `Ctrl-Shift-L` for repaint could not be used.
+- **A toggle has to be read where the thing is *drawn*, not only where it is
+  computed.** `V.syntax` was checked where rows are lexed but not where their
+  roles are consulted, so turning highlighting off stopped relexing and left
+  every role already computed on the screen. The same shape will come up again
+  for anything else that caches what it draws.
+- **The help screen's row cap is a silent truncation waiting to happen.** It is
+  128 now and the content is about 58 lines in one column, but when it is next
+  outgrown the screen says "help truncated" rather than stopping quietly. That
+  message existing is the fix; the number is not.
 - **`B` is a macro, so freeing a buffer that is not current borrows `V.buf`.**
   `buf_free()` points the view at the buffer it is freeing and puts it back
   afterwards, because the undo and snapshot frees are written against `B`. It is
@@ -255,6 +281,10 @@ These all cost real time in the last session.
 - **Do not rebuild `./molly` while a test run is in flight.** It invalidated
   three separate runs before I noticed. `make test` recompiles the unit binary,
   so editing anything under `src/` or `tests/` mid-run counts as rebuilding.
+- **A role-per-character sketch is easy to miscount.** Nine of the lexer tests
+  failed on the sketch's length rather than on the lexer. `syn_check()` now
+  reports a length mismatch as a miscount in the test, which is the only reason
+  the rest were quick to write.
 - **Do not let a test fixture's contents contain its own file name.** Two of my
   tab-bar checks asked "is this name on the tab row?" against files whose text
   was their own name, so they passed whenever the row was missing entirely.
@@ -313,6 +343,8 @@ dialog (Tab between field, the two checkboxes and the buttons, Space toggles),
 **View ▸ Save Settings** then a restart to watch a setting survive. For the
 newest surfaces: `molly src/*.c` for the tab bar, **Ctrl-PgUp**/**Ctrl-PgDn** and
 a click on a tab to move between files, **Ctrl-N**/**Ctrl-W** for new and close,
-**Alt-B** to hide the tabs, and a narrow terminal to see them scroll.
+**Alt-B** to hide the tabs, and a narrow terminal to see them scroll. For
+highlighting: `molly src/syntax.c`, then **Alt-Y** to turn the colour off and on,
+and `molly MANUAL.md` for the one language with no keywords in it.
 `MANUAL.md` has the regular-expression syntax table, what is not supported, what
 a search matches against, and the configuration reference.

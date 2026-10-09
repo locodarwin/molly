@@ -6,16 +6,16 @@ behaves like a GUI one: menu bar, mouse, dialogs, splits, discoverable
 everything. Molly aims at that experience in C, keeping olly's zero runtime
 dependencies and instant start.
 
-**Current state:** Phases 0 and 1 are done, and Phase 2 has seven features
+**Current state:** Phases 0 and 1 are done, and Phase 2 has eight features
 finished end to end: regular-expression search and replace on an engine of its
 own, a configuration file with a remappable keymap, the CUA keys, any number of
-files open at once, a tab bar, syntax highlighting for seven languages, and
-window splits. Molly is 13,075 lines across `src/molly.h` and twenty-eight `.c`
-files, with a menu bar, a mouse, framed dialogs that have buttons and checkboxes
-on them, a command palette and a keyboard reference generated from its own
-command table. 1,209 checks pass (605 pty, 86 golden screens, 518 unit) plus
-4,040 fuzz cases and the allocation-failure sweep, and every file is clean under
-`-Wall -Wextra -Wpedantic -Wshadow`. Still `0.1.0-dev`: the *interface* is
+files open at once, a tab bar, syntax highlighting for seven languages, window
+splits, and a shell filter. Molly is 13,787 lines across `src/molly.h` and
+twenty-nine `.c` files, with a menu bar, a mouse, framed dialogs that have
+buttons and checkboxes on them, a command palette and a keyboard reference
+generated from its own command table. 1,268 checks pass (625 pty, 87 golden
+screens, 556 unit) plus 4,040 fuzz cases and the allocation-failure sweep, and
+every file is clean under `-Wall -Wextra -Wpedantic -Wshadow`. Still `0.1.0-dev`: the *interface* is
 molly's own, and the *editing* features are mostly still olly's.
 
 **Reaching commands:** Ctrl keys *and* Alt keys, plus a menu system on Alt.
@@ -815,7 +815,7 @@ molly runs under `ulimit -v` and has to reach a clean quit.
   Tabs-versus-spaces is not a setting yet: molly inserts a literal tab, and
   "insert spaces instead" is an editing change rather than a rendering one.
 
-### Shell filter — **IN**
+### Shell filter — **done**
 
 - **For:** pipe the selection through a command, replace it with the output.
   Roughly a hundred lines for an unbounded amount of capability — `sort`, `jq`,
@@ -824,6 +824,43 @@ molly runs under `ulimit -v` and has to reach a clean quit.
 - **Against:** needs care around a command that hangs or floods output
   (timeout + cancel key + output cap), and it is the first place molly executes
   something on the user's behalf.
+- **Landed:** `Alt-|`, `Edit ▸ Filter through…`, the selection or the whole
+  buffer when nothing is selected, through `/bin/sh` so a pipeline works, as one
+  undo step. `Enter` on an empty prompt repeats the last command. `[shell]
+  timeout` and `[shell] output limit` are the two limits, in seconds and
+  kilobytes.
+- **The against was the whole job.** The feature is about forty lines; the care
+  is three hundred. All three guards asked for are there — and a fourth that was
+  not on the list and is the one that actually matters: **deadlock.** A command
+  whose output outgrows a pipe buffer while molly is still feeding it stops
+  reading, and molly's write blocks for ever. That is why `loop_add()` takes an
+  events mask now: the input pipe is a writable source and the output pipe a
+  readable one, and whichever is ready moves first. A filter that wrote all its
+  input before reading any output would have looked fine on every small file.
+- **A fifth, found by writing it:** the reaping cannot block either. A command
+  that closes its output and then sleeps is past every one of the limits — they
+  all watch the pipes — and a blocking `waitpid` on it hangs the editor. So the
+  wait is `WNOHANG`, with SIGTERM, a grace period and then SIGKILL, to the
+  process *group*, so a pipeline goes with the shell that started it.
+- **Standard error is a pipe too**, which was not on the list and is not
+  optional: a mistyped command would otherwise paint `sh: jqq: not found` into
+  the middle of the text. Its first line is kept and its control bytes defanged,
+  because "sh: jqq-does-not-exist: command not found" tells the user what to fix
+  and "exited 127" does not.
+- **A non-zero exit does not replace anything.** A filter means "replace my text
+  with this", and a command that failed has produced nothing or half of
+  something. Undo would get the text back; not losing it is better. The cost,
+  accepted: `grep`, which exits 1 when it matches nothing, cannot be used to
+  empty a selection.
+- **Undo groups nest now**, because they had to. "Replace this selection with
+  that text" is a delete group plus a run of inserts, which came out as two undo
+  steps — so a filter could not have been one, and pasting over a selection had
+  quietly been two all along, which made README's claim about it true only when
+  nothing was selected.
+- **`sh -c`, not a split-and-exec.** A user typing into a "filter through"
+  prompt expects a pipeline, a redirect and a glob to work, and the command is
+  their own with exactly their shell's privileges. Molly runs nothing the user
+  has not typed.
 
 ### Soft wrap — **IN** (structural groundwork landed)
 
@@ -925,8 +962,8 @@ and is genuinely useful. Not core, and gated on panels.
   "starts instantly" in a single commit. It is the one item on this list that
   contradicts molly's inherited premise outright.
 - **Molly's answer instead:** the command table, remappable keys, config-defined
-  syntax rules and the shell filter. That covers a large fraction of what people
-  write plugins for, with no engine.
+  syntax rules and the shell filter — all four of which now exist. That covers a
+  large fraction of what people write plugins for, with no engine.
 
 ### Also declined
 

@@ -14,8 +14,8 @@ editor is split into modules, the screen is a cell grid, every action is a named
 command reached through a keymap, and the event loop can wait on a child process
 as well as the keyboard — and the features it was groundwork *for* have started
 landing: a configuration file with a rebindable keymap, any number of files open
-at once with a tab bar, syntax highlighting for seven languages, and window
-splits. 1,209 checks pass, including golden screenshots taken before the
+at once with a tab bar, syntax highlighting for seven languages, window splits
+and a shell filter. 1,268 checks pass, including golden screenshots taken before the
 renderer was replaced and still compared against today. What comes next, and
 why, is in [`ROADMAP.md`](ROADMAP.md).
 
@@ -76,6 +76,10 @@ Everything olly does, molly does. These all work today:
   walks them and `F9` closes one. Each window has its own cursor, scroll
   position, gutter and status bar, and two windows on one file are two views of
   the same text.
+- **Filter through a shell command**: `Alt-|` pipes the selection — or the whole
+  file — through `sort`, `jq`, `fmt`, `black` or any pipeline, and replaces it
+  with the output. One undo step, with a timeout, an output cap and `Esc` to
+  cancel; a command that fails leaves your text alone.
 - **Keyboard reference built in**: press `F1` at any time.
 - **Configurable**: `~/.config/molly/mollyrc` holds the settings and the
   keymap, and `View ▸ Save Settings` writes it for you.
@@ -142,6 +146,7 @@ resize the terminal window.
 | `Ctrl-X` | Cut selection |
 | `Ctrl-V` | Paste at the cursor |
 | `Ctrl-T` | Swap the two characters at the cursor |
+| `Alt-\|` | Filter the selection (or the file) through a command |
 | `Ctrl-Z` | Undo |
 | `Ctrl-Y` | Redo |
 | `F1` | Help screen (`Ctrl-?` too) |

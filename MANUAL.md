@@ -1,11 +1,11 @@
 # Molly — A Command-Line Text Editor
 
-> **Note:** molly is at `0.1.0-dev`. The five things this note used to say it
+> **Note:** molly is at `0.1.0-dev`. The six things this note used to say it
 > did not have — more than one file open at once, regular-expression search,
-> syntax highlighting, a configuration file and window splits — it now has.
+> syntax highlighting, a configuration file, window splits and a shell filter —
+> it now has.
 > What is still missing is on the other side of the line: no soft wrap, no
-> multi-cursor editing, no shell filter, no integrated terminal and no language
-> server. This manual describes what is there today and is accurate. For what
+> multi-cursor editing, no integrated terminal and no language server. This manual describes what is there today and is accurate. For what
 > is coming, and why in that order, see [`ROADMAP.md`](ROADMAP.md).
 
 Molly is a small, dependency-free text editor for the terminal, written in C.
@@ -37,6 +37,7 @@ and a searchable label, so nothing is reachable only by knowing a secret key.
 - [Undo and Redo](#undo-and-redo)
 - [Opening Another File](#opening-another-file)
 - [Several Files at Once](#several-files-at-once)
+- [Filtering Through a Command](#filtering-through-a-command)
 - [Window Splits](#window-splits)
 - [Saving and Quitting](#saving-and-quitting)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
@@ -733,6 +734,65 @@ changes, not only the one that was on screen. See
 per buffer that has data to recover, with that buffer on screen so you can see
 which file it is asking about.
 
+## Filtering Through a Command
+
+`Alt-|` (or `Edit ▸ Filter through…`) sends text to a command's standard input
+and replaces it with the command's standard output.
+
+    Filter through: sort
+
+With text selected, that is what gets sent. With nothing selected, the whole
+file does — `sort` on a file being the commonest thing anyone wants from this,
+and having to press `Ctrl-A` first would be a tax on the common case.
+
+The command goes to `/bin/sh`, so a pipeline, a redirect and a glob all work:
+
+    Filter through: sort -u | tr a-z A-Z
+    Filter through: jq .
+    Filter through: fmt -w 72
+    Filter through: python3 -m json.tool
+    Filter through: black -q -
+
+Press `Enter` on an empty prompt to run the last command again — the same idiom
+`Ctrl-F` has for repeating a search. The whole thing is one undo step, however
+many lines it changed.
+
+### When the command fails, your text stays
+
+A command that exits non-zero does **not** replace anything. The status bar says
+what went wrong, in the command's own words where it left any:
+
+    jq .: jq: error (at <stdin>:3): Objects must consist of key:value pairs
+
+Undo would get the text back, but not losing it is better than getting it back.
+The cost is that a command whose non-zero exit is meaningful — `grep`, which
+exits 1 when it matches nothing — cannot be used to empty a selection. `Delete`
+is for that.
+
+Molly adds a line terminator back only if your text had one: filtering the end
+of a file through `sort` does not grow a blank line each time.
+
+### Three ways out of a command that misbehaves
+
+Running something on your behalf is the one thing in molly that can hang it, so
+it cannot:
+
+- **`Esc` cancels.** While a command runs the message bar says so, and `Esc`
+  stops it. The process group is sent `SIGTERM`, then `SIGKILL` if it does not
+  take the hint, so a pipeline goes with its shell.
+- **A timeout.** `[shell] timeout`, in seconds, default 10. A command still
+  running after that is stopped the same way.
+- **An output cap.** `[shell] output limit`, in kilobytes, default 8192. The cap
+  is checked as the output arrives, so a command that floods is stopped rather
+  than being held in memory in order to be rejected.
+
+In all three cases the text is left exactly as it was. A command's standard
+error never reaches the screen directly — it is captured, and its first line is
+what the message bar shows.
+
+The command is your own, typed deliberately, and runs with exactly the
+privileges your shell has. Molly does not run anything you have not typed.
+
 ## Window Splits
 
 A **buffer** is a file; a **window** is a view onto one. Until you split, there
@@ -905,6 +965,7 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     Ctrl-X   Cut the selection
     Ctrl-V   Paste the clipboard at the cursor
     Ctrl-T   Swap the two characters at the cursor
+    Alt-|    Filter the selection (or the file) through a command
     Ctrl-Z   Undo the last change
     Ctrl-Y   Redo an undone change
     F1       Show this help screen (Ctrl-? does the same)
@@ -976,6 +1037,8 @@ Names are matched on their words, so `line numbers`, `Line-Numbers` and
 | `view` | `menu bar` | `on` | Give the menu bar its row (`View ▸ Menu Bar` toggles it). |
 | `view` | `tab bar` | `on` | Show a tab per open file (`Alt-B` toggles it). Only ever drawn with two or more buffers open. |
 | `view` | `syntax` | `on` | Colour the text by filetype (`Alt-Y` toggles it). See [Syntax Highlighting](#syntax-highlighting). |
+| `shell` | `timeout` | `10` | Seconds a filter command may run before molly stops it, 1 to 3600. See [Filtering Through a Command](#filtering-through-a-command). |
+| `shell` | `output limit` | `8192` | Kilobytes of output a filter command may produce, 1 to 1048576. |
 | `input` | `mouse` | `on` | Report the mouse to molly. Turning it off hands clicks and drag-select back to the terminal for good, rather than only while `Shift` is held — see [The Mouse](#the-mouse). |
 | `search` | `match case` | `off` | Starting state of the Find dialog's **Match case** checkbox. |
 | `search` | `regular expression` | `off` | Starting state of its **Regular expression** checkbox. |

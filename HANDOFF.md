@@ -1,7 +1,7 @@
 # Handoff
 
-Written 2026-10-09 at `0a61bf3`, which is `main`. `origin/main` is at
-`6961241`: the two window-split commits are not pushed yet.
+Written 2026-10-09 at `main`'s tip. `origin/main` is at `dfbad51`: the shell
+filter is not pushed yet.
 This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
@@ -10,21 +10,22 @@ hour if nobody tells you.
 
 ## Where we are
 
-Phases 0 and 1 are done. Phase 2 has seven features finished end to end:
+Phases 0 and 1 are done. Phase 2 has eight features finished end to end:
 regular expressions, the configuration file, the CUA keymap, multiple buffers,
-the tab bar, syntax highlighting, and window splits. Molly searches and replaces
-with patterns on an engine of its own; it reads `~/.config/molly/mollyrc` and
-can write it back; its keys are CUA and remappable; it holds any number of files
-open at once with a tab per file; it colours seven languages from table-driven
-definitions a config file can add to; and it splits its screen into windows that
-each keep their own cursor, scroll and gutter.
+the tab bar, syntax highlighting, window splits, and the shell filter. Molly
+searches and replaces with patterns on an engine of its own; it reads
+`~/.config/molly/mollyrc` and can write it back; its keys are CUA and
+remappable; it holds any number of files open at once with a tab per file; it
+colours seven languages from table-driven definitions a config file can add to;
+it splits its screen into windows that each keep their own cursor, scroll and
+gutter; and it pipes text through any shell command.
 
 **Measured, not remembered** (re-measure before quoting these anywhere):
 
 | | |
 | --- | --- |
-| Source | 13,075 lines, `src/molly.h` plus 28 `.c` files |
-| Checks | 1,209 — 605 pty, 86 golden screens, 518 unit |
+| Source | 13,787 lines, `src/molly.h` plus 29 `.c` files |
+| Checks | 1,268 — 625 pty, 87 golden screens, 556 unit |
 | Fuzz | 4,040 cases per `make test` (40 replace, 4,000 regex, seed 42) |
 | Warnings | clean under `-Wall -Wextra -Wpedantic -Wshadow` from a **clean** build; `regex.c` also under `-Wconversion` |
 | OOM sweep | `make test-oom` green: 142 allocations failed in turn, 130 through `die()`, 12 kept running |
@@ -35,8 +36,8 @@ the unit binary. `make test-oom` is the allocation-failure sweep and needs
 `cc` at runtime; it is not part of `make test`. Green at the last commit:
 
 ```text
-605 passed, 0 failed
-86 passed, 0 failed
+625 passed, 0 failed
+87 passed, 0 failed
 40 cases, 0 failed (seed 42)
 4000 cases, 0 failed (seed 42)
 ```
@@ -75,6 +76,12 @@ the unit binary. `make test-oom` is the allocation-failure sweep and needs
   view. `F7`/`F8` split right and below, `F6`/`Shift-F6` walk them, `F9` closes
   one, and a Window menu holds those plus Only this window. Each window has its
   own cursor, scroll offset, gutter and status bar.
+- **A shell filter** (`src/filter.c`): `Alt-|` pipes the selection, or the whole
+  buffer, through `/bin/sh` and replaces it with the output, as one undo step.
+  The file is in two halves with a banner between them: above it is text in and
+  text out with no mention of a buffer, which is why the timeout, the output
+  cap, the cancel, the deadlock and the error reporting are unit tests rather
+  than pty sessions.
 
 ### Decisions already settled — do not reopen without asking
 
@@ -113,6 +120,16 @@ Full table in `ROADMAP.md` §7. The ones that bite soonest:
   than a column count. A list would have capped molly at one row or one column
   of windows forever; a fraction means a resize keeps the proportion and nothing
   has to remember the size it was laid out at last time.
+- **A filter that fails does not replace anything.** A non-zero exit means the
+  command produced nothing or half of something; undo would get the text back,
+  but not losing it is better than getting it back. The accepted cost is that
+  `grep`, whose exit 1 means "no matches", cannot be used to empty a selection.
+- **The shell filter goes through `sh -c`.** A user typing into a prompt expects
+  a pipeline, a redirect and a glob to work, and the command is their own with
+  exactly their shell's privileges. Molly runs nothing the user has not typed.
+- **Undo groups nest, by depth, on the buffer.** "Replace this selection with
+  that text" is a delete group plus a run of inserts; without nesting it is two
+  undo steps, which is what pasting over a selection had quietly been.
 - **Per-view or per-screen is decided by where the thing is drawn.** The gutter,
   the scroll and highlighting are per view, so `Ctrl-U` and `Alt-Y` affect the
   window you are in. The menu bar and tab bar are per screen (`E.menubar`,
@@ -147,21 +164,30 @@ syntax definitions, was answered on 2026-10-08 and is recorded in §7.
 
 ### Next by dependency
 
-Four of the first handoff's items are done: the config file with the CUA
-keymap, multiple buffers with tabs, syntax highlighting, and window splits.
-What is left of that order still wants confirming before it is started.
+Five of the first handoff's items are done: the config file with the CUA
+keymap, multiple buffers with tabs, syntax highlighting, window splits, and the
+shell filter. What is left still wants confirming before it is started.
 
-1. **Shell filter.** Best value-per-line left on the list. Needs a timeout, a
-   cancel key and an output cap, and it is the first place molly runs something
-   on the user's behalf. The event loop was built to wait on a child process and
-   nothing has used that yet, so this is the first thing to prove it.
-2. **Indentation and per-filetype defaults.** Auto-indent, and tabs-versus-
+1. **Indentation and per-filetype defaults.** Auto-indent, and tabs-versus-
    spaces, which is not a setting yet. Filetypes now exist for it to hang off:
    `syntax_for_filename()` is the hook, and `[syntax c] tab width = 4` would be
    the shape.
-3. **Multi-cursor.** Nothing is in front of it now: the cursor-list model landed
-   in Phase 0 and both of the features it was waiting on — buffers and splits —
-   are done. `ROADMAP.md` §5 has the shape.
+2. **Multi-cursor.** Nothing is in front of it: the cursor-list model landed in
+   Phase 0 and both of the features it was waiting on — buffers and splits — are
+   done. `ROADMAP.md` §5 has the shape, and warns it is the most invasive thing
+   on the list.
+3. **Soft wrap.** The display-row model landed in Phase 0, so this is three
+   functions (`drow_total`, `drow_of_cursor`, `drow_at`) rather than a refit of
+   the renderer. `ROADMAP.md` §5 is explicit about what else it touches.
+
+Two things the shell filter now makes cheap, neither of them asked for yet:
+
+- **Insert a command's output** at the cursor without sending anything — `date`,
+  `git rev-parse HEAD`. `filter_run()` already takes an empty input; what is
+  missing is a second command and a second prompt.
+- **A results panel.** `ROADMAP.md` gates grep-in-files on splits and buffers,
+  both of which exist, and the filter is how the search would be run. A window
+  showing a buffer of matches is the whole of what is left.
 
 Smaller things the last four features left behind, each a self-contained
 commit:
@@ -194,6 +220,16 @@ commit:
   `%.*s`, so a description with a multibyte character in it can be cut mid
   character. No shipped `.help` string has one, so nothing shows it today;
   `utf8_fit_cols()` is what it wants when one does.
+- **A drop-down taller than the screen loses its tail**, and the filter joining
+  the Edit menu made that reachable. A menu needs two border rows plus one per
+  item and separator: the Edit menu now needs thirteen, so on a terminal shorter
+  than fourteen rows its last item is drawn off the bottom by the grid and
+  cannot be seen — though the keyboard will still select it. Before the filter
+  the Edit menu needed eleven and fit a twelve-row screen exactly.
+  `tests/golden/menu-edit-narrow.txt` is the snapshot of it happening and says
+  so in a comment; `menu-edit-short-cols` is the same menu on a screen that
+  fits it. The fix is the shape the tab bar already has — an offset that keeps
+  the selected item visible — and it is about twenty-five lines in `menu.c`.
 - **The menu band itself still clips**, and the Window menu made it clip
   sooner. Seven titles need 43 columns; below that the tail is cut, so at 36
   columns the bar reads `File  Edit  Search  View  Go  Windo` and Help is gone
@@ -320,6 +356,24 @@ landed; the features come later.
   its output is flushed in 4K blocks and the last line printed is not where the
   segfault was — twice this sent me looking at the lexer for a bug in the buffer
   list. `stdbuf -o0 ./tests/units_test` is what tells you where it really is.
+- **A pipe nobody reads is readable for ever.** `filter.c`'s run loop leaves on
+  the first sign of trouble for this reason: the first version carried on
+  polling in a "stopping" state, and once the output cap was hit `on_readable`
+  refused to read, so `poll` reported the pipe ready every time, `loop_wait`
+  returned instantly, and a flooding command became a spin with no way out.
+  Anything that stops consuming a source must stop polling it in the same
+  breath.
+- **Reaping a child must not block.** A command that closes its output and then
+  sleeps is past every limit that watches pipes, and a blocking `waitpid` on it
+  hangs the editor. `WNOHANG`, SIGTERM, a grace period, SIGKILL — and to the
+  process *group*, or a pipeline outlives the shell that started it.
+- **SIGPIPE is ignored inside `filter_run`, not at startup.** Writing to a
+  command that has stopped reading is normal (`head -1` does it) and its default
+  action kills the writer, which is the editor. Setting it where raw mode is set
+  left the unit tests unprotected — the check for exactly that case killed the
+  test binary — so the module that writes to pipes saves, ignores and restores
+  it, and the child puts it back to the default so a command still dies of it
+  the way it would in a shell.
 - **A new setting applied in `config_apply()` can silently defeat an env test
   hook.** `undo steps` becoming a setting made `MOLLY_UNDO_STEPS` useless,
   because `config_apply()` ran after `init_editor()` and put the cap back. The
@@ -409,6 +463,11 @@ a click on a tab to move between files, **Ctrl-N**/**Ctrl-W** for new and close,
 **Alt-B** to hide the tabs, and a narrow terminal to see them scroll. For
 highlighting: `molly src/syntax.c`, then **Alt-Y** to turn the colour off and on,
 and `molly MANUAL.md` for the one language with no keywords in it.
+For the filter: `molly MANUAL.md`, then **Alt-|** and `wc -l` to see the whole
+file replaced by its own line count (and **Ctrl-Z** to get it back in one step);
+select a few lines with **Shift-Down** and send them through `sort`; try `jqq`
+to see a command that does not exist report itself; and `sleep 30` to watch the
+timeout stop it after ten seconds, or **Esc** to stop it yourself.
 For splits: `molly src/window.c`, then **F7** and **F8** to cut the screen up,
 **F6** to walk the windows, **Ctrl-U** in one of them to see that the gutter is
 the window's and not the screen's, and **F9** to put it back. `molly src/*.c`

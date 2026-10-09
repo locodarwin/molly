@@ -1,7 +1,7 @@
 # Handoff
 
-Written 2026-10-08 at `c8f436e`, which is `main` and `origin/main`: everything
-from this session is pushed.
+Written 2026-10-09 at `0a61bf3`, which is `main`. `origin/main` is at
+`6961241`: the two window-split commits are not pushed yet.
 This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
@@ -10,23 +10,24 @@ hour if nobody tells you.
 
 ## Where we are
 
-Phases 0 and 1 are done. Phase 2 has six features finished end to end: regular
-expressions, the configuration file, the CUA keymap, multiple buffers, the tab
-bar, and syntax highlighting. Molly searches and replaces with patterns on an
-engine of its own; it reads `~/.config/molly/mollyrc` and can write it back; its
-keys are CUA and remappable; it holds any number of files open at once with a
-tab per file; and it colours seven languages from table-driven definitions a
-config file can add to.
+Phases 0 and 1 are done. Phase 2 has seven features finished end to end:
+regular expressions, the configuration file, the CUA keymap, multiple buffers,
+the tab bar, syntax highlighting, and window splits. Molly searches and replaces
+with patterns on an engine of its own; it reads `~/.config/molly/mollyrc` and
+can write it back; its keys are CUA and remappable; it holds any number of files
+open at once with a tab per file; it colours seven languages from table-driven
+definitions a config file can add to; and it splits its screen into windows that
+each keep their own cursor, scroll and gutter.
 
 **Measured, not remembered** (re-measure before quoting these anywhere):
 
 | | |
 | --- | --- |
-| Source | 12,196 lines, `src/molly.h` plus 27 `.c` files |
-| Checks | 1,106 — 576 pty, 70 golden screens, 460 unit |
+| Source | 13,075 lines, `src/molly.h` plus 28 `.c` files |
+| Checks | 1,209 — 605 pty, 86 golden screens, 518 unit |
 | Fuzz | 4,040 cases per `make test` (40 replace, 4,000 regex, seed 42) |
-| Warnings | clean under `-Wall -Wextra -Wpedantic -Wshadow`; `regex.c` also under `-Wconversion` |
-| OOM sweep | `make test-oom` green: 141 allocations failed in turn, 129 through `die()`, 12 kept running |
+| Warnings | clean under `-Wall -Wextra -Wpedantic -Wshadow` from a **clean** build; `regex.c` also under `-Wconversion` |
+| OOM sweep | `make test-oom` green: 142 allocations failed in turn, 130 through `die()`, 12 kept running |
 | Version | still `0.1.0-dev` |
 
 The gate is `make test`: the pty suite, the golden screens, both fuzzers and
@@ -34,8 +35,8 @@ the unit binary. `make test-oom` is the allocation-failure sweep and needs
 `cc` at runtime; it is not part of `make test`. Green at the last commit:
 
 ```text
-576 passed, 0 failed
-70 passed, 0 failed
+605 passed, 0 failed
+86 passed, 0 failed
 40 cases, 0 failed (seed 42)
 4000 cases, 0 failed (seed 42)
 ```
@@ -70,6 +71,10 @@ the unit binary. `make test-oom` is the allocation-failure sweep and needs
 - **Syntax highlighting** (`src/syntax.c`): a table-driven lexer for Rust, C,
   C++, C#, Python, AutoIt and Markdown, with per-row cached lexer state and lazy
   invalidation. `[syntax lua]` in `mollyrc` is enough to add a language.
+- **Window splits** (`src/window.c`): a binary tree of windows, each leaf a
+  view. `F7`/`F8` split right and below, `F6`/`Shift-F6` walk them, `F9` closes
+  one, and a Window menu holds those plus Only this window. Each window has its
+  own cursor, scroll offset, gutter and status bar.
 
 ### Decisions already settled — do not reopen without asking
 
@@ -96,6 +101,23 @@ Full table in `ROADMAP.md` §7. The ones that bite soonest:
   works once there are splits. The buffer list holds **pointers**, not structs,
   because `struct view` holds a `struct buffer *` and an array of structs would
   move every buffer when it grew.
+- **`V` is a macro for `(*E.curview)`** — the same trick one level up, and the
+  reason splits touched almost nothing. Three hundred-odd `V.something`
+  references went on meaning "the window I am working in". The two macros stack:
+  `B` is the current view's buffer, so the current buffer follows the focus.
+- **Each window's last row is its own status bar.** That is what makes a split
+  readable, and it is also why one window is byte-identical to before splits
+  existed: the bar lands exactly where the screen-wide one used to be. Seventy
+  golden snapshots went on matching through the mechanism commit because of it.
+- **A window tree, not a window list**, and a split stores a **fraction** rather
+  than a column count. A list would have capped molly at one row or one column
+  of windows forever; a fraction means a resize keeps the proportion and nothing
+  has to remember the size it was laid out at last time.
+- **Per-view or per-screen is decided by where the thing is drawn.** The gutter,
+  the scroll and highlighting are per view, so `Ctrl-U` and `Alt-Y` affect the
+  window you are in. The menu bar and tab bar are per screen (`E.menubar`,
+  `E.tabbar`), because the rows they take are above every window and which
+  window has focus cannot be what decides whether they exist.
 - **Closing the last buffer empties it** rather than removing it. An editor with
   no buffer has nothing to draw, and every caller would need a null check for a
   state the user cannot usefully be in.
@@ -125,26 +147,23 @@ syntax definitions, was answered on 2026-10-08 and is recorded in §7.
 
 ### Next by dependency
 
-Three of the first handoff's items are done: the config file with the CUA
-keymap, multiple buffers with tabs, and syntax highlighting. What is left of
-that order still wants confirming before it is started.
+Four of the first handoff's items are done: the config file with the CUA
+keymap, multiple buffers with tabs, syntax highlighting, and window splits.
+What is left of that order still wants confirming before it is started.
 
-1. **Window splits.** The gutter, horizontal scroll and wide-character
-   alignment all measure against `TEXT_COLS()`, which reads globals that have to
-   become per-view; `ROADMAP.md` §5 names them. Expect a long tail of off-by-one
-   bugs, which is what the golden harness is for. `B` being `(*V.buf)` already
-   means "the current buffer" follows the current view with no further work,
-   and the syntax watermark is per buffer rather than per view, so it needs no
-   change either.
-2. **Shell filter.** Best value-per-line left on the list. Needs a timeout, a
+1. **Shell filter.** Best value-per-line left on the list. Needs a timeout, a
    cancel key and an output cap, and it is the first place molly runs something
-   on the user's behalf.
-3. **Indentation and per-filetype defaults.** Auto-indent, and tabs-versus-
+   on the user's behalf. The event loop was built to wait on a child process and
+   nothing has used that yet, so this is the first thing to prove it.
+2. **Indentation and per-filetype defaults.** Auto-indent, and tabs-versus-
    spaces, which is not a setting yet. Filetypes now exist for it to hang off:
    `syntax_for_filename()` is the hook, and `[syntax c] tab width = 4` would be
    the shape.
+3. **Multi-cursor.** Nothing is in front of it now: the cursor-list model landed
+   in Phase 0 and both of the features it was waiting on — buffers and splits —
+   are done. `ROADMAP.md` §5 has the shape.
 
-Smaller things the last three features left behind, each a self-contained
+Smaller things the last four features left behind, each a self-contained
 commit:
 
 - **A buffer-list dialog**, for picking a buffer by name instead of walking the
@@ -157,6 +176,11 @@ commit:
 - **Italic for comments.** `ROADMAP.md` said italic would be what a comment
   wants; the colour is doing that work instead, because italic means a fourth
   cell modifier, the SGR for it, and `tests/screen.py` learning to read it.
+- **Resizing a split.** `struct window` stores the cut as a fraction, so a
+  grow/shrink command is a few lines on that field; what is missing is the
+  gesture and the chord. Dragging the separator with the mouse is the one users
+  will reach for, and `window_mouse()` already ignores clicks that land on it,
+  which is where that would hook in.
 
 ### Found along the way, not fixed
 
@@ -170,10 +194,13 @@ commit:
   `%.*s`, so a description with a multibyte character in it can be cut mid
   character. No shipped `.help` string has one, so nothing shows it today;
   `utf8_fit_cols()` is what it wants when one does.
-- **The menu band itself still clips.** At 18 columns the bar reads
-  `File  Edit  Searc`. That is the grid clipping a layer rather than a layout
-  decision, and unlike the drop-downs there is no obvious right answer — the
-  titles are also the Alt mnemonics, so dropping one hides a menu.
+- **The menu band itself still clips**, and the Window menu made it clip
+  sooner. Seven titles need 43 columns; below that the tail is cut, so at 36
+  columns the bar reads `File  Edit  Search  View  Go  Windo` and Help is gone
+  from it — still reachable on Alt-H, but not visible. That is the grid clipping
+  a layer rather than a layout decision, and unlike the drop-downs there is no
+  obvious right answer: the titles are also the Alt mnemonics, so dropping one
+  hides a menu. `tests/golden/resize-gutter.txt` is the snapshot that shows it.
 - **An Options dialog has nothing to do but exist.** Write-back, the settings
   table and the live-value read-back are all in place and all exercised by
   `View ▸ Save Settings`; the dialog is now presentation over a finished
@@ -268,6 +295,31 @@ landed; the features come later.
   open. A test that reads a fixed screen row for the first line of text is right
   with one buffer and one row out with two. `chrome_rows_above()` is the one
   place that arithmetic lives.
+- **`V` is a macro too, so drawing a window that is not focused borrows it.**
+  `view_select()` makes a view current and returns the one that was; the draw
+  walk, the layout walk and the mouse handler all use it so that code written
+  against `V` — the row renderer, the gutter width, the click-to-cursor
+  arithmetic — runs for the window it should. Every caller restores what it was
+  given, on every path. Code that needs to know which window actually has the
+  keyboard has to read that *before* the walk starts, or it will be told "this
+  one" every time; `window_draw()` does exactly that.
+- **`window_init()` runs before `buflist_init()`**, because `V` is a view in the
+  tree and `buflist_init()` points that view at the first buffer. It also gives
+  the first view its cursor list, so there is no order of startup in which `V`
+  has a buffer but nowhere to put the cursor. The first view itself is
+  `state.c`'s, declared statically, so `E.curview` is non-NULL before main runs
+  and every existing null-check on `V.buf` still means what it says.
+- **The unit tests share one process, so a test that tears the editor down
+  breaks the next one.** `test_windows_buffer_closed()` ends with
+  `buflist_cleanup()` to check that no window is left pointing at a buffer, and
+  then has to stand the editor back up: `tab_width_set()` in the config tests
+  walks the current buffer's rows, and with the list gone it reads through a null
+  view buffer. The crash lands four tests later, in a file that has nothing to
+  do with it.
+- **Block-buffered stdout moves a crash.** `make test` pipes the unit binary, so
+  its output is flushed in 4K blocks and the last line printed is not where the
+  segfault was — twice this sent me looking at the lexer for a bug in the buffer
+  list. `stdbuf -o0 ./tests/units_test` is what tells you where it really is.
 - **A new setting applied in `config_apply()` can silently defeat an env test
   hook.** `undo steps` becoming a setting made `MOLLY_UNDO_STEPS` useless,
   because `config_apply()` ran after `init_editor()` and put the cap back. The
@@ -288,6 +340,10 @@ These all cost real time in the last session.
 - **Do not rebuild `./molly` while a test run is in flight.** It invalidated
   three separate runs before I noticed. `make test` recompiles the unit binary,
   so editing anything under `src/` or `tests/` mid-run counts as rebuilding.
+- **Four of my own assertions about a split screen were wrong**, which is the
+  same lesson as last time in a new place: the status bar is on row 22 of 24 and
+  not row 21, and a click past the end of a line puts the cursor *after* the
+  text. Read the screen before writing the assertion.
 - **A role-per-character sketch is easy to miscount.** Nine of the lexer tests
   failed on the sketch's length rather than on the lexer. `syn_check()` now
   reports a length mismatch as a miscount in the test, which is the only reason
@@ -353,5 +409,11 @@ a click on a tab to move between files, **Ctrl-N**/**Ctrl-W** for new and close,
 **Alt-B** to hide the tabs, and a narrow terminal to see them scroll. For
 highlighting: `molly src/syntax.c`, then **Alt-Y** to turn the colour off and on,
 and `molly MANUAL.md` for the one language with no keywords in it.
+For splits: `molly src/window.c`, then **F7** and **F8** to cut the screen up,
+**F6** to walk the windows, **Ctrl-U** in one of them to see that the gutter is
+the window's and not the screen's, and **F9** to put it back. `molly src/*.c`
+then **F7** and **Ctrl-PgDn** puts a different file in each half. Resize the
+terminal under a split to watch the cut keep its proportion, and shrink it past
+17 columns to see a split refused rather than drawn.
 `MANUAL.md` has the regular-expression syntax table, what is not supported, what
 a search matches against, and the configuration reference.

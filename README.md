@@ -9,13 +9,15 @@ model is [Fresh](https://github.com/sinelaw/fresh): a terminal editor that
 behaves like a GUI one — menu bar, mouse, dialogs, splits, discoverable everything — built on
 olly's base in C, with no runtime dependencies.
 
-**Status: early.** Molly still *does* what olly does — the foundation work is
-finished, the features are not. The editor has been split into modules, the
-screen is a cell grid, every action is a named command reached through a keymap,
-and the event loop can wait on a child process as well as the keyboard, all
-without changing a single thing on screen: 367 checks pass, including golden
-screenshots taken before the renderer was replaced. What comes next, and why, is
-in [`ROADMAP.md`](ROADMAP.md).
+**Status: early, but no longer only foundations.** The groundwork is done — the
+editor is split into modules, the screen is a cell grid, every action is a named
+command reached through a keymap, and the event loop can wait on a child process
+as well as the keyboard — and the features it was groundwork *for* have started
+landing: a configuration file with a rebindable keymap, any number of files open
+at once with a tab bar, syntax highlighting for seven languages, and window
+splits. 1,209 checks pass, including golden screenshots taken before the
+renderer was replaced and still compared against today. What comes next, and
+why, is in [`ROADMAP.md`](ROADMAP.md).
 
 [olly]: https://github.com/locodarwin/olly
 
@@ -70,6 +72,10 @@ Everything olly does, molly does. These all work today:
 - **Syntax highlighting** for Rust, C, C++, C#, Python, AutoIt and Markdown,
   table-driven, with a `[syntax <name>]` block in the config file enough to
   teach it another language.
+- **Window splits**: `F7` puts a new window to the right, `F8` below, `F6`
+  walks them and `F9` closes one. Each window has its own cursor, scroll
+  position, gutter and status bar, and two windows on one file are two views of
+  the same text.
 - **Keyboard reference built in**: press `F1` at any time.
 - **Configurable**: `~/.config/molly/mollyrc` holds the settings and the
   keymap, and `View ▸ Save Settings` writes it for you.
@@ -122,6 +128,9 @@ resize the terminal window.
 | `Ctrl-N` | New buffer |
 | `Ctrl-W` | Close this buffer |
 | `Ctrl-PgDn` / `Ctrl-PgUp` | Next / previous buffer |
+| `F7` / `F8` | Split, new window right / below |
+| `F6` / `Shift-F6` | Next / previous window |
+| `F9` | Close this window |
 | `Ctrl-Q` | Quit (asks several times with unsaved changes) |
 | `Ctrl-F` | Search forward |
 | `F3` / `Shift-F3` | Find next / previous match (`Ctrl-N` / `Ctrl-P` too) |

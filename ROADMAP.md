@@ -6,14 +6,15 @@ behaves like a GUI one: menu bar, mouse, dialogs, splits, discoverable
 everything. Molly aims at that experience in C, keeping olly's zero runtime
 dependencies and instant start.
 
-**Current state:** Phases 0 and 1 are done, and Phase 2 has started: molly
-searches and replaces with regular expressions, on an engine of its own, from a
-Find dialog. Molly is
-8,843 lines across `src/molly.h` and twenty-three `.c` files, with a menu bar, a
-mouse, framed dialogs that have buttons and checkboxes on them, a command palette
-and a keyboard reference generated from its own command table. 658 checks pass (415
-pty, 36 golden screens, 207 unit) plus 4,040 fuzz cases and the allocation-failure
-sweep, and every file is clean under
+**Current state:** Phases 0 and 1 are done, and Phase 2 has seven features
+finished end to end: regular-expression search and replace on an engine of its
+own, a configuration file with a remappable keymap, the CUA keys, any number of
+files open at once, a tab bar, syntax highlighting for seven languages, and
+window splits. Molly is 13,075 lines across `src/molly.h` and twenty-eight `.c`
+files, with a menu bar, a mouse, framed dialogs that have buttons and checkboxes
+on them, a command palette and a keyboard reference generated from its own
+command table. 1,209 checks pass (605 pty, 86 golden screens, 518 unit) plus
+4,040 fuzz cases and the allocation-failure sweep, and every file is clean under
 `-Wall -Wextra -Wpedantic -Wshadow`. Still `0.1.0-dev`: the *interface* is
 molly's own, and the *editing* features are mostly still olly's.
 
@@ -718,7 +719,7 @@ molly runs under `ulimit -v` and has to reach a clean quit.
   walking the list, which is also what the quit-with-unsaved-work dialog wants
   to be built on.
 
-### Window splits — **IN**
+### Window splits — **done**
 
 - **For:** the other half of what a GUI-like editor means. Free-ish after the
   cell grid and `struct view`.
@@ -726,6 +727,40 @@ molly runs under `ulimit -v` and has to reach a clean quit.
   measure against `TEXT_COLS()` (molly.c:112), which reads globals; every one of
   those needs to become per-view. Expect a long tail of off-by-one bugs, which
   is exactly what the golden-screen harness is for.
+- **Landed:** a binary tree of windows, `F7`/`F8` to split right and below,
+  `F6`/`Shift-F6` to walk them, `F9` to close one, a Window menu, and a status
+  bar per window. Each window keeps its own cursor, scroll offset and gutter, so
+  two windows on one buffer are two views of one text.
+- **The against was wrong about which globals.** All three things this section
+  named measure against `TEXT_COLS()`, which reads `V` — and `V` became a macro
+  for the focused view, exactly as `B` had become a macro for the current view's
+  buffer, so all three were right without being touched. What was actually
+  per-view state in disguise was not on the list: view.c kept "has the cursor
+  moved since the last scroll" in two file-scope statics, so scrolling one
+  window would have told the next one its own cursor had moved. The menu and tab
+  bar flags were the opposite error — fields on the view, although the rows they
+  take are above every window, so which window had focus would have decided
+  whether the chrome existed at all.
+- **The long tail of off-by-one was real and the goldens caught it**, which is
+  what this section said they were for. Sixteen new snapshots: both colour
+  depths, the gutter in half a window, wide characters in half a window, one
+  file per window under a tab bar, a narrow screen, one too narrow to split, and
+  a resize.
+- **One window is byte-identical to before splits existed.** That is a design
+  decision rather than a happy accident: each window's last row is its own
+  status bar, so with one window the bar lands exactly where the screen-wide one
+  used to be and all seventy existing snapshots went on matching through the
+  mechanism commit.
+- **A tree, not a list.** A flat list of windows would have been less code and
+  would have capped molly at one row or one column of them forever; splitting
+  right and then below is a node whose second child is a node, and no case in
+  the layout has to know how deep it is. Splits store a *fraction* rather than a
+  column count, so a resize keeps the proportion and nothing has to remember the
+  size it was laid out at last time.
+- **Not done:** dragging a split to resize it, and a grow/shrink command. The
+  fraction is the field either would set; what is missing is the gesture and the
+  chord. Named windows, window-local filetypes and a window list are not
+  planned.
 
 ### Syntax highlighting — **done**
 
@@ -820,14 +855,16 @@ molly runs under `ulimit -v` and has to reach a clean quit.
   before each frame regardless of which edit path ran, and `cursors_collapse()`
   drops the extras when positions stop meaning anything (loading another file).
   The feature itself — Ctrl-D, N simultaneous edits, undo collapsing them into
-  one step — comes after buffers and splits. Block selection follows it.
+  one step — came after buffers and splits, and both of those have landed, so
+  nothing is in front of it now. Block selection follows it.
 
 ### Search in files / grep — **LATER**
 
 - **For:** big win; can shell out to `grep` or `git grep` for zero dependency.
-- **Against:** needs a results panel, so it is gated on splits and buffers.
-  Shelling out means depending on the host's tools; implementing it internally
-  means a recursive walk plus ignore-file handling.
+- **Against:** needs a results panel, so it was gated on splits and buffers —
+  both of which now exist, and a results panel is a window showing a buffer of
+  matches. Shelling out means depending on the host's tools; implementing it
+  internally means a recursive walk plus ignore-file handling.
 
 ### Keyboard macros — **LATER, cheap**
 
@@ -998,7 +1035,7 @@ are structural to the menu bar.
 | --- | --- |
 | Command access | Ctrl **and** Alt keys, plus a menu system on Alt |
 | Soft wrap | **In.** Display-row view model landed |
-| Multi-cursor | **In.** Cursor-list model landed; feature after buffers and splits |
+| Multi-cursor | **In.** Cursor-list model landed; buffers and splits now have too, so it is next of the three |
 | LSP | **In.** Forces an async event loop and overlay widgets into Phase 0 |
 | Integrated terminal | **In**, late — needs panels first |
 | Big files | **In.** Buffer rewrite is planned, not optional |

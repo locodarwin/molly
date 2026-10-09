@@ -1,12 +1,12 @@
 # Molly — A Command-Line Text Editor
 
-> **Note:** molly is at `0.1.0-dev`. The four things this note used to say it
+> **Note:** molly is at `0.1.0-dev`. The five things this note used to say it
 > did not have — more than one file open at once, regular-expression search,
-> syntax highlighting and a configuration file — it now has. What is still
-> missing is on the other side of the line: no window splits, no soft wrap, no
-> multi-cursor editing, no integrated terminal and no language server. This
-> manual describes what is there today and is accurate. For what is coming, and
-> why in that order, see [`ROADMAP.md`](ROADMAP.md).
+> syntax highlighting, a configuration file and window splits — it now has.
+> What is still missing is on the other side of the line: no soft wrap, no
+> multi-cursor editing, no shell filter, no integrated terminal and no language
+> server. This manual describes what is there today and is accurate. For what
+> is coming, and why in that order, see [`ROADMAP.md`](ROADMAP.md).
 
 Molly is a small, dependency-free text editor for the terminal, written in C.
 It provides modeless editing in the style of tools like nano — type to insert,
@@ -37,6 +37,7 @@ and a searchable label, so nothing is reachable only by knowing a secret key.
 - [Undo and Redo](#undo-and-redo)
 - [Opening Another File](#opening-another-file)
 - [Several Files at Once](#several-files-at-once)
+- [Window Splits](#window-splits)
 - [Saving and Quitting](#saving-and-quitting)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [Configuration](#configuration)
@@ -732,6 +733,77 @@ changes, not only the one that was on screen. See
 per buffer that has data to recover, with that buffer on screen so you can see
 which file it is asking about.
 
+## Window Splits
+
+A **buffer** is a file; a **window** is a view onto one. Until you split, there
+is one window and the distinction does not come up. Split, and you have two
+places to look — at two files, or at two parts of the same one.
+
+    F7            Split, new window to the right
+    F8            Split, new window below
+    F6            Next window
+    Shift-F6      Previous window
+    F9            Close this window
+
+`Window ▸ Split right`, `Window ▸ Split below` and the rest do the same, plus
+`Window ▸ Only this window`, which closes all but the one you are in. The
+command palette reaches all six by name.
+
+The new window starts out showing the same file at the same place, with the
+keyboard in it. From there the two diverge: each window has its own cursor, its
+own scroll position and its own line-number gutter, so `Ctrl-U` turns the gutter
+on in the window you are in and leaves the other alone.
+
+### Which window has the keyboard
+
+Every window has its own status bar on its last row — the file's name, its
+length, whether it is modified, and that window's own `Ln`/`Col`. The window
+with the keyboard has the bright bar; the others are dimmed. With one window the
+bar is where it always was, at the bottom of the screen above the message line.
+
+Side-by-side windows are divided by a `│`. Stacked windows need no divider: the
+upper window's status bar is already a line across the screen.
+
+Click anywhere in a window — including on its status bar — to move the keyboard
+there. Clicking in the text moves that window's cursor as well; clicking the
+status bar only moves the keyboard.
+
+### Two windows on one file
+
+Splitting without switching files gives you two views of one buffer. It is one
+file: type in either window and the text changes in both, because the text
+belongs to the buffer and only the cursor and the scroll belong to the window.
+Undo is the buffer's too, so `Ctrl-Z` in either window undoes the same edit.
+
+To put a different file in a window, split and then switch buffers
+(`Ctrl-PgDn`, or click a tab):
+
+     one.c  two.c
+    #include <stdio.h>     │static int count;
+    int main(void) {       │
+    …                      │void bump(void) {
+    [1/2] one.c - 40 lines │[2/2] two.c - 12 lines
+
+### Windows and buffers are closed separately
+
+`F9` closes the **window**; the file stays open and is still on the tab bar.
+`Ctrl-W` closes the **buffer**; any window showing it moves to another file
+rather than closing. Closing the last window is refused — molly always has one,
+the same way it always has one buffer.
+
+Closing a window gives its space back to the window it was split from, so
+closing the second of two restores exactly the screen you had before the split.
+
+### When there is no room
+
+A window needs at least one row of text plus its status bar, and eight columns.
+A split that would leave less than that is refused with a message saying which
+way it would not fit, rather than made and left for you to undo. Shrinking the
+terminal under a split you already have shares out what is left in the same
+proportions, and a window squeezed below the minimum is left blank until there
+is room for it again — the window you are typing in stays legible, which is
+what matters while you are dragging a corner.
+
 ## Saving and Quitting
 
 | Key | Action |
@@ -808,13 +880,17 @@ After saving, the undo history is kept, but the dirty flag is cleared.
 ## Keyboard Shortcuts
 
     F10      Open the menu bar
-    Alt-F/E/S/V/G/H  Open the File/Edit/Search/View/Go/Help menu
+    Alt-F/E/S/V/G/W/H  Open the File/Edit/Search/View/Go/Window/Help menu
     Ctrl-Space  Command palette (Alt-X does the same)
     Ctrl-S   Save file
     Ctrl-O   Open a file (directory browser)
     Ctrl-N   New buffer
     Ctrl-W   Close this buffer
     Ctrl-PgDn / Ctrl-PgUp  Next / previous buffer
+    F7       Split, new window to the right
+    F8       Split, new window below
+    F6 / Shift-F6  Next / previous window
+    F9       Close this window
     Ctrl-Q   Quit (asks several times if there are unsaved changes)
     Ctrl-F   Open the Find dialog (case-insensitive by default)
     F3       Find next instance of the search

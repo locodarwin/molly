@@ -262,6 +262,7 @@ struct view {
   int linenum;             /* line-number gutter shown (Ctrl-U toggles it) */
   int menubar;             /* menu bar occupies a row (View > Menu Bar toggles it) */
   int tabbar;              /* tab bar wanted; it only takes a row with 2+ buffers */
+  int syntax;              /* colour the text by filetype */
   int gutter_w;            /* gutter width in columns for this frame, 0 when off */
 };
 

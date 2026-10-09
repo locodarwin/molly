@@ -1,0 +1,44 @@
+--- screen ---
+ File  Edit  Search  View  Go  Help
+# Title
+
+Some *emphasis* and `code`.
+
+```c
+# not a heading
+```
+
+Done.
+~
+~
+demo.md - 9 lines [markdown]                     Ln 1, Col 1
+HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | F3 = n
+--- attrs ---
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+ggggggg
+
+.....gggggggggg.....gggggg
+
+gggg
+ggggggggggggggg
+ggg
+
+
+g
+g
+RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-59 7/0
+2: 0-6 12/-
+4: 5-14 14/-  20-25 3/-
+6: 0-3 3/-
+7: 0-14 3/-
+8: 0-2 3/-
+11: 0-0 8/-
+12: 0-0 8/-
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u
+2: 0-6 b
+--- cursor ---
+row 2 col 1 visible 1

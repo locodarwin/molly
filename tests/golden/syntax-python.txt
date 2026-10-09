@@ -1,0 +1,46 @@
+--- screen ---
+ File  Edit  Search  View  Go  Help
+import os
+
+def f(n):
+    """doc
+    string"""
+    return n * 2  # twice
+~
+~
+~
+~
+~
+demo.py - 6 lines [python]                       Ln 1, Col 1
+HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | F3 = n
+--- attrs ---
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggg
+
+ggg
+....gggggg
+ggggggggggggg
+....gggggg.....g..ggggggg
+g
+g
+g
+g
+g
+RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-59 7/0
+2: 0-5 12/-
+4: 0-2 12/-
+5: 4-9 3/-
+6: 0-12 3/-
+7: 4-9 12/-  15-15 11/-  18-24 8/-
+8: 0-0 8/-
+9: 0-0 8/-
+10: 0-0 8/-
+11: 0-0 8/-
+12: 0-0 8/-
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u
+--- cursor ---
+row 2 col 1 visible 1

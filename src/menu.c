@@ -59,7 +59,9 @@ static const struct menu_item search_items[] = {
 };
 static const struct menu_item view_items[] = {
   {"app.palette", 0}, SEP,
-  {"view.line-numbers", 0}, {"view.menu-bar", 0}, {"view.tab-bar", 0},   /* T, which nothing else in this menu uses */
+  {"view.line-numbers", 0}, {"view.menu-bar", 0}, {"view.tab-bar", 0},
+  /* Y of "Syntax", since S is Save settings further down this menu. */
+  {"view.syntax", 1},
   SEP, {"view.repaint", 0},
   SEP, {"app.save-settings", 0},
 };

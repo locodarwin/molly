@@ -24,6 +24,7 @@ and a searchable label, so nothing is reachable only by knowing a secret key.
 - [The Command Palette](#the-command-palette)
 - [The Mouse](#the-mouse)
 - [Colors](#colors)
+- [Syntax Highlighting](#syntax-highlighting)
 - [Prompts](#prompts)
 - [Editing](#editing)
 - [Moving Around](#moving-around)
@@ -230,6 +231,96 @@ told which it is.
 If a dialog looks wrong, check what your terminal claims:
 
     echo "TERM=$TERM COLORTERM=$COLORTERM"
+
+## Syntax Highlighting
+
+Molly colours the text according to the file's type, which it works out from the
+extension. Seven are built in:
+
+| Language | Extensions |
+| --- | --- |
+| C | `.c` `.h` |
+| C++ | `.cc` `.cpp` `.cxx` `.hh` `.hpp` `.hxx` `.ipp` |
+| C# | `.cs` |
+| Rust | `.rs` |
+| Python | `.py` `.pyw` `.pyi` |
+| AutoIt | `.au3` |
+| Markdown | `.md` `.markdown` `.mdown` `.mkd` |
+
+`.h` is treated as C rather than C++, which is a judgement rather than a fact
+— it is the one extension both claim.
+
+When molly recognises a file, the status bar names the language in brackets:
+
+    [2/3] parser.c - 410 lines [c] (modified)
+
+That is there to answer the question the colours raise. A file with no colour is
+either one molly has no definition for or one you have turned highlighting off
+for, and the bracket tells you which.
+
+`Alt-Y`, `View ▸ Syntax highlighting`, or `syntax = off` in the `[view]` section
+of your [configuration](#configuration) file turn it off. A selection always
+wins over the colouring: reverse video on top of a keyword's own colour is
+unreadable, and what you are being told at that moment is that the text is
+selected.
+
+### Teaching molly a language
+
+A `[syntax <name>]` section in your [configuration](#configuration) file defines
+a language, or adds to one molly already knows. Molly's own definitions are
+written with exactly these rules, so there is nothing a built-in can do that
+yours cannot.
+
+```ini
+[syntax lua]
+extensions = lua
+line comment = --
+block comment = --[[ ]]
+strings = " '
+string escape = \
+keywords = function end if then else for while do local return
+types = string table math io pairs ipairs tostring true false nil
+```
+
+| Rule | What it takes |
+| --- | --- |
+| `extensions` | Extensions, without dots, that pick this language |
+| `keywords` | Words coloured as keywords |
+| `types` | Words coloured as type names — the second word class |
+| `line comment` | One or more markers that start a comment to the end of the line |
+| `block comment` | Pairs of open and close markers, for comments that span rows |
+| `strings` | Single characters that delimit a string |
+| `string escape` | The character that escapes a delimiter inside a string |
+| `multiline strings` | Pairs, for string regions that span rows (Python's `"""`) |
+| `numbers` | `on` or `off` — whether number literals are coloured |
+| `preproc` | A line-leading marker whose whole line is a directive |
+| `case sensitive` | `off` makes keyword matching ignore case (AutoIt) |
+| `heading` | A line-leading marker whose whole line is a heading (Markdown) |
+| `fence` | Pairs that open and close a verbatim region (Markdown's triple backtick) |
+| `code span` | A delimiter for inline verbatim text (Markdown's backtick) |
+| `emphasis` | Single characters that delimit emphasis (Markdown's `*` and `_`) |
+
+A section naming a language molly ships adds to it, so
+
+```ini
+[syntax c]
+types = mytype_t othertype_t
+```
+
+colours two more words in every `.c` file without disturbing anything else. A
+rule molly does not recognise is a warning naming the line, as any other
+configuration mistake is.
+
+### What it deliberately does not do
+
+- **An unterminated string stops at the end of its row.** A stray quote should
+  not colour the rest of the file as a string — that turns a typo into what
+  looks like a disaster.
+- **It is not a parser.** There is no language in which molly knows that a name
+  is a function rather than a variable, because that needs a grammar per
+  language rather than a table of rules.
+- **Only the extension picks the language.** A `#!/usr/bin/env python` line on
+  an extensionless script is not read.
 
 ## Prompts
 
@@ -745,6 +836,7 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     Ctrl-U   Toggle the line-number gutter
     Alt-M    Toggle the menu bar
     Alt-B    Toggle the tab bar
+    Alt-Y    Toggle syntax highlighting
     Tab      In a dialog: move to the next field, checkbox or button
     Shift-Tab  In a dialog: move back to the previous one
     Space    In a dialog: tick the checkbox or press the button with the keyboard
@@ -807,6 +899,7 @@ Names are matched on their words, so `line numbers`, `Line-Numbers` and
 | `view` | `line numbers` | `off` | Show the line-number gutter (`Ctrl-U` toggles it). |
 | `view` | `menu bar` | `on` | Give the menu bar its row (`View ▸ Menu Bar` toggles it). |
 | `view` | `tab bar` | `on` | Show a tab per open file (`Alt-B` toggles it). Only ever drawn with two or more buffers open. |
+| `view` | `syntax` | `on` | Colour the text by filetype (`Alt-Y` toggles it). See [Syntax Highlighting](#syntax-highlighting). |
 | `input` | `mouse` | `on` | Report the mouse to molly. Turning it off hands clicks and drag-select back to the terminal for good, rather than only while `Shift` is held — see [The Mouse](#the-mouse). |
 | `search` | `match case` | `off` | Starting state of the Find dialog's **Match case** checkbox. |
 | `search` | `regular expression` | `off` | Starting state of its **Regular expression** checkbox. |

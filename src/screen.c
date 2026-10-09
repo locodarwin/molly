@@ -137,7 +137,13 @@ void editor_draw_text_row(int y, erow *row, const struct drow *d,
   while (i < rs && vis < text_cols) {
     int nb, w = utf8_char_cols(r, rs, i, &nb);
     if (vis + w > text_cols) break;  /* would overflow the right edge */
-    grid_role((has_sel && dcol >= sel0 && dcol < sel1) ? ROLE_SELECTION : ROLE_TEXT);
+    /* A selection outranks the syntax colouring rather than blending with it:
+     * reverse video over a keyword's own colour is unreadable, and what the
+     * user is being told at that moment is "this is selected". Without a
+     * filetype, or with highlighting off, syntax_role_at returns ROLE_TEXT and
+     * this is the line it always was. */
+    grid_role((has_sel && dcol >= sel0 && dcol < sel1) ? ROLE_SELECTION
+                                                       : syntax_role_at(row, i));
     grid_put_char(y, x, r + i, nb, w);
     x += w;    /* a combining mark has w == 0 and joins the cell to its left */
     vis += w;
@@ -195,8 +201,15 @@ static void draw_status_bar(const struct layer *self) {
   char which[24] = "";
   if (buf_count() > 1)
     snprintf(which, sizeof(which), "[%d/%d] ", buf_current() + 1, buf_count());
-  int len = snprintf(status, sizeof(status), "%s%.20s - %d lines %s",
-      which, B.filename ? B.filename : "[No Name]", row_count(),
+  /* The filetype, where molly recognised one. It earns its place on a crowded
+   * bar by answering the question the colours raise: when a file is not
+   * highlighted, the useful thing to know is whether molly failed to recognise
+   * it or highlighting is off. */
+  char lang[24] = "";
+  if (V.syntax && B.syn != NULL)
+    snprintf(lang, sizeof(lang), " [%s]", syntax_name(B.syn));
+  int len = snprintf(status, sizeof(status), "%s%.20s - %d lines%s %s",
+      which, B.filename ? B.filename : "[No Name]", row_count(), lang,
       B.dirty ? "(modified)" : "");
   /* The character column: the Nth character in the line, not CUR.rx's
    * tab-stop- and glyph-width-aware display column, which jumps around
@@ -391,6 +404,22 @@ void screen_init_layers(void) {
 
 /* Give the chrome its bounds for this frame. One place does the row arithmetic
  * that the three draw functions each used to do for themselves. */
+/* Make sure every row about to be drawn has been lexed.
+ *
+ * Here rather than inside the draw loop because it allocates and because it has
+ * to run for the whole visible range before any of it is painted: a row's
+ * colouring depends on the row above, so lexing one row at a time as the loop
+ * reached it would be the same work in a worse order. One row past the bottom,
+ * because `syn_out` of the last visible row is what the next scroll step starts
+ * from. */
+static void syntax_sync_view(void) {
+  int last;
+  if (!V.syntax) return;
+  last = V.drowoff + V.screenrows;
+  if (last >= row_count()) last = row_count() - 1;
+  if (last >= 0) syntax_ensure(last);
+}
+
 static void screen_layout(void) {
   int top = chrome_rows_above();
   int text_h = V.screenrows;
@@ -432,6 +461,10 @@ void editor_refresh_screen(void) {
     grid_invalidate();
     force_full = 0;
   }
+
+  /* After editor_scroll, which is what settles the visible range, and before
+   * anything is painted. */
+  syntax_sync_view();
 
   screen_layout();
   grid_begin();

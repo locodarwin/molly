@@ -1,0 +1,47 @@
+--- screen ---
+ File  Edit  Search  View  Go  Help
+/*int a;
+int b;
+int c;
+~
+~
+~
+~
+~
+~
+~
+~
+multi.c - 3 lines [c] (modified)                 Ln 1, Col 3
+HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | F3 = n
+--- attrs ---
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggg
+gggggg
+gggggg
+g
+g
+g
+g
+g
+g
+g
+g
+RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-59 7/0
+2: 0-7 8/-
+3: 0-5 8/-
+4: 0-5 8/-
+5: 0-0 8/-
+6: 0-0 8/-
+7: 0-0 8/-
+8: 0-0 8/-
+9: 0-0 8/-
+10: 0-0 8/-
+11: 0-0 8/-
+12: 0-0 8/-
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u
+--- cursor ---
+row 2 col 3 visible 1

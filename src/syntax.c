@@ -837,7 +837,11 @@ void syntax_retype(void) {
  * special case for highlighting being off, which is why this is a function here
  * rather than an `if` there. */
 unsigned char syntax_role_at(const erow *row, int i) {
-  if (V.buf == NULL || B.syn == NULL) return ROLE_TEXT;
+  /* `V.syntax` is read here and not only in syntax_sync_view: turning
+   * highlighting off has to stop the colours being *drawn*, and rows lexed
+   * while it was on keep their roles until they are next edited. Checking only
+   * at the lexing end left the text coloured after the toggle. */
+  if (V.buf == NULL || !V.syntax || B.syn == NULL) return ROLE_TEXT;
   if (row->syn == NULL || i < 0 || i >= row->rsize || i >= row->syncap)
     return ROLE_TEXT;
   return row->syn[i];

@@ -67,6 +67,9 @@ Everything olly does, molly does. These all work today:
   `Ctrl-N` for a new buffer, `Ctrl-W` to close one, `Ctrl-PgUp`/`Ctrl-PgDn` or a
   click on a tab to move between them. Each keeps its own cursor position and
   undo history.
+- **Syntax highlighting** for Rust, C, C++, C#, Python, AutoIt and Markdown,
+  table-driven, with a `[syntax <name>]` block in the config file enough to
+  teach it another language.
 - **Keyboard reference built in**: press `F1` at any time.
 - **Configurable**: `~/.config/molly/mollyrc` holds the settings and the
   keymap, and `View ▸ Save Settings` writes it for you.
@@ -133,6 +136,7 @@ resize the terminal window.
 | `Ctrl-Z` | Undo |
 | `Ctrl-Y` | Redo |
 | `F1` | Help screen (`Ctrl-?` too) |
+| `Alt-Y` | Toggle syntax highlighting |
 | `F5` | Repaint |
 | `Ctrl-U` | Toggle line-number gutter |
 | `Esc` | Cancel a prompt |

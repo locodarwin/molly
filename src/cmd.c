@@ -366,6 +366,14 @@ static int cmd_tab_bar(void) {
   return 0;
 }
 
+static int cmd_syntax(void) {
+  V.syntax = !V.syntax;
+  screen_force_repaint();
+  editor_set_status_message("Syntax highlighting: %s%s", V.syntax ? "on" : "off",
+      (V.syntax && B.syn == NULL) ? " (no definition for this file)" : "");
+  return 0;
+}
+
 static int cmd_line_numbers(void) {
   V.linenum = !V.linenum;
   /* The gutter widens or shrinks the text area, shifting every column, so
@@ -417,6 +425,7 @@ static int on_a_row(void) { return CUR.cy < row_count(); }
 static int linenumbers_on(void) { return V.linenum; }
 static int menubar_on(void) { return V.menubar; }
 static int tabbar_on(void) { return V.tabbar; }
+static int syntax_on(void) { return V.syntax; }
 
 /* The table. Order matters only for the help screen, which walks it in order
  * within each group. `label` is for the menu bar and the palette; `help` and
@@ -513,6 +522,9 @@ static const struct command commands[] = {
    * belongs -- the View menu and the palette -- are enough. It lives under View
    * rather than File because what it saves is the View, Search and Input
    * toggles; it moves to an Options menu when there is one. */
+  {.name = "view.syntax", .label = "Syntax highlighting",
+   .help = "Colour by filetype", .group = "VIEW", .run = cmd_syntax,
+   .checked = syntax_on},
   {.name = "view.tab-bar", .label = "Tab bar",
    .help = "Show a tab per file", .group = "VIEW", .run = cmd_tab_bar,
    .checked = tabbar_on},
@@ -847,6 +859,9 @@ static const struct binding default_bindings[] = {
   {"alt-m",  "view.menu-bar"},
   /* Alt-B for the tab bar. B is not one of the eight the menu bar reserves. */
   {"alt-b",  "view.tab-bar"},
+  /* Alt-Y for syntax. Not S, which the Search menu owns; not C or H, which read
+   * as "colour" and "highlight" but belong to Help and to nothing. */
+  {"alt-y",  "view.syntax"},
 
   /* The palette, on two chords. Ctrl-Space is the one the roadmap settles on, and
    * Alt-X is there because not every terminal sends NUL for Ctrl-Space -- and because
@@ -1192,6 +1207,7 @@ static const struct help_entry help_entries[] = {
   {NULL,        NULL, NULL, "view.line-numbers"},
   {NULL,        NULL, NULL, "view.menu-bar"},
   {NULL,        NULL, NULL, "view.tab-bar"},
+  {NULL,        NULL, NULL, "view.syntax"},
 };
 
 int help_entry_count(void) {

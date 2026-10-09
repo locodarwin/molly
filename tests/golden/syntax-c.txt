@@ -1,0 +1,46 @@
+--- screen ---
+ File  Edit  Search  View  Go  Help
+#include <stdio.h>
+/* a block
+   comment */
+int main(void) {
+  char *s = "hi\n";
+  return 42;  // done
+}
+~
+~
+~
+~
+demo.c - 7 lines [c]                             Ln 1, Col 1
+HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | F3 = n
+--- attrs ---
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggg
+gggggggggg
+ggggggggggggg
+ggg......gggg
+..gggg......gggggg
+..gggggg.gg...ggggggg
+
+g
+g
+g
+g
+RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-59 7/0
+2: 0-17 13/-
+3: 0-9 8/-
+4: 0-12 8/-
+5: 0-2 14/-  9-12 14/-
+6: 2-5 14/-  12-17 3/-
+7: 2-7 12/-  9-10 11/-  14-20 8/-
+9: 0-0 8/-
+10: 0-0 8/-
+11: 0-0 8/-
+12: 0-0 8/-
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u
+--- cursor ---
+row 2 col 1 visible 1

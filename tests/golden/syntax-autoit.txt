@@ -1,0 +1,47 @@
+--- screen ---
+ File  Edit  Search  View  Go  Help
+#cs
+  If this were code
+#ce
+#include <x.au3>
+IF $x THEN
+  MsgBox(0, "hi", "there")
+ENDIF
+~
+~
+~
+~
+demo.au3 - 7 lines [autoit]                      Ln 1, Col 1
+HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | F3 = n
+--- attrs ---
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+ggg
+ggggggggggggggggggg
+ggg
+gggggggggggggggg
+gg....gggg
+..gggggg.g..gggg..ggggggg
+ggggg
+g
+g
+g
+g
+RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-59 7/0
+2: 0-2 8/-
+3: 0-18 8/-
+4: 0-2 8/-
+5: 0-15 13/-
+6: 0-1 12/-  6-9 12/-
+7: 2-7 14/-  9-9 11/-  12-15 3/-  18-24 3/-
+8: 0-4 12/-
+9: 0-0 8/-
+10: 0-0 8/-
+11: 0-0 8/-
+12: 0-0 8/-
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u
+--- cursor ---
+row 2 col 1 visible 1

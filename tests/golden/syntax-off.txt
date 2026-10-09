@@ -1,0 +1,40 @@
+--- screen ---
+ File  Edit  Search  View  Go  Help
+#include <stdio.h>
+/* a block
+   comment */
+int main(void) {
+  char *s = "hi\n";
+  return 42;  // done
+}
+~
+~
+~
+~
+demo.c - 7 lines                                 Ln 1, Col 1
+Syntax highlighting: off
+--- attrs ---
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+
+
+
+
+
+
+
+g
+g
+g
+g
+RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-59 7/0
+9: 0-0 8/-
+10: 0-0 8/-
+11: 0-0 8/-
+12: 0-0 8/-
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u
+--- cursor ---
+row 2 col 1 visible 1

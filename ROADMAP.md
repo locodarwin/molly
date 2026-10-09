@@ -727,7 +727,7 @@ molly runs under `ulimit -v` and has to reach a clean quit.
   those needs to become per-view. Expect a long tail of off-by-one bugs, which
   is exactly what the golden-screen harness is for.
 
-### Syntax highlighting — **IN**
+### Syntax highlighting — **done**
 
 - **For:** table-driven keyword/string/comment/number rules per filetype. Kilo
   had it; olly dropped it. Visible payoff on every single keystroke of use.
@@ -736,13 +736,28 @@ molly runs under `ulimit -v` and has to reach a clean quit.
   real cost, not the rules themselves.
 - **Scope:** regex- or table-driven definitions in config, so adding a language
   is not a recompile. Explicitly *not* a parser per language.
-- **Shipping with:** Rust, C, C++, C#, Python, AutoIt (`.au3`) and Markdown.
+- **Shipped with:** Rust, C, C++, C#, Python, AutoIt (`.au3`) and Markdown.
   Seven definitions, decided 2026-10-08. Two of them are the ones that make the
   cached per-row lexer state unavoidable rather than merely correct: AutoIt's
   `#cs`/`#ce` block comments and Markdown's fenced code blocks both nest a
   region whose end is many rows away. Markdown also means the definition format
   cannot assume keyword/string/comment rules are enough — it needs emphasis
   and headings, which are not any of the three.
+- **The against came true, and the answer is laziness.** Each row stores the
+  lexer state it was entered and left with, and the buffer stores how far up the
+  file those are known to be right. An edit lowers that watermark and stops; the
+  renderer relexes just before drawing. Eager invalidation would relex a hundred
+  thousand rows on the keystroke that opens a comment at the top of a file, for
+  the sake of rows nobody is looking at.
+- **Definitions are text, and the built-ins go through the same door.**
+  `[syntax lua]` in `mollyrc` defines a language; `[syntax c]` adds to one molly
+  ships. Both reach syntax_set_line(), which is also how the built-ins are
+  loaded — the same arrangement the keymap has, so the path a user's first
+  definition takes is exercised on every start.
+- **Not done, and not planned:** a shebang line to type an extensionless
+  script, and italic for comments. Italic would mean a fourth cell modifier,
+  the SGR for it, and the snapshot harness learning to read it; the colour is
+  doing the work for now.
 
 ### Indentation, filetypes and configuration — **IN**
 

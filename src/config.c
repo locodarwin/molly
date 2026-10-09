@@ -176,6 +176,12 @@ static void apply_tab_bar(int v) {
 }
 static int live_tab_bar(void) { return V.tabbar; }
 
+static void apply_syntax(int v) {
+  V.syntax = v;
+  screen_force_repaint();
+}
+static int live_syntax(void) { return V.syntax; }
+
 static void apply_mouse(int v) { term_mouse_set(v); }
 static int live_mouse(void) { return term_mouse_is_on(); }
 
@@ -208,6 +214,9 @@ static struct setting settings[] = {
   {"view", "tab bar", SET_BOOL, 0, 0, 1, 0,
    "show a tab per open file (only ever drawn with two or more)",
    apply_tab_bar, live_tab_bar},
+  {"view", "syntax", SET_BOOL, 0, 0, 1, 0,
+   "colour the text by filetype",
+   apply_syntax, live_syntax},
 
   {"input", "mouse", SET_BOOL, 0, 0, 1, 0,
    "report the mouse to molly rather than leaving it to the terminal",

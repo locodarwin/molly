@@ -2804,6 +2804,164 @@ def test_tabbar(tmpdir):
           screen_of(out)[TABROW].startswith("one"), True)
 
 
+# --------------------------------------------------- syntax highlighting ----
+
+def test_syntax(tmpdir):
+    """Highlighting from the outside: is the text actually coloured?
+
+    syntax.c's own tests cover the lexer, row by row, against a role-per-
+    character sketch. What only a pty can show is the part that joins it to the
+    editor: that a file gets a definition from its name, that the colours reach
+    the screen, that a selection still wins over them -- and above all that an
+    edit on one row recolours the rows below it, which is the whole reason rows
+    carry a lexer state.
+    """
+    print("\nsyntax: the colours reach the screen")
+
+    def write(name, body):
+        q = os.path.join(tmpdir, name)
+        with open(q, "w") as fh:
+            fh.write(body)
+        return q
+
+    def paint(path, keys, rows=16, cols=60, env=None):
+        e = {"TERM": "xterm-256color"}
+        if env:
+            e.update(env)
+        out = run([MOLLY, path], keys, rows=rows, cols=cols, env=e)
+        scr = Screen(rows, cols)
+        scr.feed(out)
+        return scr
+
+    def fg(scr, row, col):
+        """The foreground colour of one cell, as the theme set it."""
+        return scr.colors[row][col][0]
+
+    def row_fgs(scr, row, n):
+        return [fg(scr, row, i) for i in range(n)]
+
+    TEXT = TEXT_ROW - 1     # first text row, menu bar only
+
+    c = write("demo.c", "int x = 1;\n")
+    scr = paint(c, [])
+    # The theme's 256-colour entries: type 79, number 179, keyword 110,
+    # string 173, comment 244, preproc 140. Read rather than restated -- these
+    # are what theme.c assigns, and a change there is meant to fail here.
+    check("a type is coloured", fg(scr, TEXT, 0), 79)
+    check("and a number", fg(scr, TEXT, 8), 179)
+    check("while punctuation is not", fg(scr, TEXT, 9) in (None, -1), True)
+    check("the status bar names the filetype",
+          "[c]" in scr.text()[14], True)
+
+    # A file molly has no definition for is left alone, and says so by *not*
+    # claiming a filetype -- which is how a user tells "not recognised" from
+    # "highlighting off".
+    unknown = write("demo.zzz", "int x = 1;\n")
+    scr = paint(unknown, [])
+    check("an unknown extension is not coloured",
+          fg(scr, TEXT, 0) in (None, -1), True)
+    check("and claims no filetype", "[" in scr.text()[14].split("-")[0], False)
+
+    # Each language through its own most distinctive rule.
+    scr = paint(write("demo.py", 'def f():\n    return 1\n'), [])
+    check("Python keywords are coloured", fg(scr, TEXT, 0), 110)
+    scr = paint(write("demo.md", "# Title\n"), [])
+    check("a Markdown heading is coloured", fg(scr, TEXT, 0), 110)
+    check("and bold", scr.mods[TEXT][0], "b")
+    scr = paint(write("demo.au3", 'IF $x THEN\n'), [])
+    check("AutoIt keywords are coloured whatever their case",
+          fg(scr, TEXT, 0), 110)
+    scr = paint(write("demo.rs", 'fn main() {}\n'), [])
+    check("Rust keywords are coloured", fg(scr, TEXT, 0), 110)
+
+    print("\nsyntax: a comment that spans rows, and editing above it")
+
+    # The invalidation path, end to end. Three plain rows: nothing is a comment.
+    multi = write("multi.c", "int a;\nint b;\nint c;\n")
+    scr = paint(multi, [])
+    check("three plain rows start uncoloured by comment",
+          fg(scr, TEXT + 2, 0), 79)
+
+    # Now open a comment on the first row. Every row below has to turn, without
+    # being touched -- and nothing recomputes it except the draw that follows.
+    scr = paint(multi, ["/*"])
+    check("opening a comment on row 1 recolours row 1",
+          fg(scr, TEXT, 0), 244)
+    check("and row 2, which was not edited", fg(scr, TEXT + 1, 0), 244)
+    check("and row 3", fg(scr, TEXT + 2, 0), 244)
+
+    # Closing it again has to put them back, which is the same path in reverse.
+    scr = paint(multi, ["/*", "\x1b[B", "\x1b[F", "*/"])
+    check("closing it on row 2 puts row 3 back",
+          fg(scr, TEXT + 2, 0), 79)
+
+    # Undo goes through the same row updates, so the colours have to follow it.
+    scr = paint(multi, ["/*", UNDO, UNDO])
+    check("undo puts the colours back too", fg(scr, TEXT + 1, 0), 79)
+
+    print("\nsyntax: what outranks it")
+
+    # A selection wins: reverse video over a keyword's own colour is unreadable,
+    # and what the user is being told is "this is selected".
+    # "R" is reverse with no colour of its own, which is what proves the point:
+    # the selection replaced the syntax colour rather than being layered over it
+    # ("G" is the letter for reverse *and* coloured).
+    scr = paint(c, ["\x1b[1;2C", "\x1b[1;2C", "\x1b[1;2C"])
+    check("a selection outranks the syntax colour",
+          scr.attr_rows()[TEXT][0], "R")
+
+    print("\nsyntax: turning it off")
+
+    scr = paint(c, ["\x1by"])
+    check("Alt-Y turns highlighting off", fg(scr, TEXT, 0) in (None, -1), True)
+    check("and says so",
+          any("Syntax highlighting: off" in m for m in
+              status_lines(out=run([MOLLY, c], ["\x1by"]))), True)
+    check("and the filetype leaves the status bar",
+          "[c]" in scr.text()[14], False)
+    scr = paint(c, ["\x1by", "\x1by"])
+    check("and back on again", fg(scr, TEXT, 0), 79)
+
+    rc = os.path.join(tmpdir, "synrc")
+    with open(rc, "w") as fh:
+        fh.write("[view]\nsyntax = off\n")
+    scr = paint(c, [], env={"MOLLY_CONFIG": rc})
+    check("syntax = off declines it from the start",
+          fg(scr, TEXT, 0) in (None, -1), True)
+
+    print("\nsyntax: a definition from the configuration file")
+
+    # A language molly does not ship. The same rules, read from mollyrc.
+    with open(rc, "w") as fh:
+        fh.write("[syntax lua]\n"
+                 "extensions = lua\n"
+                 "line comment = --\n"
+                 "keywords = function end local return\n")
+    lua = write("demo.lua", "local x = 1\n-- a comment\n")
+    scr = paint(lua, [], env={"MOLLY_CONFIG": rc})
+    check("a language defined in mollyrc is recognised",
+          "[lua]" in scr.text()[14], True)
+    check("its keywords are coloured", fg(scr, TEXT, 0), 110)
+    check("and its comments", fg(scr, TEXT + 1, 0), 244)
+
+    # Adding to a language molly does ship.
+    with open(rc, "w") as fh:
+        fh.write("[syntax c]\nkeywords = frobnicate\n")
+    scr = paint(write("add.c", "frobnicate();\n"), [], env={"MOLLY_CONFIG": rc})
+    check("a keyword added to a built-in language takes",
+          fg(scr, TEXT, 0), 110)
+
+    # And a rule molly does not know is a warning that names the line.
+    with open(rc, "w") as fh:
+        fh.write("[syntax c]\nsparkles = yes\n")
+    out = run([MOLLY, c], [], cols=200, env={"MOLLY_CONFIG": rc})
+    msgs = status_lines(out, cols=200)
+    check("an unknown syntax rule warns",
+          any("unknown syntax rule" in m for m in msgs), True)
+    check("naming the line and the language",
+          any("synrc:2" in m and "[syntax c]" in m for m in msgs), True)
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -2854,6 +3012,7 @@ def main():
         test_cua_keymap(tmpdir)
         test_buffers(tmpdir)
         test_tabbar(tmpdir)
+        test_syntax(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

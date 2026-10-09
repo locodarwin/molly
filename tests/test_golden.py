@@ -206,6 +206,68 @@ def main():
           files={"sample.txt": THREE_LINES})
     check("menu-bar-hidden-open", ["\x1bv", "m", "\x1b[21~"], rows=16, cols=64,
           files={"sample.txt": THREE_LINES})
+    # Syntax highlighting, which is nothing *but* colour -- there is not a
+    # character on screen that a snapshot of the text alone would catch. So
+    # these are the only thing standing between a theme edit and a palette
+    # nobody looks at, and all four of the interesting languages are here.
+    C_SAMPLE = ("#include <stdio.h>\n"
+                "/* a block\n"
+                "   comment */\n"
+                "int main(void) {\n"
+                "  char *s = \"hi\\n\";\n"
+                "  return 42;  // done\n"
+                "}\n")
+    check("syntax-c", [], rows=14, cols=60, files={"demo.c": C_SAMPLE},
+          args=["demo.c"])
+    check("syntax-c-256", [], rows=14, cols=60, files={"demo.c": C_SAMPLE},
+          args=["demo.c"], env={"TERM": "xterm-256color"})
+    # Python, for the triple-quoted region that spans rows.
+    check("syntax-python", [], rows=14, cols=60,
+          files={"demo.py": ("import os\n"
+                             "\n"
+                             "def f(n):\n"
+                             "    \"\"\"doc\n"
+                             "    string\"\"\"\n"
+                             "    return n * 2  # twice\n")},
+          args=["demo.py"])
+    # AutoIt, for case-folded keywords and the #cs/#ce pair.
+    check("syntax-autoit", [], rows=14, cols=60,
+          files={"demo.au3": ("#cs\n"
+                              "  If this were code\n"
+                              "#ce\n"
+                              "#include <x.au3>\n"
+                              "IF $x THEN\n"
+                              "  MsgBox(0, \"hi\", \"there\")\n"
+                              "ENDIF\n")},
+          args=["demo.au3"])
+    # Markdown, which is the one with no keywords at all: a bold heading, inline
+    # emphasis, and a fenced block whose `#` is not a heading.
+    MD_SAMPLE = ("# Title\n"
+                 "\n"
+                 "Some *emphasis* and `code`.\n"
+                 "\n"
+                 "```c\n"
+                 "# not a heading\n"
+                 "```\n"
+                 "\n"
+                 "Done.\n")
+    check("syntax-markdown", [], rows=14, cols=60,
+          files={"demo.md": MD_SAMPLE}, args=["demo.md"])
+    check("syntax-markdown-256", [], rows=14, cols=60,
+          files={"demo.md": MD_SAMPLE}, args=["demo.md"],
+          env={"TERM": "xterm-256color"})
+    # A comment opened by an edit, which is the invalidation path: rows 2 and 3
+    # turn without being touched.
+    check("syntax-opened-comment", ["/*"], rows=14, cols=60,
+          files={"multi.c": "int a;\nint b;\nint c;\n"}, args=["multi.c"])
+    # A selection over coloured text: reverse replaces the colour rather than
+    # layering over it.
+    check("syntax-selection", ["\x1b[1;2C", "\x1b[1;2C", "\x1b[1;2C"],
+          rows=14, cols=60, files={"demo.c": C_SAMPLE}, args=["demo.c"])
+    # And off, which has to be the screen molly drew before any of this existed.
+    check("syntax-off", ["\x1by"], rows=14, cols=60,
+          files={"demo.c": C_SAMPLE}, args=["demo.c"])
+
     # The tab bar. Which tab is current is a colour rather than a character, so
     # this is the snapshot that proves it at all -- and both depths are here
     # because the band and the lifted current tab are two shades of the same

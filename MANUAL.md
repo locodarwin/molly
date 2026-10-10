@@ -1,12 +1,12 @@
 # Molly — A Command-Line Text Editor
 
-> **Note:** molly is at `0.1.0-dev`. The six things this note used to say it
+> **Note:** molly is at `0.1.0-dev`. The eight things this note used to say it
 > did not have — more than one file open at once, regular-expression search,
-> syntax highlighting, a configuration file, window splits and a shell filter —
-> it now has.
-> What is still missing is on the other side of the line: no soft wrap, no
-> multi-cursor editing, no integrated terminal and no language server. This manual describes what is there today and is accurate. For what
-> is coming, and why in that order, see [`ROADMAP.md`](ROADMAP.md).
+> syntax highlighting, a configuration file, window splits, a shell filter,
+> multi-cursor editing and soft wrap — it now has. What is still missing is on
+> the other side of the line: no integrated terminal and no language server.
+> This manual describes what is there today and is accurate. For what is
+> coming, and why in that order, see [`ROADMAP.md`](ROADMAP.md).
 
 Molly is a small, dependency-free text editor for the terminal, written in C.
 It provides modeless editing in the style of tools like nano — type to insert,
@@ -31,6 +31,7 @@ and a searchable label, so nothing is reachable only by knowing a secret key.
 - [Moving Around](#moving-around)
 - [Help Screen](#help-screen)
 - [Line Numbers](#line-numbers)
+- [Soft Wrap](#soft-wrap)
 - [Selecting Text](#selecting-text)
 - [Several Cursors](#several-cursors)
 - [Searching](#searching)
@@ -500,6 +501,7 @@ in indented twice.
 | `Ctrl-G` | Go to a line number |
 | `F5` | Repaint the screen |
 | `Ctrl-U` | Toggle the line-number gutter |
+| `Alt-Z` | Toggle soft wrap |
 
 Hold `Shift` while using the arrows, `Home`/`End`, or `PgUp`/`PgDn` to move the
 cursor and select text along the way — see [Selecting Text](#selecting-text).
@@ -508,6 +510,11 @@ cursor and select text along the way — see [Selecting Text](#selecting-text).
 line. A number past the last line goes to the last line instead; a number
 below 1 goes to the first line. Anything that is not a valid number leaves
 the cursor where it was.
+
+With soft wrap on, `↑` and `↓` move a row of the *screen* rather than a line of
+the file, so they walk down a long line before reaching the next one.
+`Home` and `End` still go to the start and end of the line — see
+[Soft Wrap](#soft-wrap).
 
 The terminal can also be resized freely while Molly is running — the display
 adjusts to the new size as it happens, without needing a keypress first.
@@ -542,6 +549,66 @@ usable text width, and the cursor, horizontal scrolling and the wide-character
 alignment all shift to match. Toggling it repaints the whole screen. If the
 window is too narrow to leave even one text column, the gutter is suppressed for
 that frame rather than squeezing the text away.
+
+## Soft Wrap
+
+`Alt-Z` toggles soft wrap (off by default). The command palette has it as
+**Soft wrap**, and `soft wrap = on` in `[view]` starts that way. It is not in
+the View menu, and the reason is arithmetic rather than editorial: one more item
+makes that drop-down exactly as tall as the text area of a sixteen-row
+terminal, where its drop shadow then falls on the status bar. It joins the menu
+when a drop-down can handle its own height.
+
+With it off, a line longer than the window runs off the right-hand edge and the
+view scrolls sideways to follow the cursor. With it on, the line carries on at
+the start of the next row of the screen, and there is no sideways scroll to do:
+the two are alternatives, and turning wrap on puts the horizontal scroll back
+to column zero.
+
+Nothing in your file changes. Soft wrap is a way of *showing* a long line, so
+saving writes exactly the bytes that were there before — there is no newline
+anywhere it was not typed.
+
+**Where the break goes.** After the last space that fits. A word longer than
+the window has nowhere better to break and so breaks at the edge instead. The
+space it broke after stays at the end of the row above, which is why a
+continuation row can begin one column further on than you might expect from
+counting characters.
+
+A tab is spaces by the time the wrap sees it, so an indent is a break
+opportunity like any other run of spaces: a deeply indented line whose first
+word does not fit beside its indent puts that indent on a row of its own.
+
+**The cursor.** The column a line breaks at belongs to the row below it, so a
+cursor resting there is drawn at the start of the continuation rather than one
+past the end of the row above. Moving down (or up) into a continuation row that
+is shorter than the column you were at stops on that row's last column.
+
+Clicking works on what you see: a click on a continuation row lands in the
+middle of the line it continues, and a click past the end of one lands on that
+row's last column rather than carrying on into the text below it.
+
+**The gutter.** A wrapped line is numbered once, on the row it starts at. Its
+continuation rows keep the gray separator and leave the number blank, so the
+number column reads as one line per number: `12 │ a long line…` then
+`   │ …and the rest of it`.
+
+**Per window.** Wrap is a property of the window, like the gutter and the
+colours. Splitting copies it to the new window, and each half can be toggled
+on its own — so a split can show the same file wrapped on one side and not on
+the other.
+
+### What it deliberately does not do
+
+- **No hard wrap.** Nothing inserts a newline into your text. If that is what
+  you want, `Alt-|` through `fmt -w 72` is the tool, and it is one undo step.
+- **No wrap column.** Lines wrap at the window's own width, not at a margin you
+  set. A narrower wrap is a narrower window, which `F7` gives you.
+- **No hanging indent.** A continuation row starts at the left edge of the text
+  area rather than under the indentation of the line it continues.
+- **No sticky column.** Several `↓` presses in a row each keep the column they
+  land in rather than the one the first press started from — the same as with
+  wrap off.
 
 ## Selecting Text
 
@@ -1216,6 +1283,7 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     Alt-M    Toggle the menu bar
     Alt-B    Toggle the tab bar
     Alt-Y    Toggle syntax highlighting
+    Alt-Z    Toggle soft wrap
     Tab      In a dialog: move to the next field, checkbox or button
     Shift-Tab  In a dialog: move back to the previous one
     Space    In a dialog: tick the checkbox or press the button with the keyboard
@@ -1281,6 +1349,7 @@ Names are matched on their words, so `line numbers`, `Line-Numbers` and
 | `view` | `menu bar` | `on` | Give the menu bar its row (`View ▸ Menu Bar` toggles it). |
 | `view` | `tab bar` | `on` | Show a tab per open file (`Alt-B` toggles it). Only ever drawn with two or more buffers open. |
 | `view` | `syntax` | `on` | Colour the text by filetype (`Alt-Y` toggles it). See [Syntax Highlighting](#syntax-highlighting). |
+| `view` | `soft wrap` | `off` | Wrap long lines at the window edge instead of scrolling sideways (`Alt-Z` toggles it). See [Soft Wrap](#soft-wrap). |
 | `shell` | `timeout` | `10` | Seconds a filter command may run before molly stops it, 1 to 3600. See [Filtering Through a Command](#filtering-through-a-command). |
 | `shell` | `output limit` | `8192` | Kilobytes of output a filter command may produce, 1 to 1048576. |
 | `input` | `mouse` | `on` | Report the mouse to molly. Turning it off hands clicks and drag-select back to the terminal for good, rather than only while `Shift` is held — see [The Mouse](#the-mouse). |

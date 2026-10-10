@@ -15,9 +15,9 @@ command reached through a keymap, and the event loop can wait on a child process
 as well as the keyboard — and the features it was groundwork *for* have started
 landing: a configuration file with a rebindable keymap, any number of files open
 at once with a tab bar, syntax highlighting for seven languages, window splits,
-a shell filter, per-filetype indentation and multiple cursors. 1,426 checks
-pass, including golden screenshots taken before the renderer was replaced and
-still compared against today. What comes next, and why, is in
+a shell filter, per-filetype indentation, multiple cursors and soft wrap. 1,608
+checks pass, including golden screenshots taken before the renderer was replaced
+and still compared against today. What comes next, and why, is in
 [`ROADMAP.md`](ROADMAP.md).
 
 [olly]: https://github.com/locodarwin/olly
@@ -81,6 +81,11 @@ Everything olly does, molly does. These all work today:
   each next occurrence, `Ctrl-Up`/`Ctrl-Down` build a column, `Alt`-click puts
   one anywhere, `Esc` goes back to one. Typing, deleting, `Enter`, `Tab` and
   paste all reach every cursor, as a single undo step.
+- **Soft wrap**: `Alt-Z` lays a line too long for the window out over as many
+  screen rows as it needs, breaking it after the last space that fits. The
+  arrows walk the rows of a long line, the gutter numbers it once, and nothing
+  in the file changes — it is a way of showing a line, not of rewriting it.
+  Off by default, and a property of the window, so a split can wrap one half.
 - **Indentation that follows the filetype**: `Enter` starts the new line under
   the old one, `Tab` types a tab or spaces to the next tab stop, and the tab
   width, the choice of character and auto-indent are each settable for

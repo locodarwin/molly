@@ -894,7 +894,7 @@ molly runs under `ulimit -v` and has to reach a clean quit.
   their own with exactly their shell's privileges. Molly runs nothing the user
   has not typed.
 
-### Soft wrap — **IN** (structural groundwork landed)
+### Soft wrap — **done**
 
 - **For:** people expect it; prose and Markdown are unusable without it.
 - **Against:** it breaks the one-row-equals-one-line assumption that cursor
@@ -903,12 +903,37 @@ molly runs under `ulimit -v` and has to reach a clean quit.
   multi-cursor. Done late it is a refit of everything; done in Phase 0 — by
   making the view address *display rows*, not file rows, from the start — it is
   much cheaper.
-- **Landed:** the view now addresses *display rows* rather than file rows. The
-  scroll offset, the draw loop, the row renderer and vertical movement all speak
-  display rows, with the unwrapped mapping being the identity. Turning wrap on
-  means implementing three functions (`drow_total`, `drow_of_cursor`, `drow_at`)
-  instead of revisiting every caller. A slice is expressed in *render columns*,
-  not byte offsets, because wrapping happens where glyphs land on screen.
+- **Landed in Phase 0, the model:** the view addresses *display rows* rather
+  than file rows. The scroll offset, the draw loop, the row renderer and
+  vertical movement all speak display rows, with the unwrapped mapping being the
+  identity. A slice is expressed in *render columns*, not byte offsets, because
+  wrapping happens where glyphs land on screen.
+- **Landed, the feature:** `Alt-Z`, the palette, the help screen, and
+  `soft wrap` in `[view]` — every view of the command table but the View menu,
+  which has no room for it. A line breaks after the last space that fits; the gutter numbers it
+  once and leaves the continuations' number field blank; `↑`/`↓` walk the rows
+  of a long line; a click on a continuation row lands where it looks; and
+  nothing about the file changes, so a save writes the bytes that were there.
+- **And the bet paid.** `src/wrap.c` is the whole of it: the three functions the
+  groundwork promised, plus the column the terminal's own cursor goes in (which
+  the old code took straight from `CUR.rx`, and which is no longer the same
+  number), the vertical step, and the one line that drops a row's measurement.
+  The step lives here rather than in `view.c` so that it can stay local to the
+  row and its neighbour — an arrow key must not get slower because the file is
+  long, and everything else in the file walks the buffer. Four call sites
+  outside it changed: vertical movement, the horizontal scroll (which wrap
+  turns off, since the two are alternatives), the gutter's number, and the
+  click-to-position arithmetic. The draw loop, the row renderer, the selection,
+  the multi-cursor marks and every edit path were already asking the right
+  questions and did not move — none of the 93 golden screens changed while the
+  mechanism landed.
+- **What it costs, measured.** With wrap off every function in `wrap.c` returns
+  on its first line, so the frame is what it was. With wrap on a frame is a walk
+  of the file's rows: 0.03 ms at 10,000 rows and 0.24 ms at 100,000, with every
+  row wrapping into two. A row caches its own slice count, and `drow_at` keeps
+  one step of its walk so that a screenful costs one pass rather than one per
+  row — without that last part the same frame was 2.9 ms. The remaining walk is
+  the flat `erow[]` array's to lose: see big-file handling below.
 
 ### Multi-cursor — **done.** Block selection — **LATER**
 
@@ -1050,6 +1075,12 @@ the only route to Fresh's multi-gigabyte claim.
   the swap is now planned work rather than a maybe. Dropping the duplicated
   `render` string is the cheaper half and can come first: it is most of the 3.5×
   and does not need a new data structure, only rendering on demand.
+- **Soft wrap left it a second question to answer.** "Which file row is display
+  row N" is a walk of the rows while the rows are a flat array, and `wrap.c`
+  pays it once per frame rather than once per screen line. A piece table can
+  carry a count per node and answer it in a step; a flat array cannot, and no
+  cache over the flat array would survive an edit. So the number in `wrap.c` is
+  the bound to beat, not a target to optimise where it is.
 
 ---
 
@@ -1133,7 +1164,18 @@ are structural to the menu bar.
 | Question | Decision |
 | --- | --- |
 | Command access | Ctrl **and** Alt keys, plus a menu system on Alt |
-| Soft wrap | **In.** Display-row view model landed |
+| Soft wrap | **Done.** The display-row model it was planned around took it in one file |
+| Where a wrapped line breaks | **After the last space that fits**, and at the window edge for a word with no space in it |
+| The space it broke after | **Stays on the row above.** Slices have to cover every column of a row, or a cursor in a trimmed run would have no cell to sit in |
+| The column a line breaks at | **Belongs to the row below**, so a cursor there is drawn at the start of the continuation; a step into a shorter row stops on its last column |
+| What `↑`/`↓` keep | **The screen column when wrapped, the byte offset when not** — between two slices of one line the byte offset is a windowful away, and changing the unwrapped answer would move behaviour no one asked about |
+| What `Home`/`End` reach | **The line, not the display row** — the file's shape is what those two keys are about |
+| A wrap column | **No.** Lines wrap at the window's width; a narrower wrap is a narrower window |
+| A hanging indent on continuations | **No** — a continuation starts at the left edge |
+| `Ctrl-Up`/`Ctrl-Down` with wrap on | **Still file rows.** A column of cursors is about lines of code lining up in the file, and that gesture already keeps the render column rather than the byte offset |
+| Whose setting wrap is | **The window's**, like the gutter and the colours: a split can wrap one half and not the other |
+| Where the toggle lives | **`Alt-Z`, which is VS Code's**, plus the palette and the help screen — **not the View menu**, whose drop-down would then be exactly as tall as a sixteen-row screen's text area and drop its shadow on the status bar |
+| What a wrapped frame costs | **A walk of the file's rows**, 0.24 ms at 100,000 of them; the row count is cached per row and the walk keeps one step of itself |
 | Multi-cursor | **Done.** Cursors run in document order so one replace-range rule fixes up the rest |
 | What Ctrl-D matches | **Literal text, case-sensitively**, and not through `search.c` -- the Find dialog's modes must not change what it finds |
 | Cursors after an undo | **One.** A record restores a position, not a list |
@@ -1157,6 +1199,7 @@ are structural to the menu bar.
 | A blank row inside an indented block | **Left alone** — an indent on nothing is trailing whitespace |
 | When `Backspace` eats a level | **Only in the leading whitespace, and only with more than one character to take** — so a tab-indented file never notices |
 | Where indent and dedent live | **Palette, help screen and keymap, not the Edit menu** — that menu's drop-down already paints over the status bar once it outgrows the text area |
+| What the drop-down's height now blocks | **Three commands in two menus**: indent and dedent in Edit, soft wrap in View. One item's worth of work, three items' worth of value |
 | Skip a match / drop a cursor / all matches | **Alt-D, Alt-U, Alt-A** — a terminal cannot carry `Ctrl-K Ctrl-D`, and `Ctrl-U` was spent on the gutter |
 | Which cursor those three work from | **The one added last**, which after a wrap is not the last one in the file — so a cursor carries the order it was added in |
 

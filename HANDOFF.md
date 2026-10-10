@@ -1,25 +1,26 @@
 # Handoff
 
-Written 2026-10-09 and re-measured the same day. `main` and `origin/main` are
+Written 2026-10-10 and re-measured the same day. `main` and `origin/main` are
 level: everything is committed and pushed, the working tree is clean, and
-nothing is half-finished. The last work on it was the four follow-ons Shawn
-picked after multi-cursor — skip a match, take the last cursor back, a cursor
-on every match, and indent/dedent a block with smart Backspace — on top of the
-CI repairs described under "What only CI sees".
+nothing is half-finished. The last work on it was **soft wrap**, which Shawn
+picked on 2026-10-10 — the last of the three features the first handoff named —
+after the four follow-ons to multi-cursor and the CI repairs described under
+"What only CI sees".
 
 This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
 
-**Nothing is in flight.** Multi-cursor was the last feature and it is done end
-to end: `035ad05` the model with no keystroke reaching it, then the keys and the
-drawing, then the documentation. Shawn chose it on 2026-10-09, after
-indentation, from the list below.
+**Nothing is in flight.** Soft wrap was the last feature and it is done end to
+end, in the arc this repo keeps: the display-row map with nothing able to turn
+it on, then the key, the setting and the three views of the command table that
+have room for it, then the documentation.
 
-Of the three candidates the first handoff named, **soft wrap is the only one
-left**, and it has not been confirmed as next. Ask before starting it. The
-smaller items under "Next by dependency" are all still open and several of them
-are now cheaper than they were.
+**The three candidates the first handoff named are all done.** What is left is
+the smaller work under "Next by dependency", none of it confirmed as next — ask
+before starting any of it. The two biggest things on the whole list are now the
+piece-table buffer rewrite and the integrated terminal, and `ROADMAP.md` has
+the argument for each.
 
 ---
 
@@ -96,6 +97,12 @@ than waiting on it.
 - **Syntax highlighting** (`src/syntax.c`): a table-driven lexer for Rust, C,
   C++, C#, Python, AutoIt and Markdown, with per-row cached lexer state and lazy
   invalidation. `[syntax lua]` in `mollyrc` is enough to add a language.
+- **Soft wrap** (`src/wrap.c`, 302 lines): `Alt-Z` lays a long line out over
+  several screen rows, breaking it after the last space that fits. One file,
+  because the view had addressed display rows since Phase 0 — the draw loop, the
+  renderer, the selection and every edit path were already asking the right
+  questions. Off by default, per window, and a view and not an edit: the file
+  keeps its bytes.
 - **Window splits** (`src/window.c`): a binary tree of windows, each leaf a
   view. `F7`/`F8` split right and below, `F6`/`Shift-F6` walk them, `F9` closes
   one, and a Window menu holds those plus Only this window. Each window has its
@@ -154,6 +161,19 @@ Full table in `ROADMAP.md` §7. The ones that bite soonest:
   a second function rather than a change to `editor_insert_newline()` — paste
   and the shell filter both split rows through that one, and text that arrives
   indented must not be indented twice.
+- **A wrapped line breaks after the last space that fits**, and at the window
+  edge for a word with no space in it. The space it broke after stays on the row
+  above, because the slices of a row have to cover every one of its columns:
+  trimming the run would leave a cursor in it with no screen cell to sit in. The
+  column the break falls at belongs to the row *below*.
+- **Vertical movement keeps the screen column when wrapped and the byte offset
+  when not.** Between two slices of one line a byte offset is a windowful away,
+  so wrapped there is no other sane reading of "down"; unwrapped it is what
+  molly has always done and what every arrow-key test is written against.
+  `ROADMAP.md` §7 has the asymmetry written down.
+- **Wrap is the window's setting, not the buffer's** — so a split can wrap one
+  half and not the other. Same rule as the gutter and the colours: per-view or
+  per-screen is decided by where the thing is drawn.
 - **Linux now. Windows possibly later. No macOS.** No Windows code gets
   written, but platform calls stay behind `term.c` and `sys.c`.
 - **Every default lives in the settings table and nowhere else.** The menu bar
@@ -233,17 +253,15 @@ with their reasoning, and any of them is a one-line change if Shawn disagrees:
 
 ### Next by dependency
 
-Seven of the first handoff's items are done: the config file with the CUA
+All eight of the first handoff's items are done: the config file with the CUA
 keymap, multiple buffers with tabs, syntax highlighting, window splits, the
-shell filter, indentation with per-filetype defaults, and multiple cursors.
-One is left, and it has not been confirmed as next.
+shell filter, indentation with per-filetype defaults, multiple cursors, and
+soft wrap. Nothing on the list below has been confirmed as next.
 
-1. **Soft wrap.** The display-row model landed in Phase 0, so this is three
-   functions (`drow_total`, `drow_of_cursor`, `drow_at`) rather than a refit of
-   the renderer. `ROADMAP.md` §5 is explicit about what else it touches, and it
-   is now the most invasive thing left — multi-cursor turned out cheaper than
-   its warning, and soft wrap's warning is about the renderer rather than the
-   edit paths, so it will not get the same discount.
+The largest things left are in `ROADMAP.md` rather than here: the piece-table
+buffer rewrite (which soft wrap just gave a second reason — see §5's big-file
+section), the integrated terminal and the language server. Each is a phase of
+its own, not an afternoon.
 
 Two things the shell filter now makes cheap, neither of them asked for yet:
 
@@ -268,14 +286,19 @@ commit:
   to LATER rather than doing here. A column of cursors covers most of what
   people reach for it for, and a rectangular selection is a different model:
   every selection in molly is a pair of positions and a rectangle is not.
-- **Put Indent and Dedent in the Edit menu**, which is held up by the
-  drop-down's height rather than by anything of their own: that menu needs
+- **Put Indent, Dedent and Soft wrap in their menus**, all three held up by the
+  drop-down's height rather than by anything of their own. The Edit menu needs
   thirteen rows already, and a drop-down paints over the status bar once it is
-  taller than the text area. Two items and a separator make that reachable on a
+  taller than the text area: two items and a separator make that reachable on a
   sixteen-row screen instead of the twelve-row one the golden documents — and
-  `tests/golden/menu-edit*` are at exactly sixteen. The two commands are in the
-  table, the palette, the help screen and the keymap; the menu is the one view
-  they are missing. See the drop-down item further down.
+  `tests/golden/menu-edit*` are at exactly sixteen. Soft wrap is one item in a
+  View menu that needs twelve, which at sixteen rows makes the box exactly as
+  tall as the text area: it fits, and its drop shadow does not, so it lands on
+  the status bar and dims the half that says which line the cursor is on. No
+  menu's shadow reaches the chrome today. All three commands are in the table,
+  the palette, the help screen and the keymap; the menu is the one view each is
+  missing. See the drop-down item further down — it is one item's work and now
+  three items' worth of value.
 - **Italic for comments.** `ROADMAP.md` said italic would be what a comment
   wants; the colour is doing that work instead, because italic means a fourth
   cell modifier, the SGR for it, and `tests/screen.py` learning to read it.
@@ -309,6 +332,10 @@ commit:
   so in a comment; `menu-edit-short-cols` is the same menu on a screen that
   fits it. The fix is the shape the tab bar already has — an offset that keeps
   the selected item visible — and it is about twenty-five lines in `menu.c`.
+  It also has to clamp the box to the *text area* rather than to the grid, and
+  leave the drop shadow's row inside it: the box covering the status bar is what
+  keeps indent and dedent out of the Edit menu, and the shadow reaching it is
+  what keeps soft wrap out of the View menu.
 - **The menu band itself still clips**, and the Window menu made it clip
   sooner. Seven titles need 43 columns; below that the tail is cut, so at 36
   columns the bar reads `File  Edit  Search  View  Go  Windo` and Help is gone
@@ -392,6 +419,32 @@ later.
   roles are consulted, so turning highlighting off stopped relexing and left
   every role already computed on the screen. The same shape will come up again
   for anything else that caches what it draws.
+- **A display row is not a file row, and the code that forgets it looks
+  right.** With wrap off the two are the same number, so arithmetic that treats
+  a screen row as a file row passes every test until the day wrap is on.
+  `syntax_ensure_view()` was doing exactly that — `V.drowoff + V.screenrows` as
+  a row to lex — and the fix was to ask `drow_at()` for the slice and read its
+  `filerow`. Anything that turns a screen `y` into a position goes through
+  `drow_at`, and anything that puts a cursor on screen goes through
+  `drow_cursor_col()`, which is no longer `CUR.rx`.
+- **A row's wrap count is cached on the row, and `editor_update_row()` is where
+  it is dropped.** That is the one place `render` is rebuilt, which is the only
+  thing that can change the count at a fixed width — so a new row mutator that
+  does its own rendering would paint a stale line and nothing would say so. The
+  invalidation sits *above* the no-tabs early return in that function, which is
+  a path that changes the row's width just as much as the other one.
+- **`drow_at()` keeps one step of its walk, and four things invalidate it**: the
+  buffer, the width, the row count and a generation the buffer bumps whenever a
+  row's measurement is dropped. The last two overlap deliberately — deleting a
+  row changes the count without re-measuring anything, and an edit re-measures
+  without changing the count. Without the memo a screenful cost a walk of the
+  file per row rather than one walk: 2.9 ms a frame at 100,000 rows instead of
+  0.24.
+- **The wrap width is `TEXT_COLS()`, which depends on `V.gutter_w`** — set by
+  the layout pass, not by the view. So anything that measures display rows has
+  to run after `window_layout()`, which `window_scroll_all()` and
+  `screen_sync_size()` already arrange. Toggling the gutter re-wraps every row
+  by changing that width, which is why both toggles repaint in full.
 - **The help screen's row cap is a silent truncation waiting to happen.** It is
   128 now and the content is about 58 lines in one column, but when it is next
   outgrown the screen says "help truncated" rather than stopping quietly. That

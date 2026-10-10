@@ -3976,6 +3976,60 @@ def test_soft_wrap(tmpdir):
               "soft wrap = on" in fh.read(), True)
 
 
+# A stand-in for molly on a loaded runner, for the test below. It does what
+# molly does in the order molly does it: raw mode with TCSAFLUSH, the one byte
+# that enable_raw_mode() writes straight afterwards, then a stretch of silence
+# where molly loads the file and applies its configuration, then its first
+# paint, and only then does it read a key.
+SLOWSTART = """import os, sys, time, tty
+delay, sink = float(sys.argv[1]), sys.argv[2]
+tty.setraw(0)
+os.write(1, b"\\x1b[?2004l")
+time.sleep(delay)
+os.write(1, b"\\x1b[2J\\x1b[H frame ")
+got = b""
+while True:
+    c = os.read(0, 64)
+    if not c:
+        break
+    got += c
+    os.write(1, b".")
+    if b"\\x13" in got:
+        open(sink, "w").write(got.decode("latin-1"))
+        os.write(1, b" saved ")
+"""
+
+
+def test_harness_startup(tmpdir):
+    print("\nharness: nothing is typed at a program that has not painted yet")
+    # Regression, and the one that cost the most: five CI runs across three
+    # days reported a file nobody had typed into -- "arrow up", "SS3 home",
+    # "arrow down", "home", "page up" -- and none of it ever reproduced on a
+    # developer's machine. The harness waited for molly's *first byte* and then
+    # treated silence as "finished", but that byte is written in
+    # enable_raw_mode(), before the file is loaded or anything is painted. A
+    # molly still starting up is silent in exactly the way a molly with nothing
+    # to say is, so the wait ended, the kill came, and every keystroke went with
+    # it. Here startup is ten milliseconds; on a loaded two-core runner it is
+    # not, and the window is only about six tenths of a second wide.
+    #
+    # So this is the test the flake never had: a program that is quiet for
+    # longer than any `settle` after its first byte, which the harness must
+    # still manage to type at. It fails against the old harness at 1.5s.
+    script = os.path.join(tmpdir, "slowstart.py")
+    with open(script, "w") as fh:
+        fh.write(SLOWSTART)
+    sink = os.path.join(tmpdir, "sink.txt")
+
+    for delay in (0.1, 1.5, 3.0):
+        if os.path.exists(sink):
+            os.remove(sink)
+        run([sys.executable, script, str(delay), sink], ["X", SAVE])
+        got = open(sink).read() if os.path.exists(sink) else "<nothing was read>"
+        check("silent for %.1fs after its first byte, it still gets the keys"
+              % delay, got, "X" + SAVE)
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -3984,6 +4038,7 @@ def main():
 
     tmpdir = tempfile.mkdtemp(prefix="molly-tests-")
     try:
+        test_harness_startup(tmpdir)
         test_keys(tmpdir)
         test_input_decoding(tmpdir)
         test_mouse(tmpdir)

@@ -7,9 +7,11 @@ tests give it one rather than a pipe.
 import fcntl
 import os
 import pty
+import re
 import select
 import signal
 import struct
+import sys
 import termios
 import time
 
@@ -55,22 +57,60 @@ def run(argv, keys, rows=24, cols=80, settle=0.4, env=None, status=False):
                 return
             out += chunk
 
-    # Wait for molly's first byte rather than for a fixed interval. It enters
-    # raw mode with TCSAFLUSH, which throws away input that arrived before it
-    # got there, so typing on a timer races the start: on a loaded CI runner
-    # molly took longer than the 0.3s this used to sleep and the first
-    # keystrokes vanished, leaving a test looking at a file nobody had typed
-    # into. The first byte molly writes is written after that tcsetattr, so its
-    # arrival is proof the flush is behind us.
-    first = time.time() + 5.0
-    while not out and time.time() < first:
+    # Wait for molly's opening frame -- not for a fixed interval, and not merely
+    # for its first byte.
+    #
+    # It enters raw mode with TCSAFLUSH, which throws away input that arrived
+    # before it got there, so typing on a timer races the start: on a loaded CI
+    # runner molly took longer than the 0.3s this used to sleep and the first
+    # keystrokes vanished. The first byte molly writes ("\x1b[?2004l", from
+    # enable_raw_mode) comes just after that tcsetattr, so its arrival does
+    # prove the flush is behind us -- but it also comes *before* molly has
+    # loaded the file, applied its configuration or painted anything, and a
+    # molly still inside startup is silent in exactly the way a molly with
+    # nothing left to say is. The wait below then read that silence as "done",
+    # the kill came, and every keystroke went with it.
+    #
+    # That is the whole of the "lost every keystroke" flake: five runs of CI
+    # over three days, never once on a developer's machine, where startup is ten
+    # milliseconds. It reproduces in a second against a stand-in that writes one
+    # byte and then stays quiet for longer than `settle` -- see the note in
+    # HANDOFF.md.
+    #
+    # So: the first byte, and then a frame. "Stopped growing" cannot tell the
+    # two apart -- the gap between them is exactly what a finished program looks
+    # like -- so this waits for something only a paint produces: molly puts the
+    # cursor somewhere on every frame, and nothing it writes before one does.
+    # If no frame arrives it carries on anyway rather than raising, because the
+    # guard after the keys is the net for that, and a slow start is not a bug.
+    reaped = None
+    deadline = time.time() + 5.0
+    while not out and time.time() < deadline:
         drain(0.1)
     if not out:
         os.kill(pid, signal.SIGKILL)
         _, wstatus = os.waitpid(pid, 0)
         raise RuntimeError("%s painted nothing in 5s (wait status %d)"
                            % (argv[0], wstatus))
-    drain(0.1)  # and let the rest of the opening frame follow it
+    while time.time() < deadline and not re.search(rb"\x1b\[[0-9;]*H", out):
+        drain(0.05)
+        # Not everything molly is run as paints: `--version` prints and exits,
+        # and so does a refusal to open a directory. Those have said all they
+        # have to say, and the wait above would otherwise sit out its deadline
+        # for each of them.
+        done, st = os.waitpid(pid, os.WNOHANG)
+        if done:
+            reaped = st
+            drain(0.05)
+            break
+
+    # Whether anything was actually sent, and how much had been printed before
+    # the most recent key went out -- which is what tells "it answered" from
+    # "it has not got there yet" below. Taken before the write and not after
+    # the loop, because molly usually answers inside the 20ms drain that
+    # follows a key, and that answer has to count as one.
+    typed = any(isinstance(k, (str, bytes)) and k for k in keys)
+    mark = len(out)
 
     for key in keys:
         if isinstance(key, float):
@@ -85,6 +125,7 @@ def run(argv, keys, rows=24, cols=80, settle=0.4, env=None, status=False):
             drain(0.15)
             continue
         try:
+            mark = len(out)
             os.write(fd, key if isinstance(key, bytes) else key.encode())
         except OSError:
             break  # the program has already exited
@@ -98,18 +139,49 @@ def run(argv, keys, rows=24, cols=80, settle=0.4, env=None, status=False):
     # mid-repaint can kill it before the Ctrl-S the test was about, and the
     # check then compares a file nobody saved against the one it wrote. The cap
     # is what stops a molly that will not stop talking from stalling the suite.
+    #
+    # And quiet only counts once something has come back *since the last key*.
+    # Without that, a stall anywhere in the session is the startup window
+    # again: no output is not evidence of nothing to do. Sessions that send no
+    # keys at all -- most of the golden screens -- have nothing to wait for and
+    # skip the condition.
     floor, cap = time.time() + settle, time.time() + settle + 3.0
-    while time.time() < cap:
+    gave_up = reaped is None
+    while reaped is None and time.time() < cap:
         before = len(out)
         drain(0.15)
-        if len(out) == before and time.time() >= floor:
+        # A program that has exited has nothing left to say, which is the one
+        # kind of silence that needs no patience: Ctrl-Q ends the session, and
+        # waiting out the cap for a frame that cannot come would cost every
+        # quitting test three and a half seconds and warn about each of them.
+        done, st = os.waitpid(pid, os.WNOHANG)
+        if done:
+            reaped = st
+            drain(0.05)   # whatever it wrote on the way out
+            gave_up = False
             break
+        if (len(out) == before and time.time() >= floor
+                and (len(out) > mark or not typed)):
+            gave_up = False
+            break
+    # A session that was typed at and never answered is the shape of the bug
+    # above, one stall later. It is not always wrong -- a last key that changes
+    # nothing on screen prints nothing -- so this says so rather than raising,
+    # and a silent kill stops being indistinguishable from a passing test.
+    if gave_up and typed and len(out) == mark:
+        sys.stderr.write(
+            "pty_harness: %s said nothing for %.1fs after the last key, so what"
+            " follows judges a session it may never have read (keys: %r)\n"
+            % (os.path.basename(argv[0]), settle + 3.0, keys))
 
-    try:
-        os.kill(pid, signal.SIGKILL)
-    except OSError:
-        pass
-    _, wstatus = os.waitpid(pid, 0)
+    if reaped is None:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+        _, wstatus = os.waitpid(pid, 0)
+    else:
+        wstatus = reaped
     try:
         os.close(fd)
     except OSError:
@@ -157,13 +229,27 @@ def run_until_signal(argv, sig, rows=24, cols=80, startup=0.5, keys=()):
                 return
             out += chunk
 
+    # `startup` is the floor, and then a frame -- the same race run() has, and
+    # the same answer: a program still starting up has not read anything yet,
+    # and the recovery tests here type text and then expect to find it. See the
+    # long note in run().
     deadline = time.time() + startup
     while time.time() < deadline:
         drain(0.05)
+    deadline = time.time() + 5.0
+    while time.time() < deadline and not re.search(rb"\x1b\[[0-9;]*H", out):
+        drain(0.05)
     for key in keys:
+        mark = len(out)
         os.write(master, key if isinstance(key, bytes) else key.encode())
         time.sleep(0.06)
         drain(0.02)
+        # And let it answer before the next key or the signal: what this
+        # function proves is what the program did with the keys, which it
+        # cannot have done while it was still being handed them.
+        deadline = time.time() + 2.0
+        while len(out) == mark and time.time() < deadline:
+            drain(0.05)
     during = termios.tcgetattr(slave)
     os.kill(pid, sig)
 

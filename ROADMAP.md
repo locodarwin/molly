@@ -6,16 +6,16 @@ behaves like a GUI one: menu bar, mouse, dialogs, splits, discoverable
 everything. Molly aims at that experience in C, keeping olly's zero runtime
 dependencies and instant start.
 
-**Current state:** Phases 0 and 1 are done, and Phase 2 has nine features
+**Current state:** Phases 0 and 1 are done, and Phase 2 has ten features
 finished end to end: regular-expression search and replace on an engine of its
 own, a configuration file with a remappable keymap, the CUA keys, any number of
 files open at once, a tab bar, syntax highlighting for seven languages, window
-splits, a shell filter, and indentation that follows the filetype. Molly is
-14,051 lines across `src/molly.h` and thirty `.c` files, with a menu bar, a
-mouse, framed dialogs that have buttons and checkboxes on them, a command
-palette and a keyboard reference generated from its own command table. 1,337
-checks pass (648 pty, 87 golden screens, 602 unit) plus 4,040 fuzz cases and
-the allocation-failure sweep, and every file is clean under `-Wall -Wextra -Wpedantic -Wshadow`. Still `0.1.0-dev`: the *interface* is
+splits, a shell filter, indentation that follows the filetype, and multiple
+cursors. Molly is 14,792 lines across `src/molly.h` and thirty-one `.c` files,
+with a menu bar, a mouse, framed dialogs that have buttons and checkboxes on
+them, a command palette and a keyboard reference generated from its own command
+table. 1,426 checks pass (676 pty, 93 golden screens, 657 unit) plus 4,040 fuzz
+cases and the allocation-failure sweep, and every file is clean under `-Wall -Wextra -Wpedantic -Wshadow`. Still `0.1.0-dev`: the *interface* is
 molly's own, and the *editing* features are mostly still olly's.
 
 **Reaching commands:** Ctrl keys *and* Alt keys, plus a menu system on Alt.
@@ -111,8 +111,9 @@ lifetimes, with undo as a second global (`U`) that is really a buffer property:
 | the **view** (per window) | `cx`, `cy`, `rx`, `rowoff`, `coloff`, `screenrows`, `screencols`, `sel_active`, `sx`, `sy`, `linenum`, `gutter_w` |
 | the **app** (global) | `clipboard`, `clipsize`, `statusmsg`, `orig_termios` |
 
-Tabs, splits and multi-cursor are all blocked on separating these. Building any
-of them first means building them twice.
+Tabs, splits and multi-cursor were all blocked on separating these. Building any
+of them first would have meant building them twice; all three have since landed
+on the separation this section argued for, and none of them had to revisit it.
 
 **The render cache assumes one full-width text area** and carries no attributes.
 Covered above.
@@ -895,7 +896,7 @@ molly runs under `ulimit -v` and has to reach a clean quit.
   instead of revisiting every caller. A slice is expressed in *render columns*,
   not byte offsets, because wrapping happens where glyphs land on screen.
 
-### Multi-cursor and block selection — **IN** (model landed, feature later)
+### Multi-cursor — **done.** Block selection — **LATER**
 
 - **For:** the headline feature of modern editors, and Fresh has it (Ctrl-D).
   Once you have it you use it constantly.
@@ -903,14 +904,33 @@ molly runs under `ulimit -v` and has to reach a clean quit.
   the entire selection model change: one cursor and one anchor become N of each,
   edits must apply without invalidating each other's positions, and undo has to
   collapse N simultaneous edits into one step.
-- **Landed:** the cursor is now `struct cursor` (position + its own selection
-  anchor) held in a list, with `E.ncursors == 1` and a `CUR` macro for the
-  primary. `cursors_clamp()` runs from `editor_scroll`, so every cursor is valid
-  before each frame regardless of which edit path ran, and `cursors_collapse()`
-  drops the extras when positions stop meaning anything (loading another file).
-  The feature itself — Ctrl-D, N simultaneous edits, undo collapsing them into
-  one step — came after buffers and splits, and both of those have landed, so
-  nothing is in front of it now. Block selection follows it.
+- **Landed, the model:** the cursor is `struct cursor` (position + its own
+  selection anchor) held in a list, with a `CUR` macro for the primary.
+  `cursors_clamp()` runs from `editor_scroll`, so every cursor is valid before
+  each frame regardless of which edit path ran.
+- **Landed, the feature:** Ctrl-D for the word and then each next occurrence,
+  Ctrl-Up/Ctrl-Down for a column, Alt-click for anywhere, Esc for one again.
+  Typing, Tab, Enter, Backspace, Delete and paste reach every cursor; so do the
+  arrows, Home and End, and Shift extends a selection at each one from where
+  that cursor was.
+- **What it cost, which was less than the warning above:** not one editing path
+  was rewritten. Two things did that. Cursors run in document order, so every
+  edit is strictly earlier than every cursor still to come and nothing an edit
+  does reaches text before it -- which makes a processed cursor final. Then one
+  rule moves the rest: every operation is a *replace*, so with (r1,c1) the end
+  of the removed range and (nr,nc) the cursor afterwards, a position after it
+  goes to (nr, nc + (col-c1)) on row r1 or down by (nr-r1) below. Deleting
+  forward is the only operation whose removed range ends anywhere but the
+  cursor it started at.
+- **And undo needed nothing at all.** `undo_group_begin()` already nested, so
+  the group opened around the whole gesture swallows the ones `selection_delete`
+  and the newline open, every record carries one group id, and `editor_undo()`
+  already popped a group at a time. Undo then collapses to one cursor, because a
+  record restores one position rather than a list -- the answer
+  `cursors_collapse()` already gave for loading another file.
+- **Block selection is still later.** A column of cursors covers most of what
+  people use it for, and a rectangular *selection* is a different model again:
+  every selection in molly is a pair of positions, and a rectangle is not.
 
 ### Search in files / grep — **LATER**
 
@@ -1089,7 +1109,10 @@ are structural to the menu bar.
 | --- | --- |
 | Command access | Ctrl **and** Alt keys, plus a menu system on Alt |
 | Soft wrap | **In.** Display-row view model landed |
-| Multi-cursor | **In.** Cursor-list model landed; buffers and splits now have too, so it is next of the three |
+| Multi-cursor | **Done.** Cursors run in document order so one replace-range rule fixes up the rest |
+| What Ctrl-D matches | **Literal text, case-sensitively**, and not through `search.c` -- the Find dialog's modes must not change what it finds |
+| Cursors after an undo | **One.** A record restores a position, not a list |
+| Where the multi-cursor commands live | **The palette and the help screen, not the Edit menu** -- keyboard operations, as transpose already was |
 | LSP | **In.** Forces an async event loop and overlay widgets into Phase 0 |
 | Integrated terminal | **In**, late — needs panels first |
 | Big files | **In.** Buffer rewrite is planned, not optional |

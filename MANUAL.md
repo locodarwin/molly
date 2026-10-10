@@ -32,6 +32,7 @@ and a searchable label, so nothing is reachable only by knowing a secret key.
 - [Help Screen](#help-screen)
 - [Line Numbers](#line-numbers)
 - [Selecting Text](#selecting-text)
+- [Several Cursors](#several-cursors)
 - [Searching](#searching)
 - [Regular Expressions](#regular-expressions)
 - [Search and Replace](#search-and-replace)
@@ -371,6 +372,7 @@ Molly is modeless: whatever you type is inserted at the cursor.
 | Any character | Insert at the cursor |
 | `Tab` | Insert one indent step — see [Indentation](#indentation) |
 | `Enter` | Split the line / insert a new line, keeping the indentation |
+| `Ctrl-D` | Add a cursor at the next match — see [Several Cursors](#several-cursors) |
 | `Backspace` | Delete the character before the cursor |
 | `Delete` | Delete the character at the cursor |
 
@@ -541,6 +543,79 @@ depends on your terminal honoring OSC 52 (some disable it by default for
 security); where it is off, Molly's own `Ctrl-V` still pastes its internal
 buffer. Molly does not *read* the system clipboard — `Ctrl-V` pastes only what
 Molly last copied or cut.
+
+## Several Cursors
+
+Molly can put the cursor in several places at once and type in all of them.
+
+| Key | Action |
+| --- | --- |
+| `Ctrl-D` | Select the word under the cursor; press again for the next occurrence |
+| `Ctrl-Down` | Add a cursor on the row below |
+| `Ctrl-Up` | Add a cursor on the row above |
+| `Alt`-click | Add a cursor where you click |
+| `Esc` | Back to one cursor |
+
+The terminal has one real cursor, and the one you started with keeps it. The
+others are drawn as coloured blocks — that is the only way a terminal can show
+you more than one, and it is why they look different rather than identical.
+The status bar says how many there are, which matters when some of them have
+scrolled off the screen.
+
+### Ctrl-D, one press at a time
+
+The first `Ctrl-D` selects the word under the cursor and does nothing else, so
+you see what is about to be matched before anything is multiplied. Each press
+after that puts another cursor on the next occurrence, wrapping round the end
+of the file. When there are no more, it says so and leaves the cursors you
+have.
+
+What it matches is **literal text, and case matters.** It is not affected by
+the Find dialog's **Match case** and **Regular expression** checkboxes: those
+belong to [searching](#searching), and if `Ctrl-D` read them then turning
+patterns on would make a word with a `.` in it stop matching itself.
+
+`Ctrl-D` works from a selection you made yourself, too — select any text and it
+will find the next copy of exactly that, metacharacters and all. The selection
+has to be on one line.
+
+### Typing with several cursors
+
+Everything that edits reaches every cursor: typing, `Tab`, `Enter`,
+`Backspace`, `Delete` and `Ctrl-V`. Where a cursor has a selection — which is
+what `Ctrl-D` leaves — typing replaces it, so `Ctrl-D` `Ctrl-D` `Ctrl-D` and
+then a word is how you rename three occurrences of something.
+
+**It is one undo step.** However many cursors were involved, one `Ctrl-Z` puts
+all of it back. Undo then leaves you with one cursor, because an undo step
+records positions for the edit it reversed and not for the cursors you had put
+on it.
+
+Moving reaches every cursor as well: the arrows, `Home` and `End` all move the
+whole set, and `Home`/`End` go to each cursor's *own* line edge, which is the
+point of a column of them on ragged lines. Holding `Shift` extends a selection
+at every cursor, each from where that cursor was.
+
+Two cursors that land in the same place merge into one. They have to: two
+cursors in one spot would type every character twice.
+
+`Ctrl-V` puts the whole clipboard in at every cursor. It does not deal out one
+copied line per cursor the way some editors do when the counts happen to
+match.
+
+### What it deliberately does not do
+
+- **There is no column or block selection.** Cursors can be put in a column,
+  and that covers most of what block selection is used for, but a rectangular
+  *selection* is a separate thing molly does not have.
+- **`Ctrl-D` does not skip or deselect a match.** If a press lands somewhere
+  you did not want, `Esc` and start again.
+- **Nothing but `Esc`, a plain click and undo collapses the set.** Switching
+  files or windows keeps your cursors where they were.
+- **The commands are not in the Edit menu**, because they are keyboard
+  operations — the same reason Transpose is not. They are in the command
+  palette (`Ctrl-Space`) and on the [help screen](#help-screen) with their
+  keys.
 
 ## Searching
 
@@ -1053,6 +1128,8 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     Ctrl-X   Cut the selection
     Ctrl-V   Paste the clipboard at the cursor
     Ctrl-T   Swap the two characters at the cursor
+    Ctrl-D   Add a cursor at the next occurrence of the word or selection
+    Ctrl-Down / Ctrl-Up  Add a cursor on the row below / above
     Alt-|    Filter the selection (or the file) through a command
     Ctrl-Z   Undo the last change
     Ctrl-Y   Redo an undone change
@@ -1067,7 +1144,7 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     Space    In a dialog: tick the checkbox or press the button with the keyboard
     Shift    Hold with arrows / Home / End / PgUp / PgDn to select
     Shift    Hold while dragging to select with the terminal, not molly
-    Esc      Cancel the current prompt, menu or dialog
+    Esc      Cancel the current prompt, menu or dialog; or go back to one cursor
 
 To see the live keymap rather than this list:
 

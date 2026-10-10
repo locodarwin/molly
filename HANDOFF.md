@@ -1,43 +1,47 @@
 # Handoff
 
-Written 2026-10-09 and re-measured the same day at `236f227`, which is where
+Written 2026-10-09 and re-measured the same day at `3151cf1`, which is where
 `main` is: everything is committed, the working tree is clean, and nothing is
-half-finished. **Not yet pushed** — three commits are ahead of `origin/main`.
+half-finished. **Not yet pushed** — six commits are ahead of `origin/main`.
 
 This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
 
-**Nothing is in flight.** Indentation was the last feature and it is done end
-to end: `ae2d882` the mechanism with no keystroke reaching it, `236f227` the
-two keys that reach it, and the documentation commit on top. Shawn chose it
-from the three candidates on 2026-10-09; the two that are left are under "Next
-by dependency" below, and **which of them comes next has not been confirmed**.
-Ask before starting one.
+**Nothing is in flight.** Multi-cursor was the last feature and it is done end
+to end: `035ad05` the model with no keystroke reaching it, then the keys and the
+drawing, then the documentation. Shawn chose it on 2026-10-09, after
+indentation, from the list below.
+
+Of the three candidates the first handoff named, **soft wrap is the only one
+left**, and it has not been confirmed as next. Ask before starting it. The
+smaller items under "Next by dependency" are all still open and several of them
+are now cheaper than they were.
 
 ---
 
 ## Where we are
 
-Phases 0 and 1 are done. Phase 2 has nine features finished end to end:
+Phases 0 and 1 are done. Phase 2 has ten features finished end to end:
 regular expressions, the configuration file, the CUA keymap, multiple buffers,
-the tab bar, syntax highlighting, window splits, the shell filter, and
-indentation. Molly searches and replaces with patterns on an engine of its own;
+the tab bar, syntax highlighting, window splits, the shell filter, indentation,
+and multiple cursors. Molly searches and replaces with patterns on an engine of its own;
 it reads `~/.config/molly/mollyrc` and can write it back; its keys are CUA and
 remappable; it holds any number of files open at once with a tab per file; it
 colours seven languages from table-driven definitions a config file can add to;
 it splits its screen into windows that each keep their own cursor, scroll and
-gutter; it pipes text through any shell command; and it indents a new line
-under the old one, with the width, the character and auto-indent each
-answerable per filetype.
+gutter; it pipes text through any shell command; it indents a new line under
+the old one, with the width, the character and auto-indent each answerable per
+filetype; and it puts the cursor in as many places as you like and edits in all
+of them as one undo step.
 
 **Measured, not remembered** (all of these taken at `236f227` from a clean
 build on 2026-10-09; re-measure before quoting them anywhere):
 
 | | |
 | --- | --- |
-| Source | 14,051 lines, `src/molly.h` plus 30 `.c` files |
-| Checks | 1,337 — 648 pty, 87 golden screens, 602 unit |
+| Source | 14,792 lines, `src/molly.h` plus 31 `.c` files |
+| Checks | 1,426 — 676 pty, 93 golden screens, 657 unit |
 | Fuzz | 4,040 cases per `make test` (40 replace, 4,000 regex, seed 42) |
 | Warnings | clean under `-Wall -Wextra -Wpedantic -Wshadow` from a **clean** build; `regex.c` also under `-Wconversion` |
 | OOM sweep | `make test-oom` green: 142 allocations failed in turn, 130 through `die()`, 12 kept running |
@@ -48,15 +52,16 @@ the unit binary. `make test-oom` is the allocation-failure sweep and needs
 `cc` at runtime; it is not part of `make test`. Green at the last commit:
 
 ```text
-648 passed, 0 failed
-87 passed, 0 failed
+676 passed, 0 failed
+93 passed, 0 failed
 40 cases, 0 failed (seed 42)
 4000 cases, 0 failed (seed 42)
 ```
 
-The pty suite now takes long enough that `make test` can run past ten minutes
-on a cold build. That is 648 pty sessions each with a settle time, not a
-regression; budget for it rather than assuming a hang.
+The pty suite now takes long enough that `make test` runs past ten minutes on a
+cold build. That is 676 pty sessions each with a settle time, not a regression;
+budget for it rather than assuming a hang, and start it in the background rather
+than waiting on it.
 
 ### What exists that did not exist a week ago
 
@@ -92,6 +97,12 @@ regression; budget for it rather than assuming a hang.
   view. `F7`/`F8` split right and below, `F6`/`Shift-F6` walk them, `F9` closes
   one, and a Window menu holds those plus Only this window. Each window has its
   own cursor, scroll offset, gutter and status bar.
+- **Multiple cursors** (`src/cursors.c`): `Ctrl-D` takes the word under the
+  cursor and then each next occurrence, `Ctrl-Up`/`Ctrl-Down` build a column,
+  `Alt`-click puts one anywhere, `Esc` goes back to one. Every edit and every
+  movement reaches all of them, as a single undo step. Not one existing editing
+  path was rewritten for it — see the two gotchas about the order and the
+  replace-range rule below, which are the whole trick.
 - **Indentation** (`src/indent.c`): `Enter` starts the new line under the old
   one and `Tab` types a tab or spaces to the next tab stop. The tab width, the
   choice of character and auto-indent are each a `[editor]` default that a
@@ -117,6 +128,21 @@ Full table in `ROADMAP.md` §7. The ones that bite soonest:
   persist.
 - **Keymap is CUA on the four conflicts, and fully remappable** except the
   eight Alt-letter menu titles.
+- **Multi-cursor edits in document order, and undo collapses to one cursor.**
+  The order is what makes one fixup rule enough (see the gotchas); the collapse
+  is because an undo record restores one position and not a list, so after
+  undoing an edit made at several cursors the extras would be pointing at
+  nothing the user put them on — and the next keystroke would land there.
+- **`Ctrl-D` matches literal text, case-sensitively, and does not read the Find
+  dialog's checkboxes.** Routing it through `search.c` would have been less
+  code and would have meant that turning on regular expressions made a word
+  with a `.` in it stop matching itself. What Ctrl-D looks for is text that is
+  already selected, which is never a pattern.
+- **The multi-cursor commands are not in the Edit menu.** They are keyboard
+  operations, which is the reason transpose is not there either, and the
+  palette and the help screen are both generated from the command table so
+  they find them anyway. It also keeps four rows off the one drop-down that
+  already outgrows a short terminal.
 - **`Enter` inside leading whitespace keeps the text in its column.** Only the
   whitespace behind the cursor is copied and the tail keeps its own, so
   splitting `····alpha` after two spaces leaves `alpha` at column four. The
@@ -204,18 +230,17 @@ with their reasoning, and any of them is a one-line change if Shawn disagrees:
 
 ### Next by dependency
 
-Six of the first handoff's items are done: the config file with the CUA keymap,
-multiple buffers with tabs, syntax highlighting, window splits, the shell
-filter, and indentation with per-filetype defaults. Two are left, and neither
-has been confirmed as next.
+Seven of the first handoff's items are done: the config file with the CUA
+keymap, multiple buffers with tabs, syntax highlighting, window splits, the
+shell filter, indentation with per-filetype defaults, and multiple cursors.
+One is left, and it has not been confirmed as next.
 
-1. **Multi-cursor.** Nothing is in front of it: the cursor-list model landed in
-   Phase 0 and both of the features it was waiting on — buffers and splits — are
-   done. `ROADMAP.md` §5 has the shape, and warns it is the most invasive thing
-   on the list.
-2. **Soft wrap.** The display-row model landed in Phase 0, so this is three
+1. **Soft wrap.** The display-row model landed in Phase 0, so this is three
    functions (`drow_total`, `drow_of_cursor`, `drow_at`) rather than a refit of
-   the renderer. `ROADMAP.md` §5 is explicit about what else it touches.
+   the renderer. `ROADMAP.md` §5 is explicit about what else it touches, and it
+   is now the most invasive thing left — multi-cursor turned out cheaper than
+   its warning, and soft wrap's warning is about the renderer rather than the
+   edit paths, so it will not get the same discount.
 
 Two things the shell filter now makes cheap, neither of them asked for yet:
 
@@ -236,6 +261,19 @@ commit:
   a question; what is there is a message with a count. It wants Save All /
   Discard / Cancel on it, and it would share most of its shape with the
   buffer-list dialog — which is why they are worth doing together.
+- **Block selection**, which `ROADMAP.md` §5 moved from "follows multi-cursor"
+  to LATER rather than doing here. A column of cursors covers most of what
+  people reach for it for, and a rectangular selection is a different model:
+  every selection in molly is a pair of positions and a rectangle is not.
+- **`Ctrl-D` cannot skip or deselect a match.** Every editor that has this also
+  has "skip this one" and "take the last one back"; molly has `Esc` and start
+  again. The shape is there for both — the cursor list is ordered, so dropping
+  the last entry is a few lines — and the question is only what to bind them
+  to, which is the hard part in a terminal.
+- **Add a cursor to every match at once**, which is the other half of Ctrl-D in
+  most editors. `next_occurrence()` already walks the file and stops when it
+  comes back round, so this is a loop over it with the ceiling on the list as
+  the guard.
 - **Indent and dedent a block** with `Tab`/`Shift-Tab` on a selection. This is
   the item people will expect next, and indentation did not do it: `Tab` with
   text selected still replaces the selection, as it always has.
@@ -291,10 +329,10 @@ commit:
   `View ▸ Save Settings`; the dialog is now presentation over a finished
   mechanism.
 
-Everything else — the cheap Edit/View/Navigate items, soft wrap, multi-cursor,
+Everything else — the cheap Edit/View/Navigate items, soft wrap,
 the integrated terminal, LSP, big-file handling — is argued in `ROADMAP.md` §5
-with its verdict. Soft wrap and multi-cursor already have their *models*
-landed; the features come later.
+with its verdict. Soft wrap already has its *model* landed; the feature comes
+later.
 
 ---
 
@@ -440,6 +478,40 @@ landed; the features come later.
   measures the cursor against the render string the sync may replace. Anything
   new that changes which buffer is current needs no call: the per-frame one
   catches it.
+- **Cursors are edited in document order, and that is load-bearing.** An edit
+  at one cursor moves the text under the others, so `cursors_edit()` sorts them
+  and runs top to bottom: every edit is then strictly earlier in the document
+  than every cursor still to come, and nothing an edit does reaches text before
+  it, so a cursor is final the moment it has been processed. Run them in any
+  other order and the fixups below stop being enough. The loop also sets
+  `V.primary` to each cursor in turn so the ordinary editing functions, which
+  all work on `CUR`, do the work — which is why none of them needed changing.
+- **One rule moves the cursors an edit has not reached yet, and it is derived
+  from where the cursor landed.** Every operation is a *replace*: it removes a
+  range and leaves the cursor where the text that followed now begins. With
+  (r1,c1) the end of the removed range and (nr,nc) the cursor afterwards, a
+  position after it goes to `(nr, nc + (col - c1))` on row r1, or down by
+  `(nr - r1)` below it. That covers typing, Tab, Enter, Backspace, Delete and
+  paste without any of them reporting anything. **Deleting forward is the one
+  exception**: its removed range ends past the cursor it started at, which is
+  why `range_end()` has a case for it. Anything new that edits at N cursors
+  either fits that shape or needs its own case there.
+- **`selection_clear()` is every cursor; `selection_delete()` is one.** They
+  look like a pair and are not. The dispatcher calls `selection_clear()` to mean
+  "the selection is over", which with several cursors means all of them.
+  `selection_delete()` is called *once per cursor* from inside the edit loop, so
+  it clears only `CUR` — making it call `selection_clear()` meant the first
+  cursor's edit threw away the selections of every cursor whose turn had not
+  come, and Ctrl-D then replaced one occurrence and merely typed at the rest.
+  That one cost an hour.
+- **The extra cursors are drawn as a second pass over the cells, not in the
+  draw loop.** `cursors_mark_row()` re-roles the handful of cells it owns with
+  `grid_shade()` after `editor_draw_text_row()` has run, and returns
+  immediately when there is one cursor — which is why not one of the 87 golden
+  screens that existed before moved. The per-character loop runs on every row
+  of every window every frame and multi-cursor is rare and purely additive, so
+  it does not get a branch. The primary is skipped because it has the
+  terminal's own cursor; drawing a block there too would show two.
 - **A `live` function in the settings table must return the default, not the
   value in force.** The three indentation settings can each be overridden per
   filetype, so `live_tab_width()` returning `tab_width()` would have written

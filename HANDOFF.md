@@ -1,8 +1,9 @@
 # Handoff
 
-Written 2026-10-09 and re-measured the same day at `3151cf1`. Both `main` and
-`origin/main` are at the documentation commit on top of it: everything is
-committed and pushed, the working tree is clean, and nothing is half-finished.
+Written 2026-10-09 and re-measured the same day at `3151cf1`; the commits after
+it are documentation and the CI repairs described under "What only CI sees".
+`main` and `origin/main` are level: everything is committed and pushed, the
+working tree is clean, and nothing is half-finished.
 
 This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
@@ -520,6 +521,36 @@ later.
   `indent_*_default()` functions exist only for this. It is not enough to read
   the settings table either: a unit test calls `tab_width_set()` directly and
   expects write-back to see it, which is the whole point of `live`.
+
+### What only CI sees
+
+CI is `.github/workflows/test.yml`: `make`, `make test` and `make test-oom` on
+`ubuntu-latest` at every push. It was red for eleven runs straight, from
+2026-10-08 to 2026-10-09, on things that cannot fail on this machine. Not one of
+them was a bug in molly.
+
+- **`gh run list` in this working tree answers for the wrong repository.** There
+  are two remotes -- `origin` (molly) and `upstream` (olly) -- and with no
+  default set `gh` reported olly's runs, which are green. Eleven red molly runs
+  read as "CI is fine" for a day. Always `gh run list -R locodarwin/molly`.
+- **`/bin/sh` is bash here and dash on the runner.** The filter check for a
+  command that does not exist asked for `"command not found"`, which is bash's
+  wording; dash says `"not found"`. It now asks for the substring both shells
+  share, because what it tests is that molly passes the shell's own words
+  through, not which shell `/bin/sh` is.
+- **Python's `\B` only began matching the empty string in 3.14** (gh-124130).
+  The regex fuzz is differential against `re`, this machine runs 3.14 and
+  ubuntu-24.04 runs 3.12, so two cases of seed 42 -- `\B` against `""` -- failed
+  there and passed here. Molly follows Perl, PCRE and 3.14;
+  `PY_B_MATCHES_EMPTY` in `tests/fuzz_regex.py` skips that one shape when the
+  reference predates it, and counts what it skipped.
+- **The pty harness raced molly's start.** It slept 0.3s and began typing, and
+  molly enters raw mode with `TCSAFLUSH`, which discards input that arrived
+  before it got there. On a loaded runner the first keystrokes vanished and the
+  test compared a file nobody had typed into -- "arrow up" and "SS3 home",
+  once each, in different runs, which is what an intermittent red run looked
+  like. It now waits for molly's first byte, written just after that
+  `tcsetattr`.
 
 ### Operational mistakes to not repeat
 

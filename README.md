@@ -15,7 +15,7 @@ command reached through a keymap, and the event loop can wait on a child process
 as well as the keyboard — and the features it was groundwork *for* have started
 landing: a configuration file with a rebindable keymap, any number of files open
 at once with a tab bar, syntax highlighting for seven languages, window splits,
-a shell filter, per-filetype indentation, multiple cursors and soft wrap. 1,608
+a shell filter, per-filetype indentation, multiple cursors and soft wrap. 1,611
 checks pass, including golden screenshots taken before the renderer was replaced
 and still compared against today. What comes next, and why, is in
 [`ROADMAP.md`](ROADMAP.md).

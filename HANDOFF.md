@@ -47,7 +47,7 @@ clean build on 2026-10-10; re-measure before quoting them anywhere):
 | | |
 | --- | --- |
 | Source | 15,625 lines, `src/molly.h` plus 32 `.c` files |
-| Checks | 1,608 — 734 pty, 103 golden screens, 771 unit |
+| Checks | 1,611 — 737 pty, 103 golden screens, 771 unit |
 | Fuzz | 4,040 cases per `make test` (40 replace, 4,000 regex, seed 42) |
 | Warnings | clean under `-Wall -Wextra -Wpedantic -Wshadow` from a **clean** build; `regex.c` also under `-Wconversion` |
 | OOM sweep | `make test-oom` green: 142 allocations failed in turn, 130 through `die()`, 12 kept running |
@@ -58,18 +58,21 @@ the unit binary. `make test-oom` is the allocation-failure sweep and needs
 `cc` at runtime; it is not part of `make test`. Green at the last commit:
 
 ```text
-734 passed, 0 failed
+737 passed, 0 failed
 103 passed, 0 failed
 40 cases, 0 failed (seed 42)
 4000 cases, 0 failed (seed 42)
 ```
 
-The same four numbers came back from CI on the same commit (run 38084380677,
-14m33s), which is the third consecutive green run.
+CI returned the same four numbers on `bf35a8f` (run 38084380677, 14m33s) and
+then went red on the documentation commit after it, with two pty checks losing
+every keystroke. That run is what closed the keystroke flake: the binary was
+identical to the green one, so the fault could only be in the harness. See
+"What only CI sees".
 
 The pty suite now takes long enough that `make test` runs past ten minutes on a
 cold build — about seventeen of those minutes are the pty stage alone. That is
-734 pty sessions each with a settle time, not a regression; budget for it rather
+737 pty sessions each with a settle time, not a regression; budget for it rather
 than assuming a hang, and start it in the background rather than waiting on it.
 Its output is block-buffered when redirected to a file, so a log that has not
 grown for minutes is not a hang either: `grep -c pass` on it undercounts by up
@@ -439,6 +442,12 @@ later.
   pty check that opens the reference and pages down twice, which is what the
   soft-wrap test does. The *description* is what renders there, not the label:
   the check is for "Wrap long lines", not "Soft wrap".
+- **A `pty.fork()` in a script fed on stdin forks the interpreter.** Python
+  reads such a script incrementally from fd 0, and the child's fd 0 is the pty
+  slave — so the child goes looking for the rest of the script in the terminal,
+  finds whatever the parent typed at it, and re-runs whatever it can parse.
+  Seven interpreters and a `kill -9` later: write the probe to a file and run
+  `python3 -I` on it, which is what every test in `tests/` already does.
 - **A local in a pty test can shadow a keystroke.** `tests/test_molly.py` keeps
   the keys as short module-level names — `CUT`, `SAVE`, `HOME`, `END`, `COPY`,
   `PASTE` — so a test-local `CUT = "alpha beta…"` silently turns `[CUT]` from
@@ -632,8 +641,10 @@ later.
 
 CI is `.github/workflows/test.yml`: `make`, `make test` and `make test-oom` on
 `ubuntu-latest` at every push. It was red for eleven runs straight, from
-2026-10-08 to 2026-10-09, on things that cannot fail on this machine. Not one of
-them was a bug in molly.
+2026-10-08 to 2026-10-09, and red once more on 2026-10-10 — a run of a
+documentation-only commit, whose binary was identical to the green one before
+it, which is what finally said the fault was in the test harness. Not one of the
+twelve was a bug in molly. Everything below is closed.
 
 - **`gh run list` in this working tree answers for the wrong repository.** There
   are two remotes -- `origin` (molly) and `upstream` (olly) -- and with no
@@ -650,25 +661,40 @@ them was a bug in molly.
   there and passed here. Molly follows Perl, PCRE and 3.14;
   `PY_B_MATCHES_EMPTY` in `tests/fuzz_regex.py` skips that one shape when the
   reference predates it, and counts what it skipped.
-- **Three pty checks have lost every keystroke, once each, on the runner and
-  never here.** "arrow up", "SS3 home" and "arrow down", in three different
-  runs; each reports a file nobody typed into, with no stray characters in it.
-  Two causes were found and closed and the third is still open:
-  the harness slept 0.3s before typing and molly enters raw mode with
-  `TCSAFLUSH`, which discards input that arrived before it got there, so it now
-  waits for molly's first byte, written just after that `tcsetattr`; and it
-  killed molly on a timer `settle` seconds after the last key, which can land
-  before molly has read the Ctrl-S the check was about, so it now waits for
-  molly's output to go quiet, with `settle` as the floor and a 3s cap. "arrow
-  down" failed *after* the first of those, so the second is a hypothesis and
-  not a diagnosis. **It did not reproduce here**: 25 runs pinned to one CPU
-  against six busy loops lost nothing, and neither did killing molly 0.05s
-  after the last keystroke. If it happens again, the harness now raises with
-  the wait status when molly paints nothing at all in 5s, which is the one
-  explanation that would otherwise look exactly like this. Three runs have been
-  green since (38017268410, 38031920707, 38084380677, the last of them 734 pty
-  checks); that is encouraging and it is not proof of a cause.
-
+- **Five pty checks lost every keystroke on the runner and never here —
+  diagnosed and closed on 2026-10-10.** "arrow up", "SS3 home", "arrow down",
+  "home" and "page up", across five runs; each reported a file nobody had typed
+  into, with no stray characters in it. Three causes, all in the harness and
+  none of them in molly:
+  - it slept 0.3s before typing, and molly enters raw mode with `TCSAFLUSH`,
+    which discards input that arrived before it got there — so it waits for
+    molly's first byte, written just after that `tcsetattr`;
+  - it killed molly on a timer `settle` seconds after the last key, which can
+    land before molly has read the Ctrl-S the check was about — so it waits for
+    the output to go quiet, with `settle` as the floor and a 3s cap;
+  - and the one that was actually doing it: **the first byte is not the first
+    frame.** `\x1b[?2004l` is written inside `enable_raw_mode()`, before
+    `init_editor()` loads the file, before `config_apply()`, and before anything
+    is painted. So the harness typed at an editor still starting up, the keys
+    sat unread in the tty buffer, and then the wait after them read that silence
+    as "finished" and killed molly with every keystroke still in the queue. The
+    window is about six tenths of a second wide — the 0.4s `settle` floor plus a
+    0.15s poll. Startup here is ten milliseconds; on a loaded two-core runner,
+    five times it was not.
+  The harness now waits for a *frame* before it types — something only a paint
+  produces, since molly positions the cursor on every one and nothing it writes
+  earlier does — and after the last key it will not accept quiet until something
+  has come back since that key. A program that has exited is the one silence it
+  does not wait on. A session that was typed at and answered nothing now prints
+  a line to stderr saying so, so a silent kill can never again be
+  indistinguishable from a passing test. `run_until_signal` had the same window
+  and the same fix, which the recovery tests depend on.
+  **It reproduces in a second**, which is what two sessions of it never managed:
+  `test_harness_startup` runs a stand-in that writes one byte and then says
+  nothing for up to three seconds, and the harness still has to get the keys in.
+  It fails against the old harness at 1.5s. The earlier attempts failed because
+  they looked for a race in the *typing* -- 25 runs pinned to one CPU against six
+  busy loops -- and the race was in the startup.
 - **The newest cursor is not the last entry in the list.** The list is kept in
   document order, so a match found by wrapping to the top of the file sorts
   first. Skip, drop-last and the search Ctrl-D runs are all about the cursor

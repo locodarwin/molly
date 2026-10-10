@@ -2,10 +2,11 @@
 
 Written 2026-10-10 and re-measured the same day. `main` and `origin/main` are
 level: everything is committed and pushed, the working tree is clean, nothing
-is half-finished, and the last CI run was green. The last work on it was **soft
-wrap**, which Shawn picked on 2026-10-10 — the last of the three features the
-first handoff named — and then the test harness, whose keystroke flake was
-diagnosed and closed the same day: see "What only CI sees".
+is half-finished, and CI has been green on every push since the harness fix
+landed. The last work on it was **soft wrap**, which Shawn picked on
+2026-10-10 — the last of the three features the first handoff named — and then
+the test harness, whose keystroke flake was diagnosed and closed the same day:
+see "What only CI sees".
 
 This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
@@ -29,16 +30,17 @@ the argument for each.
 Phases 0 and 1 are done. Phase 2 has eleven features finished end to end:
 regular expressions, the configuration file, the CUA keymap, multiple buffers,
 the tab bar, syntax highlighting, window splits, the shell filter, indentation,
-multiple cursors, and soft wrap. Molly searches and replaces with patterns on an engine of its own;
-it reads `~/.config/molly/mollyrc` and can write it back; its keys are CUA and
-remappable; it holds any number of files open at once with a tab per file; it
-colours seven languages from table-driven definitions a config file can add to;
-it splits its screen into windows that each keep their own cursor, scroll and
-gutter; it pipes text through any shell command; it indents a new line under
-the old one, with the width, the character and auto-indent each answerable per
-filetype; it puts the cursor in as many places as you like and edits in all of
-them as one undo step; and it lays a line too long for the window out over as
-many screen rows as it needs without touching a byte of the file.
+multiple cursors, and soft wrap. Molly searches and replaces with patterns on
+an engine of its own; it reads `~/.config/molly/mollyrc` and can write it back;
+its keys are CUA and remappable; it holds any number of files open at once with
+a tab per file; it colours seven languages from table-driven definitions a
+config file can add to; it splits its screen into windows that each keep their
+own cursor, scroll and gutter; it pipes text through any shell command; it
+indents a new line under the old one, with the width, the character and
+auto-indent each answerable per filetype; it puts the cursor in as many places
+as you like and edits in all of them as one undo step; and it lays a line too
+long for the window out over as many screen rows as it needs without touching a
+byte of the file.
 
 **Measured, not remembered** (all of these taken at the last commit from a
 clean build on 2026-10-10; re-measure before quoting them anywhere):
@@ -69,10 +71,19 @@ every keystroke. That run is what closed the keystroke flake: the binary was
 identical to the green one, so the fault could only be in the harness. See
 "What only CI sees".
 
+Since that fix, CI has returned those four numbers on every push: `a2ccf87` in
+12m38s and `aa2ad2c` in 12m40s, against 14m31s for the run before it on the
+same molly — the harness no longer waits out a session whose program has
+already exited, which is most of two minutes across 737 of them. Those are also
+the first runs whose log has no `pty_harness:` line in it, and that line is the
+thing to grep a red run for now: it is what a session that was typed at and
+answered nothing says about itself, which is the shape the flake had.
+
 The pty suite now takes long enough that `make test` runs past ten minutes on a
-cold build — about seventeen of those minutes are the pty stage alone. That is
-737 pty sessions each with a settle time, not a regression; budget for it rather
-than assuming a hang, and start it in the background rather than waiting on it.
+cold build, most of it the pty stage alone — about seventeen minutes of it
+before the harness fix and a couple of minutes less after. That is 737 pty
+sessions each with a settle time, not a regression; budget for it rather than
+assuming a hang, and start it in the background rather than waiting on it.
 Its output is block-buffered when redirected to a file, so a log that has not
 grown for minutes is not a hang either: `grep -c pass` on it undercounts by up
 to a 4K block.
@@ -693,7 +704,8 @@ twelve was a bug in molly. Everything below is closed.
   nothing for up to three seconds, and the harness still has to get the keys in.
   It fails against the old harness at 1.5s. The earlier attempts failed because
   they looked for a race in the *typing* -- 25 runs pinned to one CPU against six
-  busy loops -- and the race was in the startup.
+  busy loops -- and the race was in the startup. CI has agreed twice since, on
+  `a2ccf87` and `aa2ad2c`, and neither log has a `pty_harness:` line in it.
 - **The newest cursor is not the last entry in the list.** The list is kept in
   document order, so a match found by wrapping to the top of the file sorts
   first. Skip, drop-last and the search Ctrl-D runs are all about the cursor

@@ -38,13 +38,13 @@ the old one, with the width, the character and auto-indent each answerable per
 filetype; and it puts the cursor in as many places as you like and edits in all
 of them as one undo step.
 
-**Measured, not remembered** (all of these taken at `236f227` from a clean
-build on 2026-10-09; re-measure before quoting them anywhere):
+**Measured, not remembered** (all of these taken at the last commit from a
+clean build on 2026-10-09; re-measure before quoting them anywhere):
 
 | | |
 | --- | --- |
-| Source | 14,792 lines, `src/molly.h` plus 31 `.c` files |
-| Checks | 1,426 — 676 pty, 93 golden screens, 657 unit |
+| Source | 15,212 lines, `src/molly.h` plus 31 `.c` files |
+| Checks | 1,511 — 703 pty, 93 golden screens, 715 unit |
 | Fuzz | 4,040 cases per `make test` (40 replace, 4,000 regex, seed 42) |
 | Warnings | clean under `-Wall -Wextra -Wpedantic -Wshadow` from a **clean** build; `regex.c` also under `-Wconversion` |
 | OOM sweep | `make test-oom` green: 142 allocations failed in turn, 130 through `die()`, 12 kept running |
@@ -55,14 +55,14 @@ the unit binary. `make test-oom` is the allocation-failure sweep and needs
 `cc` at runtime; it is not part of `make test`. Green at the last commit:
 
 ```text
-676 passed, 0 failed
+703 passed, 0 failed
 93 passed, 0 failed
 40 cases, 0 failed (seed 42)
 4000 cases, 0 failed (seed 42)
 ```
 
 The pty suite now takes long enough that `make test` runs past ten minutes on a
-cold build. That is 676 pty sessions each with a settle time, not a regression;
+cold build. That is 703 pty sessions each with a settle time, not a regression;
 budget for it rather than assuming a hang, and start it in the background rather
 than waiting on it.
 

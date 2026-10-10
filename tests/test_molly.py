@@ -352,6 +352,15 @@ def test_replace(tmpdir):
           edit(tmpdir, "cat cat cat\n",
                [REPLACE, "cat", "\r", "dog", "\r", "a", "\r", SAVE]),
           "dog dog dog\n")
+    # A replace is a new future: the redo stack described a buffer that no
+    # longer exists. It was not being cleared, so this put the undone "X" back
+    # on top of the replaced text and saved "Xdog dog".
+    check("a replace clears what was waiting to be redone",
+          edit(tmpdir, "cat cat\n",
+               ["X", UNDO, REPLACE, "cat", "\r", "dog", "\r", "a", "\r",
+                REDO, SAVE]),
+          "dog dog\n")
+
     check("empty search term aborts, buffer untouched",
           edit(tmpdir, "cat\n", [REPLACE, "\r", SAVE]),
           "cat\n")

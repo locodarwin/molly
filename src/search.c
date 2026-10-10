@@ -616,6 +616,13 @@ void editor_replace(void) {
 
     if (!grouped) {
       undo_group_begin();
+      /* This edit is a new future: whatever was on the redo stack described a
+       * buffer that no longer exists. Every path in edit.c clears it, and this
+       * one -- which writes rows through the buffer primitives rather than
+       * through editor_insert_char() -- did not, so after an undo a replace
+       * left the undone record there for Ctrl-Y to put back on top of the
+       * replaced text. */
+      clear_redo();
       grouped = 1;
     }
 

@@ -1,20 +1,21 @@
 # Handoff
 
 Written 2026-10-10 and re-measured the same day. `main` and `origin/main` are
-level: everything is committed and pushed, the working tree is clean, and
-nothing is half-finished. The last work on it was **soft wrap**, which Shawn
-picked on 2026-10-10 — the last of the three features the first handoff named —
-after the four follow-ons to multi-cursor and the CI repairs described under
-"What only CI sees".
+level: everything is committed and pushed, the working tree is clean, nothing
+is half-finished, and CI is green on `bf35a8f`, the last commit that changed
+any code. The last work on it was **soft wrap**, which Shawn picked on
+2026-10-10 — the last of the three features the first handoff named — after the
+four follow-ons to multi-cursor and the CI repairs described under "What only
+CI sees".
 
 This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
 
 **Nothing is in flight.** Soft wrap was the last feature and it is done end to
-end, in the arc this repo keeps: the display-row map with nothing able to turn
-it on, then the key, the setting and the three views of the command table that
-have room for it, then the documentation.
+end, in the arc this repo keeps: `eaa8626` the display-row map with nothing able
+to turn it on, `500c644` the key, the setting and the three views of the command
+table that have room for it, `bf35a8f` the documentation.
 
 **The three candidates the first handoff named are all done.** What is left is
 the smaller work under "Next by dependency", none of it confirmed as next — ask
@@ -26,26 +27,27 @@ the argument for each.
 
 ## Where we are
 
-Phases 0 and 1 are done. Phase 2 has ten features finished end to end:
+Phases 0 and 1 are done. Phase 2 has eleven features finished end to end:
 regular expressions, the configuration file, the CUA keymap, multiple buffers,
 the tab bar, syntax highlighting, window splits, the shell filter, indentation,
-and multiple cursors. Molly searches and replaces with patterns on an engine of its own;
+multiple cursors, and soft wrap. Molly searches and replaces with patterns on an engine of its own;
 it reads `~/.config/molly/mollyrc` and can write it back; its keys are CUA and
 remappable; it holds any number of files open at once with a tab per file; it
 colours seven languages from table-driven definitions a config file can add to;
 it splits its screen into windows that each keep their own cursor, scroll and
 gutter; it pipes text through any shell command; it indents a new line under
 the old one, with the width, the character and auto-indent each answerable per
-filetype; and it puts the cursor in as many places as you like and edits in all
-of them as one undo step.
+filetype; it puts the cursor in as many places as you like and edits in all of
+them as one undo step; and it lays a line too long for the window out over as
+many screen rows as it needs without touching a byte of the file.
 
 **Measured, not remembered** (all of these taken at the last commit from a
-clean build on 2026-10-09; re-measure before quoting them anywhere):
+clean build on 2026-10-10; re-measure before quoting them anywhere):
 
 | | |
 | --- | --- |
-| Source | 15,212 lines, `src/molly.h` plus 31 `.c` files |
-| Checks | 1,511 — 703 pty, 93 golden screens, 715 unit |
+| Source | 15,625 lines, `src/molly.h` plus 32 `.c` files |
+| Checks | 1,608 — 734 pty, 103 golden screens, 771 unit |
 | Fuzz | 4,040 cases per `make test` (40 replace, 4,000 regex, seed 42) |
 | Warnings | clean under `-Wall -Wextra -Wpedantic -Wshadow` from a **clean** build; `regex.c` also under `-Wconversion` |
 | OOM sweep | `make test-oom` green: 142 allocations failed in turn, 130 through `die()`, 12 kept running |
@@ -56,16 +58,22 @@ the unit binary. `make test-oom` is the allocation-failure sweep and needs
 `cc` at runtime; it is not part of `make test`. Green at the last commit:
 
 ```text
-703 passed, 0 failed
-93 passed, 0 failed
+734 passed, 0 failed
+103 passed, 0 failed
 40 cases, 0 failed (seed 42)
 4000 cases, 0 failed (seed 42)
 ```
 
+The same four numbers came back from CI on the same commit (run 38084380677,
+14m33s), which is the third consecutive green run.
+
 The pty suite now takes long enough that `make test` runs past ten minutes on a
-cold build. That is 703 pty sessions each with a settle time, not a regression;
-budget for it rather than assuming a hang, and start it in the background rather
-than waiting on it.
+cold build — about seventeen of those minutes are the pty stage alone. That is
+734 pty sessions each with a settle time, not a regression; budget for it rather
+than assuming a hang, and start it in the background rather than waiting on it.
+Its output is block-buffered when redirected to a file, so a log that has not
+grown for minutes is not a hang either: `grep -c pass` on it undercounts by up
+to a 4K block.
 
 ### What exists that did not exist a week ago
 
@@ -251,6 +259,20 @@ with their reasoning, and any of them is a one-line change if Shawn disagrees:
 - `Enter` inside leading whitespace leaves the text in its column, which is the
   case the references disagree about. Pinned in both suites.
 
+Soft wrap's four are the same shape — chosen while building it, in §7 with the
+reasoning, and each a small change if Shawn disagrees:
+
+- `soft wrap` defaults **off**, because molly's own answer for a long line is
+  the horizontal scroll and the file it is most often editing is code.
+- The break is a **word wrap** — after the last space that fits — and not a
+  column wrap. A word with no space in it still breaks at the edge.
+- `Home` and `End` reach the **line**, not the display row. VS Code goes to the
+  display row; this is the one place molly deliberately does not follow it.
+- Vertical movement keeps the **screen column wrapped and the byte offset
+  unwrapped**. Making both the screen column would be the consistent answer and
+  would move arrow-key behaviour on any row with a tab before the cursor, which
+  is why it was not done quietly.
+
 ### Next by dependency
 
 All eight of the first handoff's items are done: the config file with the CUA
@@ -272,7 +294,7 @@ Two things the shell filter now makes cheap, neither of them asked for yet:
   both of which exist, and the filter is how the search would be run. A window
   showing a buffer of matches is the whole of what is left.
 
-Smaller things the last four features left behind, each a self-contained
+Smaller things the last five features left behind, each a self-contained
 commit:
 
 - **A buffer-list dialog**, for picking a buffer by name instead of walking the
@@ -404,6 +426,29 @@ later.
 - **The help column truncates.** It is 17 columns and cuts in silence; check the
   help screen after adding a command. "Swap the two characters at the cursor"
   came out as "Swap the two char".
+- **The help screen's goldens stop above the last group.** `help-wide` and
+  `help-narrow` snapshot the first screenful, and the VIEW group is at the
+  bottom of the reference — so a new VIEW command's help entry is not proved by
+  any golden, and neither of them moves when one is added. What proves it is a
+  pty check that opens the reference and pages down twice, which is what the
+  soft-wrap test does. The *description* is what renders there, not the label:
+  the check is for "Wrap long lines", not "Soft wrap".
+- **A local in a pty test can shadow a keystroke.** `tests/test_molly.py` keeps
+  the keys as short module-level names — `CUT`, `SAVE`, `HOME`, `END`, `COPY`,
+  `PASTE` — so a test-local `CUT = "alpha beta…"` silently turns `[CUT]` from
+  Ctrl-X into forty characters of typing. It fails as a *content* mismatch with
+  no hint of why: the file came back with the string in it. Name locals in a
+  test function something a key is not.
+- **`edit()` runs at 80×24.** It is the right helper when the file afterwards is
+  the whole proof, and the wrong one for anything whose subject is the window:
+  a 57-column line does not wrap at 80, so every soft-wrap check written on
+  `edit()` passed on the unwrapped path and proved nothing. A test about width
+  writes its own runner with `rows=`/`cols=`.
+- **The status bar drops `Ln`/`Col` before it truncates.** The file name is cut
+  to 20 columns (`%.20s`) and the cursor block is only drawn when what is left
+  fits it, so at 40 columns there is no position on the bar at all. A test that
+  reads the cursor position from the status bar needs 80; one at 40 reads the
+  terminal's own cursor escape instead (`cursor_col`, or the last `ESC[r;cH`).
 - **A command with no chord has no business on the help screen.** It renders as a
   blank key beside a description, which reads as a bug. Match case is reachable
   from the Search menu and the palette instead.
@@ -440,6 +485,17 @@ later.
   without changing the count. Without the memo a screenful cost a walk of the
   file per row rather than one walk: 2.9 ms a frame at 100,000 rows instead of
   0.24.
+- **How that was measured, so it can be measured again.** There is no perf
+  harness in the repo and this did not earn one. A scratch `main()` linked
+  against `$(LIBOBJ)` (the Makefile already builds that list for the unit
+  binary) calls `window_init(); buflist_init(); syntax_init()`, inserts N rows
+  of about 120 columns of words, sets `V.screencols = 80`, `V.screenrows = 40`,
+  `V.gutter_w = 0`, puts the cursor on the last row and the scroll offset 40
+  display rows above the end — the worst case, because every walk is the whole
+  file — then times 100 iterations of what one frame asks for: `drow_total()`,
+  `drow_of_cursor()`, and `drow_at()` once per screen row. Wrap off is the
+  control and comes out at zero. Anything that changes `wrap.c` should re-run
+  something like it rather than trust the numbers above.
 - **The wrap width is `TEXT_COLS()`, which depends on `V.gutter_w`** — set by
   the layout pass, not by the view. So anything that measures display rows has
   to run after `window_layout()`, which `window_scroll_all()` and
@@ -603,7 +659,9 @@ them was a bug in molly.
   against six busy loops lost nothing, and neither did killing molly 0.05s
   after the last keystroke. If it happens again, the harness now raises with
   the wait status when molly paints nothing at all in 5s, which is the one
-  explanation that would otherwise look exactly like this.
+  explanation that would otherwise look exactly like this. Three runs have been
+  green since (38017268410, 38031920707, 38084380677, the last of them 734 pty
+  checks); that is encouraging and it is not proof of a cause.
 
 - **The newest cursor is not the last entry in the list.** The list is kept in
   document order, so a match found by wrapping to the top of the file sorts

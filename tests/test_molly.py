@@ -3583,8 +3583,11 @@ def test_filter(tmpdir):
           "exited 4" in screen_rows(run(
               [MOLLY, write_file(tmpdir, "i.txt", "keep\n")],
               [FILT, "exit 4", "\r"]))[23], True)
+    # "not found", not "command not found": the words are the shell's own, and
+    # bash and dash do not use the same ones. What is being checked is that
+    # molly passes them through, not which shell /bin/sh is.
     check("a command that does not exist says so, in its own words",
-          "command not found" in screen_rows(run(
+          "not found" in screen_rows(run(
               [MOLLY, write_file(tmpdir, "j.txt", "keep\n")],
               [FILT, "nosuchcommand", "\r"]))[23], True)
     check("and the buffer is not marked modified",

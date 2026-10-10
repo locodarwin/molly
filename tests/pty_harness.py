@@ -43,7 +43,6 @@ def run(argv, keys, rows=24, cols=80, settle=0.4, env=None, status=False):
 
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
     out = b""
-    time.sleep(0.3)  # let the first repaint land
 
     def drain(timeout):
         nonlocal out
@@ -55,6 +54,18 @@ def run(argv, keys, rows=24, cols=80, settle=0.4, env=None, status=False):
             if not chunk:
                 return
             out += chunk
+
+    # Wait for molly's first byte rather than for a fixed interval. It enters
+    # raw mode with TCSAFLUSH, which throws away input that arrived before it
+    # got there, so typing on a timer races the start: on a loaded CI runner
+    # molly took longer than the 0.3s this used to sleep and the first
+    # keystrokes vanished, leaving a test looking at a file nobody had typed
+    # into. The first byte molly writes is written after that tcsetattr, so its
+    # arrival is proof the flush is behind us.
+    first = time.time() + 5.0
+    while not out and time.time() < first:
+        drain(0.1)
+    drain(0.1)  # and let the rest of the opening frame follow it
 
     for key in keys:
         if isinstance(key, float):

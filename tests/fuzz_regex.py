@@ -58,6 +58,14 @@ N = int(os.environ.get("MOLLY_FUZZ_N", "4000"))
 SEED = int(os.environ.get("MOLLY_FUZZ_SEED", "42"))
 BLOCK = 500
 
+# Python's \B did not match the empty input string until 3.14, where it became
+# the plain opposite of \b (gh-124130); molly, Perl and PCRE have always matched
+# there. On an older Python the reference is wrong about exactly this one shape,
+# so an empty subject under a pattern holding \B is not comparable and is
+# counted and skipped instead. Nothing else about \B changed: the old
+# special case was for a zero-length subject only.
+PY_B_MATCHES_EMPTY = sys.version_info >= (3, 14)
+
 # Literal characters that need no escaping, and the subject alphabet. Both are
 # small on purpose: a four-letter alphabet is what makes a random pattern hit a
 # random subject often enough for the comparison to be about matching rather
@@ -241,7 +249,7 @@ def main():
               % (len(lines), N, proc.stderr[-400:]))
         return 1
 
-    failures = hard = known = 0
+    failures = hard = known = stale = 0
     for i, ((pat, text, icase, start, lazy_in_rep), line) in enumerate(
             zip(cases, lines)):
         got = parse_line(line)
@@ -253,6 +261,10 @@ def main():
         # The documented shape, and only where it actually bites.
         if problem and lazy_in_rep and plausible(pat, text, icase, got, want):
             known += 1
+            problem = None
+        # And the shape this Python's \B is simply older than.
+        if problem and not PY_B_MATCHES_EMPTY and text == "" and "\\B" in pat:
+            stale += 1
             problem = None
         if problem:
             failures += 1
@@ -271,6 +283,9 @@ def main():
         print("  FAIL  that shape is being exempted too often: %d of %d"
               % (known, N))
         failures += 1
+    if stale:
+        print("  note  %d case(s) skipped: this Python's \\B predates 3.14 and "
+              "does not match the empty subject" % stale)
     if hard:
         print("  note  %d case(s) exceeded the step budget and were skipped"
               % hard)

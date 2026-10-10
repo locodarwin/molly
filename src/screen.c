@@ -68,12 +68,19 @@ int screen_gutter_width(void) {
  * Columns are counted from V.screenx and not from zero. These three functions
  * already read the view for the gutter's width, the horizontal scroll and the
  * text width, so where the view starts on the screen is one more measurement
- * from the same place -- and it is 0 for every window until one is split. */
-static void gutter_draw_number(int y, int filerow, int gutter_w) {
+ * from the same place -- and it is 0 for every window until one is split.
+ *
+ * A wrapped line's continuation rows (frag > 0) get the separator and a blank
+ * number field: they are the same line, and a column of the number repeated
+ * down the gutter would say they were not. */
+static void gutter_draw_number(int y, int filerow, int gutter_w, int frag) {
   char num[32];
   int n;
   if (gutter_w <= 0) return;
-  n = snprintf(num, sizeof(num), "%*d ", gutter_w - 3, filerow + 1);
+  if (frag > 0)
+    n = snprintf(num, sizeof(num), "%*s ", gutter_w - 3, "");
+  else
+    n = snprintf(num, sizeof(num), "%*d ", gutter_w - 3, filerow + 1);
   grid_role(ROLE_GUTTER);
   grid_puts(y, V.screenx, num, n);
   grid_puts(y, V.screenx + gutter_w - 2, GUTTER_SEP " ", 4);
@@ -139,7 +146,7 @@ void editor_draw_text_row(int y, erow *row, const struct drow *d,
    * the slice is the whole row (DROW_ALL) and the screen is the only limit. */
   if (d->rcols < text_cols) text_cols = d->rcols;
 
-  gutter_draw_number(y, d->filerow, gw);
+  gutter_draw_number(y, d->filerow, gw, d->frag);
 
   int x = V.screenx + gw + left_pad;  /* the pad columns stay blank */
   int dcol = col;         /* absolute display column of the character at i */
@@ -372,12 +379,24 @@ void screen_text_mouse(const struct mouse_event *ev) {
   /* Screen cell to buffer position. The gutter is not text: a click in it lands at
    * the start of the line, which is what clicking a line number should do. */
   drow = ev->y - V.screeny + V.drowoff;
-  filerow = drow;                 /* identity while nothing wraps; see struct drow */
-  if (filerow < 0) filerow = 0;
-  if (filerow > row_count()) filerow = row_count();
+  if (drow < 0) drow = 0;
+  {
+    /* The slice that was drawn on this screen line, which is what says both
+     * which file row was clicked and which of its columns the x lands in.
+     * Unwrapped the slice starts at column zero and runs to the end of the row,
+     * so this is the identity it always was. */
+    struct drow d;
+    drow_at(drow, &d);
+    filerow = d.filerow;
+    if (filerow > row_count()) filerow = row_count();
 
-  rcol = ev->x - V.screenx - V.gutter_w + V.coloff;
-  if (rcol < 0) rcol = 0;
+    rcol = ev->x - V.screenx - V.gutter_w + V.coloff + d.rcol0;
+    if (rcol < d.rcol0) rcol = d.rcol0;
+    /* A click past the end of a continuation that is not the row's last lands
+     * on its final column rather than running into the text below it. */
+    if (d.rcols != DROW_ALL && rcol > d.rcol0 + d.rcols - 1)
+      rcol = d.rcol0 + d.rcols - 1;
+  }
 
   if (ev->type == MOUSE_PRESS) {
     int cx = (filerow < row_count())
@@ -524,7 +543,7 @@ void editor_refresh_screen(void) {
    * in the prompt, not back in the text behind it. */
   if (!grid_cursor_claimed())
     grid_cursor_to(V.screeny + drow_of_cursor(&CUR) - V.drowoff,
-                   V.screenx + (CUR.rx - V.coloff) + V.gutter_w);
+                   V.screenx + (drow_cursor_col(&CUR) - V.coloff) + V.gutter_w);
   grid_flush();
 }
 

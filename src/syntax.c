@@ -926,8 +926,14 @@ void syntax_retype(void) {
  * visible row is what the next scroll step starts from. */
 void syntax_ensure_view(void) {
   int last;
+  struct drow d;
   if (V.buf == NULL || !V.syntax) return;
-  last = V.drowoff + V.screenrows;
+  /* The file row of the display row one past the bottom, which with wrap on is
+   * nearer than the count of rows suggests: a screenful of a wrapped line is
+   * one row to lex, not a screenful of them. Unwrapped the slice's filerow is
+   * the index itself, which is the arithmetic this line used to do. */
+  drow_at(V.drowoff + V.screenrows, &d);
+  last = d.filerow;
   if (last >= row_count()) last = row_count() - 1;
   if (last >= 0) syntax_ensure(last);
 }

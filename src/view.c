@@ -109,31 +109,27 @@ int editor_row_cx_to_charcol(erow *row, int cx) {
   return col;
 }
 
-/* Display rows the buffer occupies. */
-int drow_total(void) {
-  return row_count();
-}
-
-/* The display row holding a cursor. */
-int drow_of_cursor(const struct cursor *c) {
-  return c->cy;
-}
-
-/* Resolve a display-row index. An index past the end of the buffer yields a
- * slice whose filerow is >= numrows, which the draw loop paints as a tilde. */
-void drow_at(int index, struct drow *out) {
-  out->filerow = index;
-  out->rcol0 = 0;
-  out->rcols = DROW_ALL;
-  out->frag = 0;
-}
-
 /* Step a cursor one display row up (dir < 0) or down (dir > 0). Unwrapped that
- * is one file row. Wrapped, it will move between slices of the same long line
- * before reaching the next line, which is why vertical movement goes through
- * here rather than touching cy directly. cy == numrows is the phantom row just
- * past the last line, which the editor allows the cursor to occupy. */
+ * is one file row. Wrapped, it moves between slices of the same long line before
+ * reaching the next line, which is why vertical movement goes through here
+ * rather than touching cy directly. cy == numrows is the phantom row just past
+ * the last line, which the editor allows the cursor to occupy.
+ *
+ * Unwrapped it keeps the byte offset, which is what molly has always done and
+ * what every test of an arrow key is written against. Wrapped it keeps the
+ * *screen column*, because there is no other sane reading of "up" between two
+ * slices of one line: the byte offset would move the cursor a windowful along
+ * the same row. The two differ only on a row with a tab or a wide glyph before
+ * the cursor, which is the asymmetry ROADMAP.md section 7 writes down.
+ *
+ * The wrapped half is wrap_step(), which is local to the row the cursor is on
+ * and the one it is moving to -- an arrow key does not get slower because the
+ * file is long. */
 static void drow_step(struct cursor *c, int dir) {
+  if (V.wrap) {
+    wrap_step(c, dir);
+    return;
+  }
   if (dir < 0) {
     if (c->cy != 0) c->cy--;
   } else {
@@ -221,6 +217,14 @@ void editor_scroll(void) {
     }
     if (V.drowoff > total) V.drowoff = total;
     if (V.drowoff < 0) V.drowoff = 0;
+  }
+  /* Wrap and horizontal scrolling are alternatives: a wrapped view has nothing
+   * to scroll sideways to, and a nonzero offset would shift every slice of
+   * every row by it. So one of the two is always zero, and every column
+   * calculation downstream can go on subtracting coloff without asking. */
+  if (V.wrap) {
+    V.coloff = 0;
+    return;
   }
   if (CUR.rx < V.coloff) V.coloff = CUR.rx;
   if (CUR.rx >= V.coloff + TEXT_COLS()) V.coloff = CUR.rx - TEXT_COLS() + 1;

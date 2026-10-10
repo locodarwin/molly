@@ -89,6 +89,7 @@ static struct view *view_new_like(const struct view *src) {
   v->coloff = src->coloff;
   v->linenum = src->linenum;
   v->syntax = src->syntax;
+  v->wrap = src->wrap;
   v->last_scroll_cx = -1;
   v->last_scroll_cy = -1;
 

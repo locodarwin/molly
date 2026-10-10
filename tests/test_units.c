@@ -2633,6 +2633,210 @@ static void test_indent_block(void) {
   tab_width_set(8);
 }
 
+/* Soft wrap: the display-row map, and vertical movement over it.
+ *
+ * A unit test because what has to be proved is arithmetic -- how many screen
+ * lines a row takes, which slice of it a line shows, and which of them a cursor
+ * is on -- and because a pty session can only show the answer at whatever width
+ * the terminal happens to be. The screens get goldens and the keystrokes get
+ * pty checks; the rules are here. */
+
+/* Put `body` in the buffer with wrap on and a text area `cols` wide. The view
+ * is laid out by hand: window_layout() asks the terminal, and these tests are
+ * about a width they choose. */
+static void wrap_load(const char *body, int cols) {
+  mc_load(body);
+  V.wrap = 1;
+  V.gutter_w = 0;
+  V.screencols = cols;
+  V.screenrows = 10;
+  V.coloff = 0;
+  V.drowoff = 0;
+}
+
+/* The slice a display row shows, as the three numbers it is made of. */
+static int slice_rcol0(int index) {
+  struct drow d;
+  drow_at(index, &d);
+  return d.rcol0;
+}
+static int slice_rcols(int index) {
+  struct drow d;
+  drow_at(index, &d);
+  return d.rcols;
+}
+static int slice_row(int index) {
+  struct drow d;
+  drow_at(index, &d);
+  return d.filerow;
+}
+static int slice_frag(int index) {
+  struct drow d;
+  drow_at(index, &d);
+  return d.frag;
+}
+
+/* Which display row the one cursor is on, and where in it. */
+static int cur_drow(void) { return drow_of_cursor(&CUR); }
+
+static void test_wrap(void) {
+  printf("\nsoft wrap: how many screen lines a row takes, and which is which\n");
+
+  /* Off, which is the mapping every other test in this file is written
+   * against: one display row per file row, each the whole of it. */
+  wrap_load("alpha\nbeta\ngamma\n", 10);
+  V.wrap = 0;
+  check("wrap off: a display row per file row", drow_total(), 3);
+  check("wrap off: the mapping is the identity", slice_row(2), 2);
+  check("wrap off: and a slice is the whole row", slice_rcols(0), DROW_ALL);
+
+  /* On, with nothing long enough to wrap: the same answers. */
+  wrap_load("alpha\nbeta\ngamma\n", 10);
+  check("short rows take one line each", drow_total(), 3);
+  check("and the slice is still the whole row", slice_rcols(1), DROW_ALL);
+  check("an empty buffer has no display rows", (wrap_load("", 10), drow_total()), 0);
+
+  /* A run with no space in it has to break at the edge: 200 columns at 80 is
+   * three lines, the first two exactly a window wide. */
+  {
+    char body[256];
+    memset(body, 'x', 200);
+    body[200] = '\n';
+    body[201] = '\0';
+    wrap_load(body, 80);
+    check("an unbroken run breaks at the edge", drow_total(), 3);
+    check("the first line starts at column zero", slice_rcol0(0), 0);
+    check("and is a window wide", slice_rcols(0), 80);
+    check("the second starts where it ended", slice_rcol0(1), 80);
+    check("the last runs to the end of the row", slice_rcols(2), DROW_ALL);
+    check("every line of it is the same file row", slice_row(2), 0);
+  }
+
+  /* Words: the break goes after the last space that fits, and a word too long
+   * for the width breaks at the edge anyway. "aa bbbbbbbb cc" at eight columns
+   * is "aa ", then the eight b's, then " cc". */
+  wrap_load("aa bbbbbbbb cc\n", 8);
+  check("a line breaks after the last space that fits", drow_total(), 3);
+  check("the first slice ends after the space", slice_rcols(0), 3);
+  check("the word too long to fit takes the edge", slice_rcol0(1), 3);
+  check("and all eight columns of it", slice_rcols(1), 8);
+  check("what is left is the last slice", slice_rcol0(2), 11);
+
+  /* A tab is a break opportunity without being named one: it is spaces in the
+   * render string by the time this code sees it. */
+  tab_width_set(8);
+  indent_sync();
+  wrap_load("\tfoo bar\n", 10);
+  check("an indent is a break opportunity", drow_total(), 2);
+  check("so the indent is a line of its own", slice_rcols(0), 8);
+  check("and the text starts the next one", slice_rcol0(1), 8);
+
+  /* A glyph wider than the whole window still has to make progress, or the
+   * walk would never reach the end of the row. */
+  wrap_load("\xe6\x97\xa5\xe6\x9c\xac\n", 1);
+  check("a glyph wider than the window takes a line", drow_total(), 2);
+  check("one for each", slice_rcol0(1), 2);
+
+  /* Several rows: the total is the sum, and the index walks them in order. */
+  wrap_load("aa bbbbbbbb cc\nshort\n", 8);
+  check("the total is the sum over the rows", drow_total(), 4);
+  check("the fourth display row is the second file row", slice_row(3), 1);
+  check("past the end comes a phantom row", slice_row(4), 2);
+  check("and another after that", slice_row(5), 3);
+
+  /* Where a cursor is. The row is "aa bbbbbbbb cc" in three slices, and the
+   * column a cursor rests at decides which of them it is on. */
+  wrap_load("aa bbbbbbbb cc\n", 8);
+  CUR.cy = 0; CUR.cx = 0;
+  check("a cursor at the start is on the first line", cur_drow(), 0);
+  CUR.cx = 2;
+  check("the space it broke after is still on it", cur_drow(), 0);
+  CUR.cx = 3;
+  check("the column it broke at belongs to the next line", cur_drow(), 1);
+  CUR.cx = 10;
+  check("the last column of a slice is on it", cur_drow(), 1);
+  CUR.cx = 11;
+  check("and the next column is not", cur_drow(), 2);
+  CUR.cx = 14;
+  check("the end of the row is on its last line", cur_drow(), 2);
+  check("the column within that line is measured from it",
+        drow_cursor_col(&CUR), 3);
+  CUR.cy = 1; CUR.cx = 0;
+  check("the phantom row past the end is a display row too", cur_drow(), 3);
+
+  /* Vertical movement. Down from the first slice keeps the screen column
+   * rather than the byte offset, which is the only reading of "down" that
+   * stays on screen. */
+  wrap_load("aa bbbbbbbb cc\n", 8);
+  CUR.cy = 0; CUR.cx = 1;
+  editor_move_cursor(ARROW_DOWN);
+  check("down a wrapped line keeps the screen column", CUR.cx, 4);
+  check("and stays on the same file row", CUR.cy, 0);
+  check("one display row further down", cur_drow(), 1);
+  editor_move_cursor(ARROW_UP);
+  check("up comes back to where it started", CUR.cx, 1);
+
+  /* Into a slice narrower than the column asked for, the cursor stops on that
+   * slice's last column -- the column after it is the next line's first. */
+  CUR.cy = 0; CUR.cx = 10;
+  editor_move_cursor(ARROW_UP);
+  check("up into a shorter line stops on its last column", CUR.cx, 2);
+  check("which is that line and not the one below", cur_drow(), 0);
+
+  /* Down off the last slice of a row reaches the next row, not the one after. */
+  wrap_load("aa bbbbbbbb cc\nsecond row\n", 8);
+  CUR.cy = 0; CUR.cx = 12;
+  check("starting on the last line of the first row", cur_drow(), 2);
+  editor_move_cursor(ARROW_DOWN);
+  check("down reaches the next file row", CUR.cy, 1);
+  check("at the column it was at on screen", CUR.cx, 1);
+
+  /* Down from the last row reaches the phantom row and stops there. */
+  wrap_load("one\ntwo\n", 8);
+  CUR.cy = 1; CUR.cx = 2;
+  editor_move_cursor(ARROW_DOWN);
+  check("down past the last row reaches the phantom row", CUR.cy, 2);
+  editor_move_cursor(ARROW_DOWN);
+  check("and stops there", CUR.cy, 2);
+  editor_move_cursor(ARROW_UP);
+  check("up from it lands on the last row", CUR.cy, 1);
+
+  /* The walk down the display rows keeps one step of itself, so an edit to a
+   * row above where it stopped has to throw that away. */
+  wrap_load("aa bbbbbbbb cc\nshort\ntail\n", 8);
+  check("five display rows over three file rows", drow_total(), 5);
+  check("the fifth of them is the third row", slice_row(4), 2);
+  editor_row_insert_n(row_at(1), 0, "xxxxxxxxxxxx", 12);
+  check("an edit above where the walk stopped moves it", slice_row(4), 1);
+  check("to a continuation of the row that grew", slice_frag(4), 1);
+
+  /* The count is cached on the row, so both things that can change it have to
+   * clear it: the width it was measured at, and the text itself. */
+  {
+    char body[256];
+    char fill[128];
+    memset(body, 'x', 100);
+    body[100] = '\n';
+    body[101] = '\0';
+    memset(fill, 'x', sizeof(fill));
+    wrap_load(body, 80);
+    check("a hundred columns at eighty is two lines", drow_total(), 2);
+    V.screencols = 120;
+    check("the same row at a wider window is one", drow_total(), 1);
+    V.screencols = 80;
+    check("and narrowing it again is two", drow_total(), 2);
+    editor_row_delete_n(row_at(0), 0, 30);
+    check("an edit that shortens the row re-measures it", drow_total(), 1);
+    editor_row_insert_n(row_at(0), 0, fill, 90);
+    check("a row ending exactly on an edge opens no line past it",
+          drow_total(), 2);
+    editor_row_insert_n(row_at(0), 0, fill, 1);
+    check("and one column more than that is a third line", drow_total(), 3);
+  }
+
+  V.wrap = 0;
+}
+
 static void test_cursors_list(void) {
   printf("\ncursors: the list stays ordered and distinct\n");
 
@@ -2871,6 +3075,7 @@ int main(void) {
   test_cursors_edit();
   test_cursors_more();
   test_indent_block();
+  test_wrap();
   test_buflist();
   test_filter();
   test_windows();

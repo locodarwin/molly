@@ -1,0 +1,302 @@
+/* wrap.c -- soft wrap: the map between a screen line and a slice of a file row.
+ *
+ * A display row is one line of the text area. With wrap off there is exactly one
+ * per file row and every function here is the identity mapping -- which is how
+ * the rest of the editor came to be written against display rows long before
+ * this file existed. The scroll offset, the draw loop, vertical movement and the
+ * click-to-position arithmetic all ask these questions already and none of them
+ * knows what the answer depends on. See struct drow in molly.h.
+ *
+ * With wrap on a file row becomes one or more slices, each a range of *render*
+ * columns -- not byte offsets, because wrapping happens where the glyphs land on
+ * the screen and not where the bytes fall. The slices of a row partition its
+ * columns with nothing left out and nothing counted twice, which is what lets a
+ * screen column and a cursor column stay the same question asked in two
+ * directions.
+ *
+ * What it costs. Every answer here but one is a walk over file rows: the display
+ * row a cursor is on sums the rows above it, and the row at a display index
+ * counts up to it. A row's own slice count is cached on the row and recomputed
+ * only when editor_update_row() rebuilds `render` or the window changes width,
+ * so a walk is one addition per file row rather than a re-measure of the file.
+ * A frame is therefore O(rows) with wrap on where it was O(1) with wrap off;
+ * ROADMAP.md section 7 has what that measures at.
+ *
+ * The exception is wrap_step(), which is vertical movement and is local to the
+ * row the cursor is on and the one it is going to. It is here rather than in
+ * view.c for exactly that reason: an arrow key must not get slower because the
+ * file is long, and the way to be sure of that is to keep it next to the walker
+ * it would otherwise have been written in terms of.
+ */
+
+#include "molly.h"
+
+/* The text columns a row is laid out in. Never less than one: a window narrow
+ * enough to leave no text columns at all would otherwise ask for slices of
+ * width zero, which no number of them would reach the end of a row. */
+static int wrap_cols(void) {
+  int cols = TEXT_COLS();
+  return (cols < 1) ? 1 : cols;
+}
+
+/* Walk one row's wrap points.
+ *
+ * Returns the number of display rows the row occupies, always at least one. Then
+ * `want` selects a slice by index and `rx` selects the slice holding that render
+ * column (pass -1 for the one not being asked); when either names a slice the
+ * walk stops there and fills *out, whose `rcols` is DROW_ALL for the last slice
+ * of a row -- the one that runs to the end of the text.
+ *
+ * The break rule is a word wrap: a line breaks after the last space that fits,
+ * and a run with no space in it breaks at the edge instead, because the
+ * alternative is a column of nothing beside an unbroken word. Tabs are already
+ * spaces in `render`, so a tab is a break opportunity without being named one.
+ *
+ * The space a line breaks after stays on the line it ends, and a second space
+ * after it opens the next one. Trimming it would read better and cost the thing
+ * this file is built on: the slices would no longer cover every column of the
+ * row, so a cursor in the trimmed run would have no screen cell to sit in.
+ */
+static int wrap_walk(erow *row, int cols, int want, int rx, struct drow *out) {
+  const char *r = row->render;
+  int rs = row->rsize;
+  int i = 0;        /* byte index into render */
+  int col = 0;      /* the render column byte i sits at */
+  int start = 0;    /* first render column of the slice being measured */
+  int bi = -1;      /* byte index just past the last space seen in this slice */
+  int bcol = 0;     /* and its render column */
+  int n = 0;        /* slices finished */
+
+  while (i < rs) {
+    int nb, w = utf8_char_cols(r, rs, i, &nb);
+    /* `col > start` is what keeps a single glyph wider than the whole window
+     * from stopping the walk: at the start of a slice the glyph is taken
+     * whatever its width, and the draw loop drops what does not fit. */
+    if (col > start && col + w > start + cols) {
+      int brk = (bi >= 0) ? bcol : col;
+      if (n == want || (rx >= 0 && rx < brk)) {
+        out->rcol0 = start;
+        out->rcols = brk - start;
+        out->frag = n;
+        return n + 1;
+      }
+      n++;
+      if (bi >= 0) { i = bi; col = bcol; }   /* back up to after the space */
+      start = brk;
+      bi = -1;
+      continue;
+    }
+    if (r[i] == ' ') { bi = i + nb; bcol = col + w; }
+    col += w;
+    i += nb;
+  }
+
+  /* The tail, which also answers for a row with nothing in it. It claims every
+   * column past the end of the text, which is where a cursor resting after the
+   * last character sits. */
+  if (n == want || rx >= 0) {
+    out->rcol0 = start;
+    out->rcols = DROW_ALL;
+    out->frag = n;
+  }
+  return n + 1;
+}
+
+/* How many display rows a row occupies at this width.
+ *
+ * Cached on the row, keyed by the width it was measured at, so a resize
+ * invalidates every row by disagreeing with all of them. editor_update_row()
+ * clears it, which is both where `render` is rebuilt and the only place the
+ * answer can change without the width changing. */
+static int row_rows(erow *row, int cols) {
+  if (row->wcols != cols) {
+    row->wrows = wrap_walk(row, cols, -1, -1, NULL);
+    row->wcols = cols;
+  }
+  return row->wrows;
+}
+
+void wrap_row_invalidate(erow *row) {
+  row->wcols = -1;
+  row->wrows = 1;
+  if (V.buf != NULL) B.wrapgen++;
+}
+
+/* Where the last drow_at() got to: the file row it answered with, and the
+ * display index that row starts at.
+ *
+ * Without this the draw loop costs a walk of the file per screen line, because
+ * it asks for drowoff, drowoff+1, ... in turn and each answer counts up from
+ * row zero. With it a frame is one walk: the first ask walks, the rest step on
+ * from here. A wrapped frame is then O(rows in the buffer) where an unwrapped
+ * one is O(1) -- see ROADMAP.md section 7 for what that measures at, and why
+ * the next step belongs with the piece table rather than here.
+ *
+ * Four things make it stale and all four are in the key: another buffer, a
+ * different width, a row count that has moved, and the generation the buffer
+ * bumps whenever any row's measurement is dropped. The last two overlap on
+ * purpose -- deleting a row changes the count without re-measuring anything,
+ * and an edit re-measures without changing the count. */
+static struct {
+  const struct buffer *buf;
+  unsigned gen;
+  int cols;
+  int numrows;
+  int index;    /* display index this row begins at */
+  int filerow;
+} memo;
+
+/* Display rows the buffer occupies. */
+int drow_total(void) {
+  int i, cols, n = 0;
+  if (!V.wrap) return row_count();
+  cols = wrap_cols();
+  for (i = 0; i < row_count(); i++) n += row_rows(row_at(i), cols);
+  return n;
+}
+
+/* The display row holding a cursor. */
+int drow_of_cursor(const struct cursor *c) {
+  int i, cols, n = 0;
+  struct drow d;
+
+  if (!V.wrap) return c->cy;
+  cols = wrap_cols();
+  for (i = 0; i < c->cy && i < row_count(); i++) n += row_rows(row_at(i), cols);
+  /* Past the last row the cursor is on a phantom row, one display row each. */
+  if (c->cy >= row_count()) return n + (c->cy - row_count());
+  wrap_walk(row_at(c->cy), cols, -1,
+            editor_row_cx_to_rx(row_at(c->cy), c->cx), &d);
+  return n + d.frag;
+}
+
+/* The column of its display row that a cursor sits at, which is the render
+ * column less wherever that row's slice began. Unwrapped that is the render
+ * column itself, and the caller still subtracts the horizontal scroll -- the two
+ * are alternatives, so only one of them is ever nonzero. */
+int drow_cursor_col(const struct cursor *c) {
+  struct drow d;
+  int rx;
+
+  if (c->cy >= row_count()) return 0;
+  rx = editor_row_cx_to_rx(row_at(c->cy), c->cx);
+  if (!V.wrap) return rx;
+  wrap_walk(row_at(c->cy), wrap_cols(), -1, rx, &d);
+  return rx - d.rcol0;
+}
+
+/* Step a cursor one display row up (dir < 0) or down (dir > 0), wrapped.
+ *
+ * Local to the row and its neighbour, and deliberately so: everything else in
+ * this file walks the buffer, and an arrow key must not get slower because the
+ * file is long. Which slice the cursor is on comes from its own row, and the
+ * slice it is going to comes from that row or the next one -- no display index
+ * is ever computed.
+ *
+ * The screen column is what is kept, not the byte offset; view.c's drow_step
+ * says why, and what the unwrapped half does instead. Into a slice narrower
+ * than the column asked for, the cursor stops on that slice's last column: a
+ * position past the end of a slice is the first position of the next one, so
+ * landing there would make one step look like two. The end of a *row* is past
+ * the last column of its final slice, which is where a cursor may rest.
+ */
+void wrap_step(struct cursor *c, int dir) {
+  int cols = wrap_cols();
+  struct drow here, there;
+  erow *row;
+  int nrows, frag, vcol, rx, to;
+
+  /* The phantom row past the last line holds one display row and no columns, so
+   * there is nothing below it and the row above it is the last slice there is. */
+  if (c->cy >= row_count()) {
+    if (dir >= 0 || row_count() == 0) return;
+    row = row_at(row_count() - 1);
+    wrap_walk(row, cols, row_rows(row, cols) - 1, -1, &there);
+    c->cy = row_count() - 1;
+    c->cx = editor_row_rx_to_cx(row, there.rcol0);
+    return;
+  }
+
+  row = row_at(c->cy);
+  nrows = row_rows(row, cols);
+  rx = editor_row_cx_to_rx(row, c->cx);
+  wrap_walk(row, cols, -1, rx, &here);
+  frag = here.frag;
+  vcol = rx - here.rcol0;
+
+  to = c->cy;
+  if (dir < 0) {
+    if (frag > 0) {
+      wrap_walk(row, cols, frag - 1, -1, &there);
+    } else if (c->cy > 0) {
+      to = c->cy - 1;
+      wrap_walk(row_at(to), cols, row_rows(row_at(to), cols) - 1, -1, &there);
+    } else {
+      return;
+    }
+  } else {
+    if (frag + 1 < nrows) {
+      wrap_walk(row, cols, frag + 1, -1, &there);
+    } else if (c->cy + 1 < row_count()) {
+      to = c->cy + 1;
+      wrap_walk(row_at(to), cols, 0, -1, &there);
+    } else {
+      c->cy = row_count();   /* the phantom row */
+      c->cx = 0;
+      return;
+    }
+  }
+
+  rx = there.rcol0 + vcol;
+  if (there.rcols != DROW_ALL && rx > there.rcol0 + there.rcols - 1)
+    rx = there.rcol0 + there.rcols - 1;
+  c->cy = to;
+  c->cx = editor_row_rx_to_cx(row_at(to), rx);
+}
+
+/* Resolve a display-row index. An index past the end of the buffer yields a
+ * slice whose filerow is >= numrows, which the draw loop paints as a tilde. */
+void drow_at(int index, struct drow *out) {
+  int i, cols, at;
+
+  if (!V.wrap) {
+    out->filerow = index;
+    out->rcol0 = 0;
+    out->rcols = DROW_ALL;
+    out->frag = 0;
+    return;
+  }
+
+  cols = wrap_cols();
+  /* A floor for the walk below, which would otherwise be asked for a slice
+   * that cannot exist and leave *out unwritten. Nothing asks for one: the draw
+   * loop counts up from the scroll offset and the two callers that can go
+   * backwards clamp first. */
+  if (index < 0) index = 0;
+  i = 0;
+  at = 0;
+  if (memo.buf == V.buf && memo.gen == B.wrapgen && memo.cols == cols &&
+      memo.numrows == row_count() && index >= memo.index) {
+    i = memo.filerow;
+    at = memo.index;
+  }
+  for (; i < row_count(); i++) {
+    int k = row_rows(row_at(i), cols);
+    if (index < at + k) {
+      memo.buf = V.buf;
+      memo.gen = B.wrapgen;
+      memo.cols = cols;
+      memo.numrows = row_count();
+      memo.index = at;
+      memo.filerow = i;
+      wrap_walk(row_at(i), cols, index - at, -1, out);
+      out->filerow = i;
+      return;
+    }
+    at += k;
+  }
+  out->filerow = row_count() + (index - at);
+  out->rcol0 = 0;
+  out->rcols = DROW_ALL;
+  out->frag = 0;
+}

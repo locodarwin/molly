@@ -50,6 +50,7 @@ void saved_snapshot_take(void) {
     B.saved_rows[i].syncap = 0;
     B.saved_rows[i].syn_in = 0;
     B.saved_rows[i].syn_out = 0;
+    wrap_row_invalidate(&B.saved_rows[i]);
   }
 }
 
@@ -188,6 +189,11 @@ void editor_update_row(erow *row) {
    * B.row. */
   if (V.buf != NULL && B.row != NULL && row >= B.row && row < B.row + B.rowcap)
     syntax_invalidate_from((int)(row - B.row));
+
+  /* Whatever this row wrapped to, it was measured from the render string about
+   * to be replaced. Before the early return below, which is a path that leaves
+   * with the row's width changed just as much as the other one. */
+  wrap_row_invalidate(row);
 
   int tabs = 0;
   int j;

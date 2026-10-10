@@ -146,6 +146,16 @@ typedef struct erow {
   int syncap;
   int syn_in;
   int syn_out;
+
+  /* Soft wrap: how many display rows this row occupies, and the text width that
+   * was measured at. A row is its own cache because the answer depends on its
+   * render string and on nothing else about the file -- so a row keeps it
+   * across an insert above that moves it, and a window of another width
+   * invalidates it by disagreeing with `wcols`. editor_update_row() clears it,
+   * which is every path that can change the answer at a fixed width. See
+   * wrap.c. */
+  int wcols;
+  int wrows;
 } erow;
 
 /* One cursor: a position plus its own selection anchor. Molly keeps a *list* of
@@ -271,6 +281,11 @@ struct buffer {
    * view's, and when splits arrive each view keeps its own live position while
    * this stays as what a view that opens the buffer fresh should start from. */
   int last_cx, last_cy, last_drowoff, last_coloff;
+
+  /* Bumped whenever a row's wrap measurement is thrown away, which is every
+   * path that can change how many display rows this buffer has. wrap.c keeps
+   * one step of a walk and this is how it knows the walk is still valid. */
+  unsigned wrapgen;
 };
 
 /* One window onto a buffer. */
@@ -287,6 +302,7 @@ struct view {
   int screencols;
   int linenum;             /* line-number gutter shown (Ctrl-U toggles it) */
   int syntax;              /* colour the text by filetype */
+  int wrap;                /* long lines wrap at the window edge (see wrap.c) */
   int gutter_w;            /* gutter width in columns for this frame, 0 when off */
   int screenx, screeny;    /* top-left cell of this view's text area on the grid */
 
@@ -1089,9 +1105,15 @@ void window_only(void);
 void window_repoint_views(struct buffer *from, struct buffer *to);
 void window_scroll_all(void);
 
-/* view.c */
+/* wrap.c */
+int drow_cursor_col(const struct cursor *c);
 int drow_of_cursor(const struct cursor *c);
 int drow_total(void);
+void drow_at(int index, struct drow *out);
+void wrap_row_invalidate(erow *row);
+void wrap_step(struct cursor *c, int dir);
+
+/* view.c */
 int editor_row_cx_to_charcol(erow *row, int cx);
 int editor_row_cx_to_rx(erow *row, int cx);
 int editor_row_rx_to_cx(erow *row, int rx);
@@ -1113,7 +1135,6 @@ void cursors_line_edge(int to_end);
 void cursors_move_all(int key);
 void cursors_edit(int what, int arg);
 void cursors_sort(void);
-void drow_at(int index, struct drow *out);
 void editor_move_cursor(int key);
 void editor_scroll(void);
 

@@ -452,6 +452,29 @@ static int cmd_syntax(void) {
   return 0;
 }
 
+/* Soft wrap, which is a per-window toggle like the gutter and the colours.
+ *
+ * The top line is kept where it is. The scroll offset is a display row, and the
+ * same number means a different place in the file on each side of this toggle --
+ * so it is read as a file row before the flip and asked for again after it,
+ * which is the one thing that makes the screen look like it wrapped rather than
+ * like it jumped. */
+static int cmd_wrap(void) {
+  struct drow d;
+  struct cursor top;
+
+  drow_at(V.drowoff, &d);
+  V.wrap = !V.wrap;
+  memset(&top, 0, sizeof top);
+  top.cy = (d.filerow < row_count()) ? d.filerow : row_count();
+  V.drowoff = drow_of_cursor(&top);
+  /* Every row on screen is laid out differently, and the horizontal scroll goes
+   * with it: wrap and sideways scrolling are alternatives. */
+  screen_force_repaint();
+  editor_set_status_message("Soft wrap: %s", V.wrap ? "on" : "off");
+  return 0;
+}
+
 static int cmd_line_numbers(void) {
   V.linenum = !V.linenum;
   /* The gutter widens or shrinks the text area, shifting every column, so
@@ -553,6 +576,7 @@ static int linenumbers_on(void) { return V.linenum; }
 static int menubar_on(void) { return E.menubar; }
 static int tabbar_on(void) { return E.tabbar; }
 static int syntax_on(void) { return V.syntax; }
+static int wrap_on(void) { return V.wrap; }
 /* With one window there is nothing to move to, nothing to close and nothing to
  * be the only one of, so all four grey out together. Splitting stays available:
  * whether there is room for it is a question about the window's size, and
@@ -691,6 +715,9 @@ static const struct command commands[] = {
   {.name = "view.tab-bar", .label = "Tab bar",
    .help = "Show a tab per file", .group = "VIEW", .run = cmd_tab_bar,
    .checked = tabbar_on},
+  {.name = "view.soft-wrap", .label = "Soft wrap",
+   .help = "Wrap long lines", .group = "VIEW", .run = cmd_wrap,
+   .checked = wrap_on},
   {.name = "app.save-settings", .label = "Save settings",
    .help = "Save settings to mollyrc", .group = "VIEW", .run = cmd_save_settings},
 
@@ -1084,6 +1111,10 @@ static const struct binding default_bindings[] = {
   /* Alt-Y for syntax. Not S, which the Search menu owns; not C or H, which read
    * as "colour" and "highlight" but belong to Help and to nothing. */
   {"alt-y",  "view.syntax"},
+  /* Alt-Z for soft wrap, which is where VS Code has it -- the one chord in this
+   * table that a user is likely to arrive already knowing. W would have been
+   * the mnemonic and the Window menu has it. */
+  {"alt-z",  "view.soft-wrap"},
 
   /* Windows, on the function keys from F6 up. F6 is where Turbo Vision put
    * "next window" and where molly's model for all of this came from, and the
@@ -1477,6 +1508,7 @@ static const struct help_entry help_entries[] = {
   {NULL,        NULL, NULL, "view.menu-bar"},
   {NULL,        NULL, NULL, "view.tab-bar"},
   {NULL,        NULL, NULL, "view.syntax"},
+  {NULL,        NULL, NULL, "view.soft-wrap"},
 };
 
 int help_entry_count(void) {

@@ -3795,6 +3795,187 @@ def test_filter(tmpdir):
           screen_rows(out)[1].startswith("keep"), True)
 
 
+def test_soft_wrap(tmpdir):
+    print("\nsoft wrap: Alt-Z lays a long line out over several screen rows, "
+          "breaking it at a space, and never touches the file")
+
+    WRAP = "\x1bz"
+    LINENUM = "\x15"
+    # Fifty-seven columns of words, laid out in a forty-column window. The
+    # character that straddles the edge is deliberately not a space: at this
+    # width the cut a horizontal scroll makes and the break a wrap makes fall
+    # in two different places, which is what tells the two apart on screen.
+    BODY = "alpha beta gamma delta epsilon zeta etax theta iota kappa\nsecond\n"
+    EDGE = "alpha beta gamma delta epsilon zeta etax"  # 40 columns, mid-word
+    HEAD = "alpha beta gamma delta epsilon zeta"       # 36, at the space
+    TAIL = "etax theta iota kappa"
+
+    path = os.path.join(tmpdir, "w.txt")
+
+    def paint(keys, body=BODY, cols=40, srows=24, env=None):
+        """What molly sent, and the rows of the screen it painted."""
+        with open(path, "w") as fh:
+            fh.write(body)
+        out = run([MOLLY, path], keys, rows=srows, cols=cols, env=env)
+        scr = Screen(srows, cols)
+        scr.feed(out)
+        return out, [r.rstrip() for r in scr.text()]
+
+    def rows(keys, **kw):
+        return paint(keys, **kw)[1]
+
+    def edited(keys, body=BODY, name="w2.txt"):
+        """The file afterwards, from a session in the same narrow window.
+
+        Not edit(), which runs at eighty columns -- where this line does not
+        wrap at all and every check below would pass on the unwrapped path.
+        """
+        p = os.path.join(tmpdir, name)
+        with open(p, "w") as fh:
+            fh.write(body)
+        run([MOLLY, p], keys, rows=24, cols=40)
+        with open(p) as fh:
+            return fh.read()
+
+    def cursor_rowcol(out):
+        """Where the terminal's own cursor came to rest, as (row, column)."""
+        m = re.findall(r"\x1b\[(\d+);(\d+)H", out.decode("latin-1"))
+        return (int(m[-1][0]), int(m[-1][1])) if m else None
+
+    # Off by default: the line is cut at the window edge, and the next screen
+    # row is the next line of the file.
+    off = rows([])
+    check("off by default (the line is cut at the edge)", off[1], EDGE)
+    check("off by default (the next row is the next line)", off[2], "second")
+
+    # On: the same line keeps going on the row below, broken at the last space
+    # that fitted rather than at the edge.
+    out, on = paint([WRAP])
+    check("Alt-Z breaks the line at a space", on[1], HEAD)
+    check("and the rest of it is the next screen row", on[2], TAIL)
+    check("so the next line of the file moves down one", on[3], "second")
+    check("and the message bar says which it is now",
+          status_lines(out)[-1], "Soft wrap: on")
+    check("and Alt-Z again puts the cut line back", rows([WRAP, WRAP])[1], EDGE)
+
+    # It is a view and not an edit: nothing in the file moves, which is the
+    # whole difference between this and a hard wrap.
+    check("wrapping does not touch the file", edited([WRAP, SAVE]), BODY)
+
+    # A run with no space in it has to break at the edge anyway.
+    nospace = rows([WRAP], body="x" * 50 + "\nsecond\n")
+    check("a word too long for the window breaks at the edge",
+          nospace[1], "x" * 40)
+    check("and carries on below", nospace[2], "x" * 10)
+
+    # Down moves a row of the screen and not a line of the file. The cursor
+    # lands on the row below at the column it was at -- here column one of the
+    # continuation, which is where the row above broke.
+    out, _ = paint([WRAP, DOWN])
+    check("down a wrapped line moves one screen row", cursor_rowcol(out),
+          (TEXT_ROW + 1, 1))
+    check("and up comes back to where it started",
+          cursor_rowcol(paint([WRAP, DOWN, UP])[0]), (TEXT_ROW, 1))
+
+    # Which line of the file that is shows in the status bar, and at forty
+    # columns the file name leaves no room for it -- so the line this asks
+    # about is a longer one in a wider window.
+    WORDS = "word " * 24          # 120 columns, wrapping at 80
+    def wide_status(keys):
+        return rows(keys, body=WORDS + "\nsecond\n", cols=80)[22]
+
+    check("down a wrapped line stays on the same line of the file",
+          "Ln 1, Col 81" in wide_status([WRAP, DOWN]), True)
+    check("while unwrapped the same key goes to the next line",
+          "Ln 2, Col 1" in wide_status([DOWN]), True)
+
+    # End goes to the end of the *line*, which is on the second screen row --
+    # so this is also where the terminal's own cursor has to follow it.
+    check("End reaches the end of the line",
+          "Ln 1, Col 121" in wide_status([WRAP, END]), True)
+    check("and the cursor is drawn on the row the end is on",
+          cursor_col(paint([WRAP, END])[0]), 22)
+
+    # Clicking. Screen cell back to position in the file is the draw's own
+    # arithmetic run backwards, so a click on a continuation row is what proves
+    # the two agree.
+    def press(col, row):
+        return "\x1b[<0;%d;%dM" % (col, TEXT_ROW + row - 1)
+
+    def release(col, row):
+        return "\x1b[<0;%d;%dm" % (col, TEXT_ROW + row - 1)
+
+    check("a click on a continuation row lands in the middle of the line",
+          edited([WRAP, press(1, 2), release(1, 2), "X", SAVE], name="w3.txt"),
+          "alpha beta gamma delta epsilon zeta Xetax theta iota kappa\n"
+          "second\n")
+    check("and a click past the end of one lands at its last column",
+          edited([WRAP, press(40, 1), release(40, 1), "X", SAVE], name="w4.txt"),
+          "alpha beta gamma delta epsilon zetaX etax theta iota kappa\n"
+          "second\n")
+
+    # Selecting across a wrap. Shift-Down extends by a screen row like Down
+    # moves by one, so the selection reaches the column below rather than the
+    # next line -- and the byte count in the status bar is what says how much of
+    # the *file* that is.
+    check("Shift-Down selects as far as the row below",
+          "Sel 80" in wide_status([WRAP, SH_DOWN]), True)
+    check("and again reaches into the next line",
+          "Sel 121" in wide_status([WRAP, SH_DOWN, SH_DOWN]), True)
+    # Cut it and the file says the same thing from the other side.
+    check("and cutting it takes exactly that much",
+          edited([WRAP, SH_DOWN, CUT, SAVE], name="w5.txt"),
+          "etax theta iota kappa\nsecond\n")
+
+    # The gutter: a wrapped line is numbered once, on the row it starts at.
+    # The continuation rows get the separator and a blank where the number
+    # would be, because they are the same line.
+    gut = rows([WRAP, LINENUM])
+    check("a wrapped line is numbered once", gut[1].startswith("1 \u2502"), True)
+    check("and its continuation keeps the separator", "\u2502" in gut[2], True)
+    check("with no number of its own",
+          gut[2].split("\u2502")[0].strip(), "")
+
+    # The other three views of the command table. The help screen's goldens stop
+    # above the VIEW group, so this is what says the entry renders at all -- and
+    # the menu is the one view it is *not* in, for the reason menu.c gives.
+    dump = subprocess.run([MOLLY], capture_output=True, text=True,
+                          env=dict(os.environ, MOLLY_DUMP_KEYMAP="1")).stdout
+    check("the keymap dump has the chord", "Alt-Z\tview.soft-wrap" in dump, True)
+
+    def whole_screen(keys, cols=80):
+        with open(path, "w") as fh:
+            fh.write(BODY)
+        scr = Screen(24, cols)
+        scr.feed(run([MOLLY, path], keys, rows=24, cols=cols))
+        return "\n".join(scr.text())
+
+    # F1, then two pages down: the VIEW group is at the bottom of the reference.
+    helped = whole_screen(["\x1f", "\x1b[6~", "\x1b[6~"])
+    check("the help screen lists it", "Wrap long lines" in helped, True)
+    check("beside the chord that runs it", "Alt-Z" in helped, True)
+    check("the palette finds it by name",
+          "Soft wrap" in whole_screen(["\x00", "wrap"]), True)
+
+    # From the configuration file, which is the other way in.
+    rc = os.path.join(tmpdir, "wraprc")
+    with open(rc, "w") as fh:
+        fh.write("[view]\nsoft wrap = on\n")
+    check("soft wrap = on wraps from startup",
+          rows([], env={"MOLLY_CONFIG": rc})[1], HEAD)
+    check("and Alt-Z turns it off again",
+          rows([WRAP], env={"MOLLY_CONFIG": rc})[1], EDGE)
+
+    # And back out again: Save settings writes what the editor is doing, so the
+    # toggle has to reach the file through the settings table's live callback.
+    with open(rc, "w") as fh:
+        fh.write("[view]\nsoft wrap = off\n")
+    rows([WRAP, "\x00", "save sett", "\r"], env={"MOLLY_CONFIG": rc})
+    with open(rc) as fh:
+        check("Save settings writes the toggle back",
+              "soft wrap = on" in fh.read(), True)
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -3850,6 +4031,7 @@ def main():
         test_filter(tmpdir)
         test_indent(tmpdir)
         test_multicursor(tmpdir)
+        test_soft_wrap(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

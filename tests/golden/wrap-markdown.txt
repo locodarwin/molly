@@ -1,0 +1,46 @@
+--- screen ---
+ File  Edit  Search  View  Go  Window  H
+# A heading long enough to have to wrap
+somewhere
+
+Some *emphasis* early in a paragraph
+that is far too long for this window,
+and `code` near the end of it.
+
+```c
+int wrapped = 1;  /* a long comment
+that has to wrap too */
+```
+demo.md - 7 lines [markdown] Ln 1, Col 1
+Soft wrap: on
+--- attrs ---
+gggggggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggggggg
+ggggggggg
+
+.....gggggggggg
+
+....gggggg
+
+gggg
+gggggggggggggggggggggggggggggggggggg
+ggggggggggggggggggggggg
+ggg
+RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-39 7/0
+2: 0-39 12/-
+3: 0-8 12/-
+5: 5-14 14/-
+7: 4-9 3/-
+9: 0-3 3/-
+10: 0-35 3/-
+11: 0-22 3/-
+12: 0-2 3/-
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u  39-39 u
+2: 0-39 b
+3: 0-8 b
+--- cursor ---
+row 2 col 1 visible 1

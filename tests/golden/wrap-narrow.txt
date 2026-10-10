@@ -1,0 +1,30 @@
+--- screen ---
+ File  Edit  Search
+alpha beta gamma
+delta epsilon zeta
+etax theta iota
+kappa
+second
+~
+~
+sample.txt - 2 lines
+Soft wrap: on
+--- attrs ---
+gggggggggggggggggggg
+
+
+
+
+
+g
+g
+RRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-19 7/0
+7: 0-0 8/-
+8: 0-0 8/-
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u
+--- cursor ---
+row 2 col 1 visible 1

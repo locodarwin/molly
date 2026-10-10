@@ -74,6 +74,15 @@ static const struct menu_item view_items[] = {
   SEP, {"view.repaint", 0},
   SEP, {"app.save-settings", 0},
 };
+/* Soft wrap is not here, for the arithmetic reason Indent and Dedent are not in
+ * the Edit menu. This menu needs twelve rows and the item would make it
+ * thirteen, which is exactly the text area of a sixteen-row screen: the box
+ * then fits and its drop shadow does not, so it lands on the status bar and
+ * dims the half of it that says which line the cursor is on. No menu's shadow
+ * reaches the chrome today, and this would be the first. `Alt-Z`, the palette
+ * and the help screen have the command; it joins this menu as soon as a
+ * drop-down can handle its own height -- which is now three commands' worth of
+ * reason to fix that, counting indent and dedent. See HANDOFF.md. */
 static const struct menu_item go_items[] = {
   {"goto.line", 0}, SEP,
   /* N and P, since Go has nothing else competing for either. */

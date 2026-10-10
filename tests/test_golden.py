@@ -270,6 +270,57 @@ def main():
     check("syntax-off", ["\x1by"], rows=14, cols=60,
           files={"demo.c": C_SAMPLE}, args=["demo.c"])
 
+    # Soft wrap. The pair the hscroll case above belongs to: the same long line,
+    # running off the edge there and laid out over two rows here. The character
+    # at the edge is not a space, so the cut and the break fall in two different
+    # places and the snapshots cannot be confused for each other.
+    WRAPPY = ("alpha beta gamma delta epsilon zeta etax theta iota kappa\n"
+              "second\n")
+    check("wrap-off", [], rows=12, cols=40, files={"sample.txt": WRAPPY})
+    check("wrap-on", ["\x1bz"], rows=12, cols=40, files={"sample.txt": WRAPPY})
+    # With the gutter, which is where the continuation row has to keep the gray
+    # separator and leave the number blank -- and at both depths, because the
+    # gutter is the one part of this that is a colour.
+    check("wrap-gutter", ["\x1bz", "\x15"], rows=12, cols=40,
+          files={"sample.txt": WRAPPY})
+    check("wrap-gutter-256", ["\x1bz", "\x15"], rows=12, cols=40,
+          files={"sample.txt": WRAPPY}, env={"TERM": "xterm-256color"})
+    # Narrow, where nearly every row has to choose between a space and the edge.
+    check("wrap-narrow", ["\x1bz"], rows=10, cols=20,
+          files={"sample.txt": WRAPPY})
+    # Wide glyphs, a tab and a combining mark, wrapped at a width that splits
+    # them: a slice boundary is a column, so a glyph straddling one is dropped
+    # and its columns left blank.
+    check("wrap-wide", ["\x1bz"], rows=10, cols=12, files={"sample.txt": WIDE})
+    # The cursor at the end of a wrapped line, which is on the continuation row
+    # rather than off the right-hand edge of the first one.
+    check("wrap-cursor-end", ["\x1bz", "\x1b[F"], rows=12, cols=40,
+          files={"sample.txt": WRAPPY})
+    # A selection across a wrap: all of the first row and one cell of the
+    # second, which is what "the break column belongs to the row below" looks
+    # like on screen.
+    check("wrap-selection", ["\x1bz", "\x1b[1;2B", "\x1b[1;2C"], rows=12,
+          cols=40, files={"sample.txt": WRAPPY})
+    # Prose with highlighting on, which is what the feature is for -- and where
+    # a slice has to carry the roles of the columns it shows and not of the
+    # columns it starts at. The emphasis and the code span are deliberately on
+    # different rows of the same line, and the fence opens a block that a wrap
+    # must not end.
+    WRAP_MD = ("# A heading long enough to have to wrap somewhere\n"
+               "\n"
+               "Some *emphasis* early in a paragraph that is far too long for "
+               "this window, and `code` near the end of it.\n"
+               "\n"
+               "```c\n"
+               "int wrapped = 1;  /* a long comment that has to wrap too */\n"
+               "```\n")
+    check("wrap-markdown", ["\x1bz"], rows=14, cols=40,
+          files={"demo.md": WRAP_MD}, args=["demo.md"])
+    # One window wrapped and the other not, which is what "wrap is the window's
+    # setting" means on screen. F7 splits right, then Alt-Z in the new window.
+    check("wrap-split", ["\x1b[18~", "\x1bz"], rows=14, cols=60,
+          files={"sample.txt": WRAPPY})
+
     # The tab bar. Which tab is current is a colour rather than a character, so
     # this is the snapshot that proves it at all -- and both depths are here
     # because the band and the lifted current tab are two shades of the same

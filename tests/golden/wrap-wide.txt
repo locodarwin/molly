@@ -1,0 +1,30 @@
+--- screen ---
+ File  Edit
+日本語 text
+
+tabbed
+café
+combining
+~
+~
+sample.txt -
+Soft wrap: o
+--- attrs ---
+gggggggggggg
+
+
+
+
+
+g
+g
+RRRRRRRRRRRR
+
+--- colors ---
+1: 0-11 7/0
+7: 0-0 8/-
+8: 0-0 8/-
+--- modifiers ---
+1: 1-1 u  7-7 u
+--- cursor ---
+row 2 col 1 visible 1

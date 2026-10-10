@@ -1,0 +1,48 @@
+--- screen ---
+ File  Edit  Search  View  Go  Window  Help
+alpha beta gamma delta epsilon│alpha beta gamma delta
+second                        │epsilon zeta etax theta iota
+~                             │kappa
+~                             │second
+~                             │~
+~                             │~
+~                             │~
+~                             │~
+~                             │~
+~                             │~
+~                             │~
+sample.txt - 2 lines          │sample.txt - 2 lines
+Soft wrap: on
+--- attrs ---
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+..............................g
+..............................g
+g.............................g
+g.............................g
+g.............................gg
+g.............................gg
+g.............................gg
+g.............................gg
+g.............................gg
+g.............................gg
+g.............................gg
+gggggggggggggggggggggggggggggggRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-59 7/0
+2: 30-30 8/-
+3: 30-30 8/-
+4: 0-0 8/-  30-30 8/-
+5: 0-0 8/-  30-30 8/-
+6: 0-0 8/-  30-31 8/-
+7: 0-0 8/-  30-31 8/-
+8: 0-0 8/-  30-31 8/-
+9: 0-0 8/-  30-31 8/-
+10: 0-0 8/-  30-31 8/-
+11: 0-0 8/-  30-31 8/-
+12: 0-0 8/-  30-31 8/-
+13: 0-29 7/8  30-30 8/-
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u  39-39 u
+--- cursor ---
+row 2 col 32 visible 1

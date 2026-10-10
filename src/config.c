@@ -182,6 +182,12 @@ static void apply_syntax(int v) {
 }
 static int live_syntax(void) { return V.syntax; }
 
+static void apply_wrap(int v) {
+  V.wrap = v;
+  screen_force_repaint();
+}
+static int live_wrap(void) { return V.wrap; }
+
 static void apply_mouse(int v) { term_mouse_set(v); }
 static int live_mouse(void) { return term_mouse_is_on(); }
 
@@ -248,6 +254,13 @@ static struct setting settings[] = {
   {"view", "syntax", SET_BOOL, 0, 0, 1, 0,
    "colour the text by filetype",
    apply_syntax, live_syntax},
+  /* Off, because molly's own answer for a long line is the horizontal scroll
+   * and the file it is most often editing is code. It is a setting rather than
+   * a filetype default for the same reason: what a line is too long for is the
+   * window, which is the user's, not the language's. */
+  {"view", "soft wrap", SET_BOOL, 0, 0, 0, 0,
+   "wrap long lines at the window edge instead of scrolling sideways",
+   apply_wrap, live_wrap},
 
   {"input", "mouse", SET_BOOL, 0, 0, 1, 0,
    "report the mouse to molly rather than leaving it to the terminal",

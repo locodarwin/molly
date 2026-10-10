@@ -1,0 +1,41 @@
+--- screen ---
+ File  Edit  Search  View  Go  Window  H
+1 │ alpha beta gamma delta epsilon zeta
+  │ etax theta iota kappa
+2 │ second
+  │ ~
+  │ ~
+  │ ~
+  │ ~
+  │ ~
+  │ ~
+sample.txt - 2 lines         Ln 1, Col 1
+Line numbers: on
+--- attrs ---
+gggggggggggggggggggggggggggggggggggggggg
+gggg
+gggg
+gggg
+ggggg
+ggggg
+ggggg
+ggggg
+ggggg
+ggggg
+RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-39 252/235
+2: 0-3 8/-
+3: 0-3 8/-
+4: 0-3 8/-
+5: 0-4 8/-
+6: 0-4 8/-
+7: 0-4 8/-
+8: 0-4 8/-
+9: 0-4 8/-
+10: 0-4 8/-
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u  39-39 u
+--- cursor ---
+row 2 col 5 visible 1

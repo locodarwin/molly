@@ -40,6 +40,9 @@ static const struct theme_entry theme_256[ROLE_COUNT] = {
   /* ROLE_TEXT      */ {DEFAULT_COLOR, DEFAULT_COLOR, 0, 0},
   /* ROLE_GUTTER    */ {8,             DEFAULT_COLOR, 0, 0},
   /* ROLE_SELECTION */ {DEFAULT_COLOR, DEFAULT_COLOR, 1, 0},
+  /* An extra cursor is amber on purpose: reverse video is the selection's, and
+   * the two sit side by side after Ctrl-D. */
+  /* ROLE_CURSOR    */ {16,            214,           0, 0},
   /* ROLE_STATUS    */ {DEFAULT_COLOR, DEFAULT_COLOR, 1, 0},
   /* ROLE_MESSAGE   */ {DEFAULT_COLOR, DEFAULT_COLOR, 0, 0},
   /* ROLE_DIALOG        */ {252, 238, 0, 0},
@@ -88,6 +91,9 @@ static const struct theme_entry theme_16[ROLE_COUNT] = {
   /* ROLE_TEXT      */ {DEFAULT_COLOR, DEFAULT_COLOR, 0, 0},
   /* ROLE_GUTTER    */ {8,             DEFAULT_COLOR, 0, 0},
   /* ROLE_SELECTION */ {DEFAULT_COLOR, DEFAULT_COLOR, 1, 0},
+  /* Sixteen colors have no amber, so an extra cursor is yellow-backed: still a
+   * block, still not the selection's reverse video. */
+  /* ROLE_CURSOR    */ {0,             3,             0, 0},
   /* ROLE_STATUS    */ {DEFAULT_COLOR, DEFAULT_COLOR, 1, 0},
   /* ROLE_MESSAGE   */ {DEFAULT_COLOR, DEFAULT_COLOR, 0, 0},
   /* ROLE_DIALOG        */ {15, 8, 0, 0},

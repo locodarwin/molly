@@ -40,10 +40,39 @@
 static int quit_times = KILO_QUIT_TIMES;
 
 static int cmd_newline(void) {
-  if (CUR.sel_active) selection_delete();
-  editor_newline_and_indent();
+  cursors_edit(MC_NEWLINE, 0);
   return 0;
 }
+
+/* The multi-cursor gestures. Each returns 0 because none of them changes the
+ * text -- what they change is how many places the next keystroke lands in. */
+/* CMD_KEEP_SELECTION, because the selection *is* the state this command
+ * builds: the dispatcher drops the selection after every other command, and
+ * dropping it here would throw away the text the next press searches for. */
+static int cmd_cursor_add_next(void) {
+  cursors_add_next();
+  return CMD_KEEP_SELECTION;
+}
+static int cmd_cursor_add_below(void) {
+  cursors_add_vertical(1);
+  return 0;
+}
+static int cmd_cursor_add_above(void) {
+  cursors_add_vertical(0);
+  return 0;
+}
+/* Esc runs this. It used to reach no command at all and fall through to the
+ * dispatcher's selection_clear(), which still happens -- so one key drops the
+ * selection and the extra cursors together, which is the one thing a user
+ * reaches for when a gesture has gone wrong. */
+static int cmd_cursor_one(void) {
+  if (V.ncursors > 1) {
+    cursors_collapse();
+    editor_set_status_message("One cursor");
+  }
+  return 0;
+}
+static int cursors_several(void) { return V.ncursors > 1; }
 
 static int cmd_quit(void) {
   /* Every buffer, not the current one. The roadmap's warning about this feature
@@ -197,7 +226,11 @@ static int cmd_cut(void) {
   return 0;
 }
 
-static int cmd_paste(void) { editor_paste(); return 0; }
+/* The clipboard at every cursor, whole, rather than a line of it per cursor the
+ * way some GUI editors do when the counts happen to match. One rule that holds
+ * however many lines were copied beats two that depend on arithmetic the user
+ * has to do in their head. */
+static int cmd_paste(void) { cursors_edit(MC_PASTE, 0); return 0; }
 
 static int cmd_find(void) { editor_find(); return 0; }
 static int cmd_find_next(void) { editor_find_next(); return 0; }
@@ -208,13 +241,15 @@ static int cmd_replace(void) { editor_replace(); return 0; }
 static int cmd_goto_line(void) { editor_goto_line(); return 0; }
 static int cmd_help(void) { editor_help(); return 0; }
 
+/* Each cursor to its own row's edge, which is the point of a column of them:
+ * End with cursors down five ragged lines should reach five line ends. */
 static int cmd_line_start(void) {
-  CUR.cx = 0;
+  cursors_line_edge(0);
   return 0;
 }
 
 static int cmd_line_end(void) {
-  if (CUR.cy < row_count()) CUR.cx = row_at(CUR.cy)->size;
+  cursors_line_edge(1);
   return 0;
 }
 
@@ -293,15 +328,16 @@ static int cmd_transpose(void) {
   return 0;
 }
 
+/* Both of these took the selection themselves before there was more than one
+ * cursor. cursors_edit() does it per cursor now, which is the same thing when
+ * there is one of them. */
 static int cmd_delete_back(void) {
-  if (CUR.sel_active) selection_delete();
-  else editor_delete_char();
+  cursors_edit(MC_DELETE_BACK, 0);
   return 0;
 }
 
 static int cmd_delete_forward(void) {
-  if (CUR.sel_active) selection_delete();
-  else editor_del_char();
+  cursors_edit(MC_DELETE_FWD, 0);
   return 0;
 }
 
@@ -309,20 +345,23 @@ static int cmd_delete_forward(void) {
  * movement follows whatever the view model says a row is. */
 static int cmd_page_up(void) {
   int times = V.screenrows;
-  while (times--) editor_move_cursor(ARROW_UP);
+  while (times--) cursors_move_all(ARROW_UP);
   return 0;
 }
 
 static int cmd_page_down(void) {
   int times = V.screenrows;
-  while (times--) editor_move_cursor(ARROW_DOWN);
+  while (times--) cursors_move_all(ARROW_DOWN);
   return 0;
 }
 
-static int cmd_left(void)  { editor_move_cursor(ARROW_LEFT);  return 0; }
-static int cmd_right(void) { editor_move_cursor(ARROW_RIGHT); return 0; }
-static int cmd_up(void)    { editor_move_cursor(ARROW_UP);    return 0; }
-static int cmd_down(void)  { editor_move_cursor(ARROW_DOWN);  return 0; }
+/* Every cursor, not just the primary: a column of cursors that an arrow key
+ * collapsed to one would make the gesture useless. cursors_move_all() is the
+ * single-cursor call itself when there is one cursor. */
+static int cmd_left(void)  { cursors_move_all(ARROW_LEFT);  return 0; }
+static int cmd_right(void) { cursors_move_all(ARROW_RIGHT); return 0; }
+static int cmd_up(void)    { cursors_move_all(ARROW_UP);    return 0; }
+static int cmd_down(void)  { cursors_move_all(ARROW_DOWN);  return 0; }
 
 static int cmd_repaint(void) {
   screen_force_repaint();
@@ -533,6 +572,22 @@ static const struct command commands[] = {
     * two char". */
    .help = "Swap characters", .group = "EDITING",
    .run = cmd_transpose, .enabled = on_a_row},
+
+  /* Not in the Edit menu, for the reason transpose is not: these are keyboard
+   * operations, and the palette and the help screen are generated from this
+   * table so both find them without the menu growing four rows -- which it can
+   * least afford, being the one drop-down that already outgrows a short
+   * terminal. */
+  {.name = "cursor.add-next", .label = "Add cursor at next match",
+   .help = "Cursor: next match", .group = "CURSORS",
+   .run = cmd_cursor_add_next, .enabled = have_rows},
+  {.name = "cursor.add-below", .label = "Add cursor below",
+   .help = "Cursor below", .group = "CURSORS", .run = cmd_cursor_add_below},
+  {.name = "cursor.add-above", .label = "Add cursor above",
+   .help = "Cursor above", .group = "CURSORS", .run = cmd_cursor_add_above},
+  {.name = "cursor.one", .label = "One cursor",
+   .help = "Back to one cursor", .group = "CURSORS",
+   .run = cmd_cursor_one, .enabled = cursors_several},
 
   {.name = "edit.select-all", .label = "Select all",
    .help = "Select everything", .group = "SELECTION",
@@ -915,6 +970,14 @@ static const struct binding default_bindings[] = {
   {"ctrl-a", "edit.select-all"},
   {"ctrl-l", "edit.select-line"},
   {"ctrl-t", "edit.transpose"},
+  /* Ctrl-D for the next match, which is where every editor that has this puts
+   * it. Above and below take Ctrl with the arrows rather than the Ctrl-Alt the
+   * GUI editors use, because a chord here can name Shift or Ctrl and a terminal
+   * does not report both at once on an arrow. */
+  {"ctrl-d",    "cursor.add-next"},
+  {"esc",       "cursor.one"},
+  {"ctrl-down", "cursor.add-below"},
+  {"ctrl-up",   "cursor.add-above"},
   /* Alt-| for the filter, which is where Fresh puts it and the only mnemonic
    * there could be: the character is a pipe, and the command is a pipe. */
   {"alt-|",  "edit.filter"},
@@ -1228,12 +1291,14 @@ void editor_process_key(int c) {
     /* Unbound and printable: it is text. Tab is a control character, so testing
      * iscntrl() alone threw it away and a tab could not be typed at all; key
      * codes of 1000 and up are outside iscntrl()'s domain and must not reach it. */
-    if (CUR.sel_active) selection_delete();
-    /* Tab through indent.c and not editor_insert_char(): whether a step is a
-     * tab or spaces to the next stop is one decision, and this is the only
-     * path a typed tab takes. */
-    if (c == '\t') indent_insert_step();
-    else editor_insert_char(c);
+    /* Through cursors_edit(), which takes each cursor's selection first and
+     * lands the character at every one of them as a single undo step. With one
+     * cursor it is the ordinary insert and nothing else.
+     *
+     * Tab goes to indent.c rather than being inserted as a character: whether a
+     * step is a tab or spaces to the next stop is one decision, and this is the
+     * only path a typed tab takes. */
+    cursors_edit(c == '\t' ? MC_INDENT : MC_INSERT, c);
   }
   /* Anything else -- Esc, an unbound function or Alt key -- does nothing, but
    * still falls through to the selection and countdown handling below, which is

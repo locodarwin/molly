@@ -93,6 +93,8 @@ def check(name, keys, rows=24, cols=80, files=None, args=None, settle=0.5,
 
 
 THREE_LINES = "alpha\nbeta\ngamma\n"
+# Two occurrences of one word on different rows, which is what Ctrl-D is for.
+MATCHES = "red fish\nblue fish\nred bird\n"
 WIDE = "日本語 text\n\ttabbed\ncafé combining\n"
 LONG = "x" * 200 + "\n" + "short\n"
 
@@ -503,6 +505,35 @@ def main():
     check("menu-window-256", ["\x1bw"], rows=16, cols=64,
           files={"sample.txt": THREE_LINES},
           env={"TERM": "xterm-256color"})
+
+    # Multi-cursor. The terminal has one real cursor and the primary keeps it,
+    # so every other cursor is a cell in a role of its own -- which means the
+    # only proof it is drawn at all is a snapshot, and the only proof the two
+    # colour depths agree is one of each.
+    #
+    # Ctrl-D twice: the first press selects the word under the cursor, the
+    # second puts a cursor on the next occurrence. So this holds two reverse
+    # video runs (the selections) and one coloured cell (the far cursor), on
+    # two different rows, which is the whole feature in one screen.
+    check("cursors-two", ["\x04", "\x04"], rows=12, cols=40,
+          files={"sample.txt": MATCHES})
+    check("cursors-two-256", ["\x04", "\x04"], rows=12, cols=40,
+          files={"sample.txt": MATCHES},
+          env={"TERM": "xterm-256color"})
+    # Cursors added straight down with Ctrl-Down, with no selections on them:
+    # the blocks on their own, and the status bar's count.
+    check("cursors-column", ["\x1b[1;5B", "\x1b[1;5B"], rows=12, cols=40,
+          files={"sample.txt": MATCHES})
+    check("cursors-column-256", ["\x1b[1;5B", "\x1b[1;5B"], rows=12, cols=40,
+          files={"sample.txt": MATCHES},
+          env={"TERM": "xterm-256color"})
+    # The gutter on, where the column arithmetic for a shaded cell is easiest
+    # to get wrong -- a cursor drawn one column out lands in the line numbers.
+    check("cursors-gutter", ["\x15", "\x04", "\x04"], rows=12, cols=40,
+          files={"sample.txt": MATCHES})
+    # Narrow enough that the status bar's cursor count is what gets squeezed.
+    check("cursors-narrow", ["\x04", "\x04"], rows=8, cols=24,
+          files={"sample.txt": MATCHES})
 
     print()
     if failed:

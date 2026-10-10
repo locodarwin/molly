@@ -1,0 +1,27 @@
+--- screen ---
+ File  Edit  Search  Vie
+red fish
+blue fish
+red bird
+~
+~
+sample.txt - 3 lines
+2 cursors
+--- attrs ---
+gggggggggggggggggggggggg
+RRR
+
+RRRg
+g
+g
+RRRRRRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-23 7/0
+4: 3-3 0/3
+5: 0-0 8/-
+6: 0-0 8/-
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u
+--- cursor ---
+row 2 col 4 visible 1

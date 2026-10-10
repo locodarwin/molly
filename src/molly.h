@@ -171,6 +171,7 @@ struct cursor {
 #define MC_NEWLINE     2
 #define MC_DELETE_BACK 3
 #define MC_DELETE_FWD  4
+#define MC_PASTE       5
 
 #define UC_INSERT 0
 #define UC_DELETE 1
@@ -631,6 +632,13 @@ enum cell_role {
   ROLE_TEXT = 0,   /* buffer text, and anything else unremarkable */
   ROLE_GUTTER,     /* line numbers and the separator bar */
   ROLE_SELECTION,  /* selected buffer text */
+  /* A cursor other than the primary one. The terminal has exactly one real
+   * cursor and the primary keeps it, so every other cursor has to be a cell
+   * that looks like one. Its own role rather than ROLE_SELECTION because a
+   * cursor is one cell and a selection is a run, and Ctrl-D puts one of each
+   * next to the other -- reusing the selection's reverse video would have made
+   * the two indistinguishable exactly where telling them apart matters. */
+  ROLE_CURSOR,
   ROLE_STATUS,     /* the status bar */
   ROLE_MESSAGE,    /* the message bar */
 
@@ -951,6 +959,8 @@ void search_cleanup(void);
 char *selection_dup(int *outlen);
 int selection_bytes(void);
 int selection_span(int *ax, int *ay, int *bx, int *by);
+int selection_span_of(const struct cursor *c, int *ax, int *ay, int *bx, int *by);
+void selection_row_rx_of(const struct cursor *c, int filerow, int *out0, int *out1);
 void clipboard_set(const char *s, int len);
 void clipboard_sync_system(void);
 void editor_paste(void);
@@ -1083,6 +1093,11 @@ void cursors_init(void);
 int cursors_add(int cy, int cx);
 int cursors_add_sel(int cy, int cx, int ex);
 void cursors_dedup(void);
+void cursors_mark_row(int y, int filerow, const struct drow *d);
+int cursors_add_next(void);
+int cursors_add_vertical(int down);
+void cursors_line_edge(int to_end);
+void cursors_move_all(int key);
 void cursors_edit(int what, int arg);
 void cursors_sort(void);
 void drow_at(int index, struct drow *out);

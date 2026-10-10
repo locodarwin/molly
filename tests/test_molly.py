@@ -3153,6 +3153,209 @@ def screen_rows(out, rows=24, cols=80):
     return scr.text()
 
 
+def test_multicursor(tmpdir):
+    """Multi-cursor from the keyboard.
+
+    The position arithmetic -- a cursor still to come surviving an edit earlier
+    in the document -- is unit tested, because it is a question about the
+    buffer rather than the screen. What is left for here is the gestures and
+    what they write, and the proof is the file on disk: an edit that landed at
+    one cursor instead of three is a different file, whatever the screen showed.
+    The blocks themselves are golden screens.
+    """
+    print("\nmulti-cursor: Ctrl-D takes the word, then the next one")
+
+    CD = "\x04"
+    CDOWN, CUP = "\x1b[1;5B", "\x1b[1;5A"
+    SHIFT_RIGHT = "\x1b[1;2C"
+    ESC = "\x1b"
+
+    def click(x, y, mods=0):
+        return "\x1b[<%d;%d;%dM" % (mods, x + 1, y + 1)
+
+    def write_file(body, name="m.txt"):
+        path = os.path.join(tmpdir, name)
+        with open(path, "w") as fh:
+            fh.write(body)
+        return path
+
+    def regex_on():
+        rc = os.path.join(tmpdir, "mcrc")
+        with open(rc, "w") as fh:
+            fh.write("[search]\nregular expression = on\n")
+        return {"MOLLY_CONFIG": rc}
+
+    ALT = 8          # the modifier bit SGR 1006 sets for Alt
+    TEXTY = TEXT_ROW - 1   # screen row of the first line of text
+
+    # One press selects the word under the cursor and changes nothing. Typing
+    # then replaces just that one, which is what makes the first press safe:
+    # you see what is about to be matched before anything is multiplied.
+    check("one press selects the word, and typing replaces it",
+          edit(tmpdir, "red fish\nred bird\n", [CD, "X", SAVE]),
+          "X fish\nred bird\n")
+
+    # Two presses, two cursors, one keystroke in both places.
+    check("two presses put a cursor on the next occurrence",
+          edit(tmpdir, "red fish\nred bird\n", [CD, CD, "X", SAVE]),
+          "X fish\nX bird\n")
+    check("and three presses reach a third",
+          edit(tmpdir, "red\nred\nred\n", [CD, CD, CD, "X", SAVE]),
+          "X\nX\nX\n")
+
+    # The whole replacement is one undo step. Two would mean the first Ctrl-Z
+    # putting back one occurrence and leaving the others replaced.
+    check("the replacement at every cursor undoes at once",
+          edit(tmpdir, "red fish\nred bird\n", [CD, CD, "X", "\x1a", SAVE]),
+          "red fish\nred bird\n")
+
+    # It wraps, so the match before the cursor is reachable.
+    check("the search wraps to the top of the file",
+          edit(tmpdir, "red one\nblue\nred two\n",
+               [DOWN, DOWN, CD, CD, "X", SAVE]),
+          "X one\nblue\nX two\n")
+
+    # And it stops rather than looping: with one occurrence there is nothing to
+    # add, so the second press leaves one cursor and typing replaces one word.
+    check("a word that occurs once gets no second cursor",
+          edit(tmpdir, "only fish\n", [CD, CD, "X", SAVE]),
+          "X fish\n")
+
+    # Ctrl-D is literal and case-sensitive, and deliberately not routed through
+    # the Find dialog's settings. Proving the literal half needs a
+    # metacharacter in the needle, which the first press can never produce on
+    # its own -- a word is letters, digits and underscores, so Ctrl-D on "a.c"
+    # takes the "a" and stops. So the selection is made by hand with
+    # Shift-Right and Ctrl-D extends from it: as a pattern "a.c" would match
+    # the "abc" on the second row, and as text it matches only the third.
+    check("the match is literal even with regular expressions on",
+          edit(tmpdir, "a.c\nabc\na.c\n",
+               [SHIFT_RIGHT, SHIFT_RIGHT, SHIFT_RIGHT, CD, "X", SAVE],
+               env=regex_on()),
+          "X\nabc\nX\n")
+    check("and case-sensitive",
+          edit(tmpdir, "red\nRED\nred\n", [CD, CD, "X", SAVE]),
+          "X\nRED\nX\n")
+
+    # Nothing to take: a blank line says so rather than selecting nothing.
+    out = run([MOLLY, write_file("   \n")], [CD])
+    check("Ctrl-D on a blank line says there is no word",
+          any("No word" in m for m in status_lines(out)), True)
+
+    print("\nmulti-cursor: a column of cursors")
+
+    # Ctrl-Down and Ctrl-Up build a block, and one keystroke reaches every row
+    # of it -- the commonest thing anyone does with this.
+    check("Ctrl-Down adds a cursor below",
+          edit(tmpdir, "one\ntwo\nthree\n", [CDOWN, CDOWN, ">", SAVE]),
+          ">one\n>two\n>three\n")
+    check("Ctrl-Up adds one above",
+          edit(tmpdir, "one\ntwo\nthree\n",
+               [DOWN, DOWN, CUP, CUP, ">", SAVE]),
+          ">one\n>two\n>three\n")
+
+    # The column is the *display* column, so a cursor added below a tab lands
+    # under where the cursor looks rather than under its byte offset.
+    check("the column added below is the display column",
+          edit(tmpdir, "\tabc\nxyzw\n", [END, CDOWN, "-", SAVE]),
+          "\tabc-\nxyzw-\n")
+
+    # Backspace, Delete, Enter and Tab all reach every cursor.
+    check("Backspace reaches every cursor",
+          edit(tmpdir, "aXb\ncXd\n", [RIGHT, RIGHT, CDOWN, "\x7f", SAVE]),
+          "ab\ncd\n")
+    check("Delete reaches every cursor",
+          edit(tmpdir, "aXb\ncXd\n", [RIGHT, CDOWN, "\x1b[3~", SAVE]),
+          "ab\ncd\n")
+    check("Enter reaches every cursor",
+          edit(tmpdir, "ab\ncd\n", [RIGHT, CDOWN, "\r", SAVE]),
+          "a\nb\nc\nd\n")
+    check("Tab reaches every cursor",
+          edit(tmpdir, "ab\ncd\n", [CDOWN, "\t", SAVE]),
+          "\tab\n\tcd\n")
+
+    # Movement moves the whole block rather than collapsing it.
+    check("an arrow key moves every cursor",
+          edit(tmpdir, "abc\ndef\n", [CDOWN, RIGHT, "-", SAVE]),
+          "a-bc\nd-ef\n")
+
+    # Home and End reach each cursor's own row edge, which is what makes a
+    # column of cursors useful on ragged lines.
+    check("End reaches every cursor's own line end",
+          edit(tmpdir, "a\nbbb\ncc\n", [CDOWN, CDOWN, END, "-", SAVE]),
+          "a-\nbbb-\ncc-\n")
+    check("and Home every cursor's line start",
+          edit(tmpdir, "aa\nbb\n", [END, CDOWN, HOME, "-", SAVE]),
+          "-aa\n-bb\n")
+
+    # Shift with a movement extends a selection at every cursor, each anchored
+    # where that cursor was. Proved by typing over the result rather than by
+    # looking at the highlight: two Shift-Rights at two cursors select two
+    # characters in each of two places, and one keystroke replaces both runs.
+    # With the anchor seeded only on the primary this wrote "Xc\ndef".
+    check("Shift-Right selects at every cursor, not just the primary",
+          edit(tmpdir, "abc\ndef\n",
+               [CDOWN, SHIFT_RIGHT, SHIFT_RIGHT, "X", SAVE]),
+          "Xc\nXf\n")
+
+    # The clipboard goes in whole at every cursor.
+    check("paste reaches every cursor",
+          edit(tmpdir, "one\ntwo\nZ\n",
+               [DOWN, DOWN, "\x0c", "\x03", HOME, UP, UP, CDOWN, "\x16", SAVE]),
+          "Zone\nZtwo\nZ\n")
+
+    # Two cursors that walk into each other merge, because two cursors in one
+    # place would type twice there.
+    check("cursors that collide merge",
+          edit(tmpdir, "abc\ndef\n", [CDOWN, UP, "-", SAVE]),
+          "-abc\ndef\n")
+
+    print("\nmulti-cursor: getting back to one")
+
+    # Esc drops the extra cursors, so the next keystroke lands once.
+    # Esc and the character after it go in separate writes with a pause between.
+    # Esc followed straight away by a printable byte is how a terminal spells
+    # Alt, so the two arriving together would be read as one Alt chord and
+    # neither the collapse nor the typing would happen.
+    check("Esc goes back to one cursor",
+          edit(tmpdir, "one\ntwo\n", [CDOWN, ESC, 0.3, ">", SAVE]),
+          ">one\ntwo\n")
+
+    # Undo collapses too: a record restores one position, so the extra cursors
+    # would otherwise be left pointing at nothing the user put them on.
+    check("undo leaves one cursor behind it",
+          edit(tmpdir, "one\ntwo\n", [CDOWN, ">", "\x1a", "!", SAVE]),
+          "!one\ntwo\n")
+
+    print("\nmulti-cursor: the mouse")
+
+    # Alt-click puts a cursor where it lands -- the only way to put cursors
+    # somewhere that is neither a match nor straight above or below.
+    check("Alt-click adds a cursor",
+          edit(tmpdir, "one\ntwo\n",
+               [click(0, TEXTY + 1, ALT), ">", SAVE]),
+          ">one\n>two\n")
+
+    # A plain click is the way out with the mouse.
+    check("a plain click goes back to one cursor",
+          edit(tmpdir, "one\ntwo\n",
+               [CDOWN, click(0, TEXTY), ">", SAVE]),
+          ">one\ntwo\n")
+
+    print("\nmulti-cursor: what the status bar says")
+
+    out = run([MOLLY, write_file("red\nred\n")], [CD, CD])
+    scr = Screen(24, 80)
+    scr.feed(out)
+    check("the status bar counts the cursors",
+          "2 cursors" in scr.text()[22], True)
+    out = run([MOLLY, write_file("red\nred\n")], [CD, CD, ESC])
+    scr = Screen(24, 80)
+    scr.feed(out)
+    check("and stops once there is one again",
+          "cursors" in scr.text()[22], False)
+
+
 def test_indent(tmpdir):
     """Indentation from the keyboard: Enter carrying it down, Tab inserting it.
 
@@ -3486,6 +3689,7 @@ def main():
         test_splits(tmpdir)
         test_filter(tmpdir)
         test_indent(tmpdir)
+        test_multicursor(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

@@ -231,6 +231,12 @@ void editor_undo(void) {
     redo_push(u);
   }
   B.undo.locked = 1;
+  /* Back to one cursor. A record restores one position, so after undoing an
+   * edit that happened at several the extra cursors are pointing at wherever
+   * they happened to be rather than at anything the user put them on -- and
+   * the next keystroke would land in those places. This is the same answer
+   * loading another file gets, and for the same reason. */
+  cursors_collapse();
   editor_set_status_message("Undo");
 }
 
@@ -249,5 +255,6 @@ void editor_redo(void) {
     undo_push(u);
   }
   B.undo.locked = 1;
+  cursors_collapse();
   editor_set_status_message("Redo");
 }

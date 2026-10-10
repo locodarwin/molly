@@ -7,16 +7,22 @@
  * other key drops it. The covered text is highlighted in reverse video by
  * editor_draw_text_row(), and the byte count is surfaced in the status bar. --- */
 
+/* Every cursor's selection, not only the primary's. "Drop the selection" with
+ * several cursors means all of them -- after Ctrl-D each one is holding an
+ * occurrence, and clearing one of them would leave the rest highlighted with
+ * nothing about to replace them. */
 void selection_clear(void) {
-  CUR.sel_active = 0;
+  int i;
+  for (i = 0; i < V.ncursors; i++) V.cursors[i].sel_active = 0;
 }
 
 /* Order the anchor and cursor into a top-left / bottom-right pair, clamped to
  * valid rows so the phantom line past the last row never indexes out of
  * bounds. Returns 0 (leaving the outputs undefined) when no selection. */
-static int selection_range(int *ax, int *ay, int *bx, int *by) {
-  if (!CUR.sel_active) return 0;
-  int y0 = CUR.sy, y1 = CUR.cy, x0 = CUR.sx, x1 = CUR.cx;
+static int selection_range_of(const struct cursor *c,
+                              int *ax, int *ay, int *bx, int *by) {
+  if (!c->sel_active) return 0;
+  int y0 = c->sy, y1 = c->cy, x0 = c->sx, x1 = c->cx;
   if (y0 > y1 || (y0 == y1 && x0 > x1)) {
     int ty = y0, tx = x0;
     y0 = y1; x0 = x1; y1 = ty; x1 = tx;
@@ -28,6 +34,17 @@ static int selection_range(int *ax, int *ay, int *bx, int *by) {
    * runs off the end of the buffer always ends at column 0 of it. */
   if (*by == row_count()) *bx = 0;
   return 1;
+}
+
+static int selection_range(int *ax, int *ay, int *bx, int *by) {
+  return selection_range_of(&CUR, ax, ay, bx, by);
+}
+
+/* The same span for any cursor, which is what cursors.c needs in order to read
+ * the text one of the far cursors has selected. */
+int selection_span_of(const struct cursor *c,
+                      int *ax, int *ay, int *bx, int *by) {
+  return selection_range_of(c, ax, ay, bx, by);
 }
 
 /* The current cursor's selection in document order, for the one caller outside
@@ -67,11 +84,12 @@ int selection_bytes(void) {
  * stops and wide glyphs already accounted for). The whole interior span of a
  * multi-line selection is covered; the top row starts at the anchor and the
  * bottom row ends at the far edge. */
-void selection_row_rx(int filerow, int *out0, int *out1) {
+void selection_row_rx_of(const struct cursor *c, int filerow,
+                         int *out0, int *out1) {
   *out0 = 0;
   *out1 = 0;
   int ax, ay, bx, by;
-  if (!selection_range(&ax, &ay, &bx, &by)) return;
+  if (!selection_range_of(c, &ax, &ay, &bx, &by)) return;
   if (filerow < ay || filerow > by || filerow >= row_count()) return;
   erow *r = row_at(filerow);
   if (ay == by) {
@@ -88,6 +106,10 @@ void selection_row_rx(int filerow, int *out0, int *out1) {
     *out1 = editor_row_cx_to_rx(r, r->size);
   }
   if (*out1 < *out0) *out1 = *out0;
+}
+
+void selection_row_rx(int filerow, int *out0, int *out1) {
+  selection_row_rx_of(&CUR, filerow, out0, out1);
 }
 
 /* Copy the selected bytes into a freshly allocated, NUL-terminated buffer
@@ -153,7 +175,12 @@ void clipboard_set(const char *s, int len) {
 void selection_delete(void) {
   int ax, ay, bx, by;
   if (!selection_range(&ax, &ay, &bx, &by)) return;
-  selection_clear();
+  /* This cursor's selection, not every cursor's: with several cursors each
+   * holding an occurrence, cursors.c calls this once per cursor, and
+   * selection_clear() would throw away the selections of the cursors whose
+   * turn has not come -- so the first one replaced its match and the rest
+   * merely typed. */
+  CUR.sel_active = 0;
   if (ay == by && ax == bx) return;
 
   undo_group_begin();

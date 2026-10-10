@@ -223,6 +223,10 @@ static void edit_one(int what, int arg) {
     case MC_NEWLINE:     editor_newline_and_indent(); break;
     case MC_DELETE_BACK: editor_delete_char(); break;
     case MC_DELETE_FWD:  editor_del_char(); break;
+    /* editor_paste() takes the selection itself, so the call above has already
+     * happened by the time this runs -- harmless, because the second one finds
+     * nothing selected. */
+    case MC_PASTE:       editor_paste(); break;
     default: break;
   }
 }
@@ -274,5 +278,294 @@ void cursors_edit(int what, int arg) {
 
   undo_group_end();
   V.primary = (keep < V.ncursors) ? keep : 0;
+  cursors_dedup();
+}
+
+/* ---- drawing the cursors the terminal cannot ------------------------------ */
+
+/* Mark every cursor but the primary onto a row that has just been drawn.
+ *
+ * A second pass over the cells rather than a branch inside the draw loop. That
+ * loop runs per character, on every row of every window, every frame; multi-
+ * cursor is both rare and purely additive, so it re-roles the handful of cells
+ * it owns afterwards and leaves the hot path exactly as it was. With one cursor
+ * this returns before doing anything, which is why no golden screen of
+ * single-cursor molly moved.
+ *
+ * The primary is skipped because it has the real thing: refresh_screen() puts
+ * the terminal's own cursor on it, and drawing a block there as well would show
+ * two cursors where there is one.
+ *
+ * Selections are marked here for every cursor including the primary, whose own
+ * span the draw loop has already coloured -- the two agree, so re-roling those
+ * cells changes nothing, and special-casing it would be a second copy of the
+ * same arithmetic to keep in step. */
+void cursors_mark_row(int y, int filerow, const struct drow *d) {
+  int i;
+  int gw = V.gutter_w;
+  int skip = d->rcol0 + V.coloff;
+  int text_cols = TEXT_COLS();
+  erow *row;
+
+  if (V.ncursors < 2 || filerow >= row_count()) return;
+  if (d->rcols < text_cols) text_cols = d->rcols;
+  row = row_at(filerow);
+
+  for (i = 0; i < V.ncursors; i++) {
+    const struct cursor *c = &V.cursors[i];
+    int s0, s1;
+
+    selection_row_rx_of(c, filerow, &s0, &s1);
+    if (s1 > s0) {
+      int a = s0 - skip, b = s1 - skip;
+      if (a < 0) a = 0;
+      if (b > text_cols) b = text_cols;
+      if (b > a) grid_shade(V.screenx + gw + a, y, b - a, 1, ROLE_SELECTION);
+    }
+
+    if (i == V.primary || c->cy != filerow) continue;
+    {
+      int rx = editor_row_cx_to_rx(row, c->cx) - skip;
+      /* A cursor resting one column past the last character still gets a cell,
+       * which is what makes a cursor at the end of a line visible at all. */
+      if (rx >= 0 && rx < text_cols)
+        grid_shade(V.screenx + gw + rx, y, 1, 1, ROLE_CURSOR);
+    }
+  }
+}
+
+/* ---- the commands ---------------------------------------------------------- */
+
+/* Is this byte part of a word, for the purpose of "the word under the cursor"?
+ * The same answer syntax.c gives its keyword matcher, and for the same reason:
+ * a word is what an identifier is. */
+static int cursor_word_char(unsigned char c) {
+  return isalnum(c) || c == '_';
+}
+
+/* The word under (or immediately behind) the cursor, as [*s, *e) of its row.
+ * Returns 0 when there is no word there, which is what makes Ctrl-D on a blank
+ * line say so rather than select nothing. */
+static int word_under(int cy, int cx, int *s, int *e) {
+  erow *row;
+  int a, b;
+  if (cy >= row_count()) return 0;
+  row = row_at(cy);
+  if (row->size == 0) return 0;
+
+  /* A cursor resting just past a word counts as being on it, which is what
+   * happens after typing one. */
+  a = cx;
+  if (a >= row->size) a = row->size - 1;
+  if (!cursor_word_char((unsigned char)row->chars[a])) {
+    if (a > 0 && cursor_word_char((unsigned char)row->chars[a - 1])) a--;
+    else return 0;
+  }
+  b = a;
+  while (a > 0 && cursor_word_char((unsigned char)row->chars[a - 1])) a--;
+  while (b < row->size && cursor_word_char((unsigned char)row->chars[b])) b++;
+  *s = a;
+  *e = b;
+  return 1;
+}
+
+/* The next literal occurrence of `needle` after the one at (oy, ox), wrapping
+ * to the top of the buffer. Returns 0 when there is no other one.
+ *
+ * Literal and case-sensitive, and deliberately not routed through search.c:
+ * Ctrl-D would otherwise change meaning with the Find dialog's checkboxes, so
+ * turning on regular expressions would make a word with a dot in it stop
+ * matching itself. What Ctrl-D looks for is the text that is already selected,
+ * which is never a pattern.
+ *
+ * The sweep stops by recognising the match it came from rather than by counting
+ * rows: a word that occurs once would otherwise be found again on the wrap and
+ * handed back as its own next occurrence. Scanning left to right means any
+ * other match on the starting row is seen on the first pass, so arriving back
+ * at (oy, ox) really does mean there is nothing else. */
+static int next_occurrence(const char *needle, int nlen, int oy, int ox,
+                           int *ry, int *rx) {
+  int rows = row_count();
+  int k, y = oy, x = ox + 1;
+  if (rows == 0 || nlen <= 0) return 0;
+
+  for (k = 0; k <= rows; k++) {
+    erow *row;
+    int i;
+    if (y >= rows) { y = 0; x = 0; }
+    row = row_at(y);
+    for (i = x; i + nlen <= row->size; i++) {
+      if (memcmp(row->chars + i, needle, (size_t)nlen) != 0) continue;
+      if (y == oy && i == ox) return 0;   /* back where it started */
+      *ry = y;
+      *rx = i;
+      return 1;
+    }
+    y++;
+    x = 0;
+  }
+  return 0;
+}
+
+/* Ctrl-D. The first press selects the word under the cursor; each one after that
+ * puts another cursor on the next occurrence of what is already selected.
+ *
+ * Two presses to get two cursors is how every editor that has this behaves, and
+ * it is what makes the gesture safe: the first press shows you what is about to
+ * be matched before anything is multiplied. */
+int cursors_add_next(void) {
+  struct cursor *last;
+  int ax, ay, bx, by, y, x, nlen;
+  char needle[512];
+
+  if (row_count() == 0) return 0;
+
+  /* Nothing selected: select the word and stop. */
+  if (!CUR.sel_active) {
+    int s, e;
+    if (!word_under(CUR.cy, CUR.cx, &s, &e)) {
+      editor_set_status_message("No word at the cursor");
+      return 0;
+    }
+    CUR.sy = CUR.cy;
+    CUR.sx = s;
+    CUR.cx = e;
+    CUR.sel_active = 1;
+    return 1;
+  }
+
+  /* Search from the last cursor in document order, so repeated presses walk
+   * down the file rather than all finding the same next match. */
+  cursors_sort();
+  last = &V.cursors[V.ncursors - 1];
+  if (!selection_span_of(last, &ax, &ay, &bx, &by)) return 0;
+  if (ay != by) {
+    editor_set_status_message("Add cursor needs a selection on one line");
+    return 0;
+  }
+  nlen = bx - ax;
+  if (nlen <= 0) return 0;
+  if (nlen >= (int)sizeof(needle)) {
+    editor_set_status_message("Selection is too long to match");
+    return 0;
+  }
+  memcpy(needle, (*row_at(ay)).chars + ax, (size_t)nlen);
+
+  if (!next_occurrence(needle, nlen, ay, ax, &y, &x)) {
+    editor_set_status_message("No more occurrences");
+    return 0;
+  }
+  if (!cursors_add_sel(y, x, x + nlen)) {
+    editor_set_status_message("No room for another cursor");
+    return 0;
+  }
+  editor_set_status_message("%d cursors", V.ncursors);
+  return 1;
+}
+
+/* Ctrl-Up and Ctrl-Down: another cursor on the row above or below, in the same
+ * column. The column is the *display* column, so a cursor added below a tab
+ * lands under where the cursor looks rather than under its byte offset. */
+int cursors_add_vertical(int down) {
+  const struct cursor *from;
+  int cy, cx, rx;
+
+  if (V.ncursors == 0) return 0;
+  cursors_sort();
+  /* Grow away from the block: downwards from its last cursor, upwards from its
+   * first, so holding the chord walks instead of toggling one row. */
+  from = down ? &V.cursors[V.ncursors - 1] : &V.cursors[0];
+  cy = from->cy + (down ? 1 : -1);
+  if (cy < 0 || cy > row_count()) return 0;
+
+  rx = (from->cy < row_count())
+      ? editor_row_cx_to_rx(row_at(from->cy), from->cx) : 0;
+  cx = (cy < row_count()) ? editor_row_rx_to_cx(row_at(cy), rx) : 0;
+
+  if (!cursors_add(cy, cx)) return 0;
+  editor_set_status_message("%d cursors", V.ncursors);
+  return 1;
+}
+
+/* ---- moving all of them --------------------------------------------------- */
+
+/* Where each cursor was before a movement, so Shift can seed each one's own
+ * selection anchor. File scope rather than a local array because there can be
+ * CURSORS_MAX of them and movement is not reentrant. */
+static struct { int cx, cy; } pre[CURSORS_MAX];
+static int npre;
+
+static void pre_record(void) {
+  int i;
+  npre = V.ncursors;
+  for (i = 0; i < npre; i++) {
+    pre[i].cx = V.cursors[i].cx;
+    pre[i].cy = V.cursors[i].cy;
+  }
+}
+
+/* Start a selection at each cursor's own starting point, for a movement made
+ * with Shift held.
+ *
+ * The dispatcher does this for the primary, and can only do it for the primary:
+ * it remembers one position, because until now there was one cursor whose
+ * position could matter. With several, each needs an anchor where *it* was --
+ * otherwise Shift-Right with five cursors highlights one character in one
+ * place. Having seeded the primary here as well, the dispatcher's own attempt
+ * finds a selection already active and leaves it alone. */
+static void pre_seed_anchors(void) {
+  int i;
+  if (!input_last_key_had_shift()) return;
+  for (i = 0; i < npre && i < V.ncursors; i++) {
+    if (V.cursors[i].sel_active) continue;
+    V.cursors[i].sel_active = 1;
+    V.cursors[i].sx = pre[i].cx;
+    V.cursors[i].sy = pre[i].cy;
+  }
+}
+
+/* Move every cursor, then merge the ones that landed together.
+ *
+ * All of them rather than only the primary, because the block is the point: an
+ * arrow key with five cursors down a column should keep five cursors down a
+ * column. Movement changes no text, so none of the position fixing above is
+ * needed -- but two cursors can walk into each other at the start of a line or
+ * the end of the buffer, and two cursors in one place would then type twice
+ * there, so the merge is not cosmetic.
+ *
+ * With one cursor this is the plain movement and nothing else, which is what
+ * keeps every existing selection and scrolling test saying what it said. */
+void cursors_move_all(int key) {
+  int i, keep;
+  if (V.ncursors <= 1) {
+    editor_move_cursor(key);
+    return;
+  }
+  keep = V.primary;
+  pre_record();
+  for (i = 0; i < V.ncursors; i++) {
+    V.primary = i;
+    editor_move_cursor(key);
+  }
+  V.primary = (keep < V.ncursors) ? keep : 0;
+  pre_seed_anchors();
+  cursors_dedup();
+}
+
+/* Every cursor to the start or the end of the row it is on. */
+void cursors_line_edge(int to_end) {
+  int i, keep;
+  if (V.ncursors <= 1) {
+    CUR.cx = (to_end && CUR.cy < row_count()) ? (*row_at(CUR.cy)).size : 0;
+    return;
+  }
+  keep = V.primary;
+  pre_record();
+  for (i = 0; i < V.ncursors; i++) {
+    struct cursor *c = &V.cursors[i];
+    c->cx = (to_end && c->cy < row_count()) ? (*row_at(c->cy)).size : 0;
+  }
+  V.primary = (keep < V.ncursors) ? keep : 0;
+  pre_seed_anchors();
   cursors_dedup();
 }

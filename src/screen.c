@@ -203,6 +203,7 @@ void screen_draw_text_area(void) {
       int s0, s1;
       selection_row_rx(filerow, &s0, &s1);
       editor_draw_text_row(y0 + y, row_at(filerow), &d, s0, s1);
+      cursors_mark_row(y0 + y, filerow, &d);
     }
   }
 }
@@ -243,11 +244,20 @@ void screen_draw_status_bar(int focused) {
    * the phantom line past the last row, which has no erow to index. */
   int charcol = (CUR.cy < row_count())
       ? editor_row_cx_to_charcol(row_at(CUR.cy), CUR.cx) : 0;
-  int rlen = CUR.sel_active
-      ? snprintf(rstatus, sizeof(rstatus), "Ln %d, Col %d  Sel %d",
-          CUR.cy + 1, charcol + 1, selection_bytes())
-      : snprintf(rstatus, sizeof(rstatus), "Ln %d, Col %d",
-          CUR.cy + 1, charcol + 1);
+  /* How many cursors, once there is more than one. The count and not a marker,
+   * because with cursors scrolled off the top or bottom of the window the
+   * number is the only way to know how many places the next keystroke lands
+   * in -- and that is exactly the thing worth knowing before typing. */
+  int rlen;
+  if (V.ncursors > 1)
+    rlen = snprintf(rstatus, sizeof(rstatus), "Ln %d, Col %d  %d cursors",
+        CUR.cy + 1, charcol + 1, V.ncursors);
+  else if (CUR.sel_active)
+    rlen = snprintf(rstatus, sizeof(rstatus), "Ln %d, Col %d  Sel %d",
+        CUR.cy + 1, charcol + 1, selection_bytes());
+  else
+    rlen = snprintf(rstatus, sizeof(rstatus), "Ln %d, Col %d",
+        CUR.cy + 1, charcol + 1);
   if (len > w) len = w;
 
   /* The whole bar is reverse video, so it is filled first and written over.
@@ -370,10 +380,23 @@ void screen_text_mouse(const struct mouse_event *ev) {
   if (rcol < 0) rcol = 0;
 
   if (ev->type == MOUSE_PRESS) {
+    int cx = (filerow < row_count())
+        ? editor_row_rx_to_cx(row_at(filerow), rcol) : 0;
+    /* Alt held adds a cursor where the click landed instead of moving the one
+     * there is -- the mouse half of Ctrl-D, and the only way to put cursors
+     * somewhere that is neither a match nor straight above or below. The
+     * modifier already arrives decoded on the event; see struct mouse_event. */
+    if (ev->mods & MOUSE_MOD_ALT) {
+      cursors_add(filerow, cx);
+      editor_set_status_message("%d cursors", V.ncursors);
+      return;
+    }
+    /* A plain click is how you get out of a multi-cursor gesture with the
+     * mouse, so it puts the one cursor where it was clicked. */
+    cursors_collapse();
     selection_clear();
     CUR.cy = filerow;
-    CUR.cx = (filerow < row_count())
-        ? editor_row_rx_to_cx(row_at(filerow), rcol) : 0;
+    CUR.cx = cx;
     return;
   }
 

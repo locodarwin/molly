@@ -1,8 +1,8 @@
 # Handoff
 
-Written 2026-10-09 and re-measured the same day at `3151cf1`, which is where
-`main` is: everything is committed, the working tree is clean, and nothing is
-half-finished. **Not yet pushed** — six commits are ahead of `origin/main`.
+Written 2026-10-09 and re-measured the same day at `3151cf1`. Both `main` and
+`origin/main` are at the documentation commit on top of it: everything is
+committed and pushed, the working tree is clean, and nothing is half-finished.
 
 This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an

@@ -383,6 +383,12 @@ later.
 
 - **Separate the mechanism commit from the visible-change commit.** The engine
   landed unreachable from the editor; the feature that reached it came next.
+- **Iterate on one pty test, not on the suite.** The whole suite is seventeen
+  minutes and stops at the first failing stage, which is a terrible loop to
+  debug a new check in. `tests/test_molly.py` is importable: set `MOLLY` to the
+  binary, make a temp directory, call the one test function, read
+  `PASSED`/`FAILURES`. Three lines in a scratch file, a second per run. Then run
+  the real gate once, at the end, in the background.
 - **Measure rather than guess.** 160 bytes per recursion depth came from an
   instrumented scratch build. The 9 ms worst-case budget was timed. Do not put
   an estimate in a comment.

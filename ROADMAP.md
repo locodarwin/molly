@@ -514,13 +514,15 @@ Grouped by where they live:
 
 - **Edit:** select all / word / line, delete word back/forward, delete to end of
   line, transpose, duplicate line, move line up/down, join lines, toggle
-  comment, indent/dedent with Tab/Shift-Tab, case conversion, sort selected
-  lines, trim trailing whitespace.
-- **Smart editing:** smart Home (first non-blank ↔ column 0), smart Backspace
-  (eat one indent level), auto-close brackets and quotes, surround selection —
-  all configurable, because each one annoys somebody. Auto-indent on Enter is
-  **done**, with the tab width and tabs-versus-spaces, and each of the three is
-  answerable per filetype.
+  comment, case conversion, sort selected lines, trim trailing whitespace.
+  Indent/dedent with Tab/Shift-Tab is **done**.
+- **Smart editing:** smart Home (first non-blank ↔ column 0), auto-close
+  brackets and quotes, surround selection — all configurable, because each one
+  annoys somebody. Auto-indent on Enter is **done**, with the tab width and
+  tabs-versus-spaces, and each of the three is answerable per filetype. Smart
+  Backspace (eat one indent level) is **done** and is not configurable: it only
+  acts where more than one character stands between the cursor and the stop, so
+  in a tab-indented file there is nothing to turn off.
 - **Navigate:** go to matching bracket, word-wise movement, position history
   (jump back where you were), bookmarks 0-9.
 - **View:** whitespace indicators, indent guides, current-line highlight,
@@ -827,11 +829,23 @@ molly runs under `ulimit -v` and has to reach a clean quit.
   to undo the other's work. The width a buffer's rows were built at is now a
   field on the buffer, reconciled by `indent_sync()` — once per window per
   frame, and a no-op unless something moved.
+- **Landed after it:** indenting and dedenting a block with `Tab`/`Shift-Tab`,
+  and Backspace eating one level. Two answers the references do not settle, both
+  pinned in the suites: a blank row inside a block is left alone, because an
+  indent on nothing is trailing whitespace; and a dedent goes back to the
+  previous tab stop, taking whole characters off the end of the whitespace run
+  nearest the text — so six spaces at a width of four leave four, and a tab that
+  straddles the stop comes off whole and undershoots.
+- **Not in the Edit menu, and that is arithmetic rather than taste.** That menu
+  already needs thirteen rows; a drop-down paints over the status bar once it is
+  taller than the text area, and two more items plus a separator make that
+  reachable on a sixteen-row screen rather than a twelve-row one. The two
+  commands are in the palette, the help screen and the keymap, and they go in
+  the menu when a drop-down can handle its own height.
 - **Still to come:** the Options dialogs, which are what write-back was built
-  for. Indenting and dedenting a block with `Tab`/`Shift-Tab` is still one of
-  the cheap Edit items in §5 rather than part of this, and nothing here knows a
-  language: the new line copies the old line's indentation and does not add a
-  level after a brace.
+  for. Nothing here knows a language: the new line copies the old line's
+  indentation and does not add a level after a brace, and nothing works out what
+  level a block *should* be at.
 
 ### Shell filter — **done**
 
@@ -928,6 +942,17 @@ molly runs under `ulimit -v` and has to reach a clean quit.
   already popped a group at a time. Undo then collapses to one cursor, because a
   record restores one position rather than a list -- the answer
   `cursors_collapse()` already gave for loading another file.
+- **Landed after it:** Alt-D to skip a match, Alt-U to take the last cursor
+  back, Alt-A for every match at once. The chords are what a terminal can
+  carry — the editors with these use `Ctrl-K Ctrl-D` and molly has no two-chord
+  sequences, and VS Code's `Ctrl-U` went to the line-number gutter here long
+  ago.
+- **What they needed was an order.** The list is kept in document order, so
+  after a search wraps to the top of the file the newest cursor sorts first and
+  "the last one" cannot be recovered from the positions. A cursor now carries
+  the order it was added in. That fixed Ctrl-D as well: it had searched from the
+  last cursor in document order, which after a wrap is not the one the user is
+  looking at, so the next press walked down from a match already taken.
 - **Block selection is still later.** A column of cursors covers most of what
   people use it for, and a rectangular *selection* is a different model again:
   every selection in molly is a pair of positions, and a rectangle is not.
@@ -1128,6 +1153,12 @@ are structural to the menu bar.
 | Tabs versus spaces default | **A literal tab**, because the setting decides what bytes a save writes |
 | Auto-indent default | **On**, because it changes only what a keystroke does |
 | `Enter` inside leading whitespace | **The text keeps its column** — only the whitespace behind the cursor is copied |
+| What a dedent takes off | **Back to the previous tab stop**, whole characters off the end of the whitespace run nearest the text; a tab that straddles the stop comes off whole |
+| A blank row inside an indented block | **Left alone** — an indent on nothing is trailing whitespace |
+| When `Backspace` eats a level | **Only in the leading whitespace, and only with more than one character to take** — so a tab-indented file never notices |
+| Where indent and dedent live | **Palette, help screen and keymap, not the Edit menu** — that menu's drop-down already paints over the status bar once it outgrows the text area |
+| Skip a match / drop a cursor / all matches | **Alt-D, Alt-U, Alt-A** — a terminal cannot carry `Ctrl-K Ctrl-D`, and `Ctrl-U` was spent on the gutter |
+| Which cursor those three work from | **The one added last**, which after a wrap is not the last one in the file — so a cursor carries the order it was added in |
 
 The first of those changed shipped behaviour: olly searched the tab-expanded
 render buffer, so a run of eight spaces found a tab. Unifying both modes on the

@@ -1,9 +1,11 @@
 # Handoff
 
-Written 2026-10-09 and re-measured the same day at `3151cf1`; the commits after
-it are documentation and the CI repairs described under "What only CI sees".
-`main` and `origin/main` are level: everything is committed and pushed, the
-working tree is clean, and nothing is half-finished.
+Written 2026-10-09 and re-measured the same day. `main` and `origin/main` are
+level: everything is committed and pushed, the working tree is clean, and
+nothing is half-finished. The last work on it was the four follow-ons Shawn
+picked after multi-cursor — skip a match, take the last cursor back, a cursor
+on every match, and indent/dedent a block with smart Backspace — on top of the
+CI repairs described under "What only CI sees".
 
 This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
@@ -266,25 +268,14 @@ commit:
   to LATER rather than doing here. A column of cursors covers most of what
   people reach for it for, and a rectangular selection is a different model:
   every selection in molly is a pair of positions and a rectangle is not.
-- **`Ctrl-D` cannot skip or deselect a match.** Every editor that has this also
-  has "skip this one" and "take the last one back"; molly has `Esc` and start
-  again. The shape is there for both — the cursor list is ordered, so dropping
-  the last entry is a few lines — and the question is only what to bind them
-  to, which is the hard part in a terminal.
-- **Add a cursor to every match at once**, which is the other half of Ctrl-D in
-  most editors. `next_occurrence()` already walks the file and stops when it
-  comes back round, so this is a loop over it with the ceiling on the list as
-  the guard.
-- **Indent and dedent a block** with `Tab`/`Shift-Tab` on a selection. This is
-  the item people will expect next, and indentation did not do it: `Tab` with
-  text selected still replaces the selection, as it always has.
-  `indent_insert_step()` is the shape one indent level now has, so what is
-  missing is the walk over the selected rows and the undo group around it —
-  plus a decision about what `Shift-Tab` takes off a row indented with both
-  tabs and spaces. `ROADMAP.md` §5 lists it among the cheap Edit items.
-- **Smart Backspace**, eating one indent level rather than one character. Also
-  §5, also cheap now that `tab_width()` answers per filetype, and the obvious
-  companion to `insert spaces` — without it, one Backspace per space.
+- **Put Indent and Dedent in the Edit menu**, which is held up by the
+  drop-down's height rather than by anything of their own: that menu needs
+  thirteen rows already, and a drop-down paints over the status bar once it is
+  taller than the text area. Two items and a separator make that reachable on a
+  sixteen-row screen instead of the twelve-row one the golden documents — and
+  `tests/golden/menu-edit*` are at exactly sixteen. The two commands are in the
+  table, the palette, the help screen and the keymap; the menu is the one view
+  they are missing. See the drop-down item further down.
 - **Italic for comments.** `ROADMAP.md` said italic would be what a comment
   wants; the colour is doing that work instead, because italic means a fourth
   cell modifier, the SGR for it, and `tests/screen.py` learning to read it.
@@ -560,6 +551,31 @@ them was a bug in molly.
   after the last keystroke. If it happens again, the harness now raises with
   the wait status when molly paints nothing at all in 5s, which is the one
   explanation that would otherwise look exactly like this.
+
+- **The newest cursor is not the last entry in the list.** The list is kept in
+  document order, so a match found by wrapping to the top of the file sorts
+  first. Skip, drop-last and the search Ctrl-D runs are all about the cursor
+  added last, which is why a cursor carries `seq` and `cursors_newest()` exists.
+  Reading it off the end of the array is what Ctrl-D used to do, and after a
+  wrap it searched from a cursor the user had left behind.
+- **A selection that stops at column zero of a row has not reached into that
+  row**, and `indent_shift()` leaves that row alone — which is what lets you
+  drag down the left edge to take whole lines without indenting the one you
+  stopped on. Two of my own unit fixtures were written as "select two rows" by
+  putting the cursor at column zero of the second one, and both silently tested
+  one row until they failed. The rule is pinned in its own check now.
+- **Every path that changes the buffer has to clear the redo stack**, and
+  `search.c` was the one that did not: `clear_redo()` is called at six places
+  in `edit.c` and nowhere else, so after an undo a replace-all left the undone
+  record on the redo stack and `Ctrl-Y` put it back on top of the replaced
+  text. Three keystrokes to reproduce, and it had been shipping since
+  replace-all landed. The row primitives in `buffer.c` do not record undo or
+  touch redo on purpose — a caller that uses them owns both.
+- **The help screen is one of the four views of the command table, and it is
+  the one that gets forgotten.** `MANUAL.md` had claimed since multi-cursor
+  landed that the cursor commands were on it; they were in the table and the
+  palette, and `help_entries[]` was never touched. When a command is added,
+  check all four: the table, the menu, the palette and `help_entries[]`.
 
 ### Operational mistakes to not repeat
 

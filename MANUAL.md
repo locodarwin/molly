@@ -370,10 +370,11 @@ Molly is modeless: whatever you type is inserted at the cursor.
 | Key | Action |
 | --- | --- |
 | Any character | Insert at the cursor |
-| `Tab` | Insert one indent step — see [Indentation](#indentation) |
+| `Tab` | Insert one indent step, or indent the selected rows — see [Indentation](#indentation) |
+| `Shift-Tab` | Dedent the selected rows, or the cursor's row |
 | `Enter` | Split the line / insert a new line, keeping the indentation |
 | `Ctrl-D` | Add a cursor at the next match — see [Several Cursors](#several-cursors) |
-| `Backspace` | Delete the character before the cursor |
+| `Backspace` | Delete the character before the cursor, or one indent level inside the indentation |
 | `Delete` | Delete the character at the cursor |
 
 If the cursor is on the empty row below the last line of text, typing creates
@@ -413,6 +414,46 @@ character, so the arithmetic is right on a row indented with both.
 The whole run is one undo step: `Ctrl-Z` after a `Tab` takes back the step, not
 one space of it.
 
+### Indenting a block
+
+Select text that reaches into a second row and `Tab` indents every row the
+selection touches instead of replacing it. `Shift-Tab` takes a level back off.
+The selection survives both, so you can press `Tab` twice to indent twice.
+
+- A selection that stops at **column 0** of a row has not reached into that
+  row, and that row is left alone. This is what lets you select whole lines by
+  dragging down the left edge without indenting the line you stopped on.
+- **Blank rows in the middle of a block are left alone.** An indent on an empty
+  row is trailing whitespace.
+- With a selection on **one row only**, `Tab` replaces it, as it always has.
+- `Shift-Tab` needs no selection: on its own it dedents the row the cursor is
+  on. With [several cursors](#several-cursors), it dedents each cursor's row.
+- Either way the whole block is **one undo step**.
+
+A dedent takes the row's indentation back to the **previous tab stop**, and it
+removes whole characters from the end of the whitespace run — the end nearest
+the text. At a width of 4:
+
+- `······alpha` (six spaces) becomes `····alpha`, not `··alpha`.
+- `→··alpha` (a tab and two spaces) loses the two spaces.
+- `→→alpha` loses the second tab.
+
+A tab that straddles the stop is removed whole, which undershoots it: half a
+tab is not something to leave behind. Rows with no indentation are left as they
+are rather than being an error.
+
+### What `Backspace` does in the indentation
+
+With the cursor in a row's leading whitespace and nothing but whitespace behind
+it, `Backspace` deletes back to the previous tab stop rather than one space at
+a time — so one press takes a level off a row indented with spaces, instead of
+four or eight.
+
+Everywhere else it is the ordinary `Backspace`: one character. That includes
+the case where only one character stands between the cursor and the stop, which
+is what keeps it invisible in a tab-indented file — there, one level already
+*is* one character.
+
 ### What `Enter` does
 
 With `auto indent` on, the new line starts with the same leading whitespace as
@@ -441,11 +482,9 @@ in indented twice.
   indentation; it does not add a level after a `{` or an `if`, and it does not
   take one away before a `}`. That needs a grammar per language rather than a
   rule per filetype.
-- **`Tab` does not indent a selection.** With text selected, `Tab` replaces it,
-  which is what it has always done. Indenting and dedenting a block are a
-  separate pair of commands molly does not have yet.
-- **`Backspace` does not eat an indent level.** It deletes one character, even
-  inside leading whitespace.
+- **It does not reindent a block to match its surroundings.** `Tab` and
+  `Shift-Tab` move the rows you selected by one level each; nothing works out
+  what level they *should* be at, which is the same missing grammar.
 - **Nothing rewrites what is already there.** Turning `insert spaces` on does
   not convert a file's existing tabs, and turning it off does not convert its
   spaces. Molly changes what the next keystroke writes, never what it finds.
@@ -551,6 +590,9 @@ Molly can put the cursor in several places at once and type in all of them.
 | Key | Action |
 | --- | --- |
 | `Ctrl-D` | Select the word under the cursor; press again for the next occurrence |
+| `Alt-D` | Skip this match and take the next one instead |
+| `Alt-U` | Take the last cursor back |
+| `Alt-A` | A cursor on every match at once |
 | `Ctrl-Down` | Add a cursor on the row below |
 | `Ctrl-Up` | Add a cursor on the row above |
 | `Alt`-click | Add a cursor where you click |
@@ -578,6 +620,35 @@ patterns on would make a word with a `.` in it stop matching itself.
 `Ctrl-D` works from a selection you made yourself, too — select any text and it
 will find the next copy of exactly that, metacharacters and all. The selection
 has to be on one line.
+
+### Skipping a match, and taking one back
+
+`Alt-D` is `Ctrl-D` without the taking: it moves the cursor you most recently
+added on to the next occurrence, leaving the match it was sitting on alone. Use
+it when a press lands somewhere you did not mean to change. If the match it
+moves to already has a cursor on it, the two merge — two cursors in one place
+would type everything twice.
+
+`Alt-U` takes the last cursor back, one press per cursor, down to the one you
+started with. Between them, a press too many and a match you did not want both
+have a way out that is not `Esc` and starting again.
+
+Both work from the cursor added **last**, not the last one in the file. That
+matters once a search has wrapped round the end of the file: the newest cursor
+is then at the top, and it is the one you are working at.
+
+### A cursor on every match
+
+`Alt-A` takes the word under the cursor — or the selection, if you have one —
+and puts a cursor on every occurrence of it in the file, in one press. There is
+no walk to watch, so unlike `Ctrl-D` it does not need a first press to show you
+what is about to be matched: one press is the whole gesture, and `Ctrl-Z` or
+`Esc` is the way back.
+
+Pressing it again adds nothing, because every match already has a cursor. A
+word that occurs once leaves you with the one cursor you had. There is a
+ceiling of 512 cursors; a file with more matches than that stops there and says
+so, rather than turning one keystroke into a million allocations.
 
 ### Typing with several cursors
 
@@ -608,8 +679,9 @@ match.
 - **There is no column or block selection.** Cursors can be put in a column,
   and that covers most of what block selection is used for, but a rectangular
   *selection* is a separate thing molly does not have.
-- **`Ctrl-D` does not skip or deselect a match.** If a press lands somewhere
-  you did not want, `Esc` and start again.
+- **`Alt-U` takes cursors back in the order they were added**, not in the order
+  you might prefer. There is no way to pick one cursor out of the middle of the
+  set and drop only it.
 - **Nothing but `Esc`, a plain click and undo collapses the set.** Switching
   files or windows keeps your cursors where they were.
 - **The commands are not in the Edit menu**, because they are keyboard
@@ -1129,7 +1201,12 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     Ctrl-V   Paste the clipboard at the cursor
     Ctrl-T   Swap the two characters at the cursor
     Ctrl-D   Add a cursor at the next occurrence of the word or selection
+    Alt-D    Skip this match, take the next one
+    Alt-U    Take the last cursor back
+    Alt-A    A cursor on every match at once
     Ctrl-Down / Ctrl-Up  Add a cursor on the row below / above
+    Tab      Indent the selected rows (or insert one indent step)
+    Shift-Tab  Dedent the selected rows, or the cursor's row
     Alt-|    Filter the selection (or the file) through a command
     Ctrl-Z   Undo the last change
     Ctrl-Y   Redo an undone change

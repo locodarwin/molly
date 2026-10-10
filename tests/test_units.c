@@ -2412,6 +2412,7 @@ static void mc_load(const char *body) {
   V.ncursors = 1;
   V.primary = 0;
   memset(&V.cursors[0], 0, sizeof(struct cursor));
+  V.cursorseq = 0;
   B.undo.locked = 0;
 }
 
@@ -2429,6 +2430,207 @@ static char *mc_text(void) {
   }
   out[n] = '\0';
   return out;
+}
+
+/* Select [sx, cx) of row y on the primary, which is what Ctrl-D's first press
+ * leaves behind and what the three commands below all start from. */
+static void mc_select(int y, int sx, int cx) {
+  CUR.cy = y;
+  CUR.sy = y;
+  CUR.sx = sx;
+  CUR.cx = cx;
+  CUR.sel_active = 1;
+}
+
+static void test_cursors_more(void) {
+  printf("\nmulti-cursor: skipping a match, and taking one back\n");
+
+  mc_load("red fish\nblue fish\nred bird\n");
+
+  /* The order a cursor was added in is not its place in the list: this match
+   * wraps to the top of the file, so the newer cursor sorts first. */
+  mc_select(2, 0, 3);
+  check("a cursor added later is the newest", cursors_add_sel(0, 0, 3), 1);
+  cursors_sort();
+  check("even though it sorts first", V.cursors[0].cy, 0);
+  check("which is the one the newest is", cursors_newest(), 0);
+
+  /* Skip: the newest cursor moves rather than another arriving. */
+  mc_load("red fish\nblue fish\nred bird\n");
+  mc_select(0, 0, 3);
+  check("skip finds the next occurrence", cursors_skip_next(), 1);
+  check("and does not add a cursor", V.ncursors, 1);
+  check("the cursor is on the next match", CUR.cy, 2);
+  check("with it selected", CUR.sx, 0);
+  check("to its end", CUR.cx, 3);
+  check("skipping again wraps to the first", cursors_skip_next(), 1);
+  check("which is where it started", CUR.cy, 0);
+  check("still one cursor", V.ncursors, 1);
+
+  /* Skip with two cursors moves only the newest, which is what makes it a way
+   * out of a match you did not want rather than a way to lose the ones you do. */
+  mc_load("red fish\nred bird\nred fox\n");
+  mc_select(0, 0, 3);
+  check("a second cursor arrives", cursors_add_next(), 1);
+  check("two of them", V.ncursors, 2);
+  check("skip moves the newest one", cursors_skip_next(), 1);
+  check("and leaves the count alone", V.ncursors, 2);
+  cursors_sort();
+  check("the first cursor has not moved", V.cursors[0].cy, 0);
+  check("the newest is on the third match", V.cursors[1].cy, 2);
+
+  /* And when the next match is one somebody already has, the two merge rather
+   * than both editing the same place -- the same rule the rest of the list
+   * lives by, reached from a new direction. */
+  mc_load("red fish\nred bird\n");
+  mc_select(0, 0, 3);
+  check("two cursors on the two matches", cursors_add_next(), 1);
+  check("skipping the newest comes back round", cursors_skip_next(), 1);
+  check("onto the other one, and they merge", V.ncursors, 1);
+
+  /* Drop: the newest goes, whatever its place in the list. */
+  mc_load("red fish\nblue fish\nred bird\n");
+  mc_select(2, 0, 3);
+  check("a cursor is added by wrapping", cursors_add_next(), 1);
+  cursors_sort();
+  check("and sorts first", cursors_newest(), 0);
+  check("dropping it says so", cursors_drop_last(), 1);
+  check("one cursor is left", V.ncursors, 1);
+  check("and it is the one that was there first", CUR.cy, 2);
+  check("dropping the last cursor does nothing", cursors_drop_last(), 0);
+  check("because there is only one", V.ncursors, 1);
+  check("and the numbering is back to the start", V.cursorseq, 0);
+
+  /* Every match at once, from no selection at all. */
+  mc_load("red fish\nblue fish\nred bird\n");
+  CUR.cy = 0;
+  CUR.cx = 1;
+  check("all matches takes the word under the cursor", cursors_add_all(), 1);
+  check("and puts a cursor on every one", V.ncursors, 2);
+  check("running it again adds nothing", cursors_add_all(), 1);
+  check("because they are all taken", V.ncursors, 2);
+  cursors_edit(MC_INSERT, 'X');
+  check_str("one keystroke reaches every match", mc_text(),
+            "X fish\nblue fish\nX bird");
+
+  /* A word that occurs once is not an error, it is one cursor. */
+  mc_load("alpha\nbeta\n");
+  CUR.cy = 1;
+  CUR.cx = 0;
+  check("all matches on a lone word", cursors_add_all(), 1);
+  check("leaves one cursor", V.ncursors, 1);
+}
+
+static void test_indent_block(void) {
+  printf("\nindentation: a block, and one level at a time\n");
+
+  /* Width 8 and tabs, which are the defaults. */
+  mc_load("alpha\nbeta\ngamma\n");
+  mc_select(0, 0, 0);
+  CUR.cy = 1;
+  CUR.cx = 1;
+  indent_shift(1);
+  check_str("a selection over two rows indents both", mc_text(),
+            "\talpha\n\tbeta\ngamma");
+  indent_shift(-1);
+  check_str("and dedenting puts them back", mc_text(),
+            "alpha\nbeta\ngamma");
+
+  /* The rule those two fixtures tripped on, written down: a selection that
+   * stops at column zero of a row has not reached into that row. */
+  mc_load("alpha\nbeta\n");
+  mc_select(0, 0, 0);
+  CUR.cy = 1;
+  CUR.cx = 0;
+  indent_shift(1);
+  check_str("a selection stopping at column zero leaves that row", mc_text(),
+            "\talpha\nbeta");
+
+  /* The row the cursor is on, when nothing is selected. */
+  mc_load("\talpha\n\tbeta\n");
+  CUR.sel_active = 0;
+  CUR.cy = 1;
+  CUR.cx = 0;
+  indent_shift(-1);
+  check_str("with no selection it is the cursor's row", mc_text(),
+            "\talpha\nbeta");
+
+  /* One row per cursor, which is the multi-cursor shape of the same gesture. */
+  mc_load("\talpha\n\tbeta\n\tgamma\n");
+  CUR.cy = 0;
+  check("a cursor on the third row", cursors_add(2, 0), 1);
+  indent_shift(-1);
+  check_str("every cursor's row is dedented, and only those", mc_text(),
+            "alpha\n\tbeta\ngamma");
+
+  /* A blank row inside a block is left alone: an indent on nothing is
+   * trailing whitespace. */
+  mc_load("alpha\n\nbeta\n");
+  mc_select(0, 0, 0);
+  CUR.cy = 2;
+  CUR.cx = 1;
+  indent_shift(1);
+  check_str("a blank row in a block is not indented", mc_text(),
+            "\talpha\n\n\tbeta");
+
+  /* The dedent rule: back to the previous stop, whole characters off the end
+   * of the run nearest the text. */
+  tab_width_set(4);
+  mc_load("      alpha\n");
+  CUR.sel_active = 0;
+  indent_shift(-1);
+  check_str("six spaces at a width of four go back to four", mc_text(),
+            "    alpha");
+  indent_shift(-1);
+  check_str("and then to none", mc_text(), "alpha");
+  indent_shift(-1);
+  check_str("dedenting nothing is not an error", mc_text(), "alpha");
+
+  mc_load("\t  alpha\n");
+  CUR.sel_active = 0;
+  indent_shift(-1);
+  check_str("a tab and two spaces lose the spaces", mc_text(), "\talpha");
+  indent_shift(-1);
+  check_str("and then the tab, whole", mc_text(), "alpha");
+
+  /* The whole block is one undo step, including the rows that did not move. */
+  mc_load("alpha\nbeta\n");
+  mc_select(0, 0, 0);
+  CUR.cy = 1;
+  indent_shift(1);
+  editor_undo();
+  check_str("a block undoes in one step", mc_text(), "alpha\nbeta");
+
+  /* Smart Backspace: one level, and only in the whitespace. */
+  tab_width_set(4);
+  mc_load("      alpha\n");
+  CUR.sel_active = 0;
+  CUR.cx = 6;
+  check("backspace in the indent handles it", indent_backspace(), 1);
+  check_str("and eats back to the stop", mc_text(), "    alpha");
+  check("the cursor follows", CUR.cx, 4);
+  check("again from the stop", indent_backspace(), 1);
+  check_str("takes a whole level", mc_text(), "alpha");
+  check("and with nothing in front of it", indent_backspace(), 0);
+
+  mc_load("    alpha\n");
+  CUR.sel_active = 0;
+  CUR.cx = 6;
+  check("backspace in the text is not this", indent_backspace(), 0);
+  check_str("and the row is untouched", mc_text(), "    alpha");
+
+  mc_load(" alpha\n");
+  CUR.sel_active = 0;
+  CUR.cx = 1;
+  check("one space is left to the ordinary backspace", indent_backspace(), 0);
+
+  mc_load("\t\talpha\n");
+  CUR.sel_active = 0;
+  CUR.cx = 2;
+  check("and so is one tab, which is already one level",
+        indent_backspace(), 0);
+
+  tab_width_set(8);
 }
 
 static void test_cursors_list(void) {
@@ -2667,6 +2869,8 @@ int main(void) {
   test_indent();
   test_cursors_list();
   test_cursors_edit();
+  test_cursors_more();
+  test_indent_block();
   test_buflist();
   test_filter();
   test_windows();

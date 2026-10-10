@@ -126,3 +126,179 @@ void editor_newline_and_indent(void) {
   undo_group_end();
   free(lead);
 }
+
+/* ---- a block, and the whitespace in front of one row ----------------------- */
+
+/* How many bytes of leading space and tab this row starts with. */
+static int lead_bytes(erow *row) {
+  int n = 0;
+  while (n < row->size && (row->chars[n] == ' ' || row->chars[n] == '\t')) n++;
+  return n;
+}
+
+/* Where a position on this row ends up when `n` bytes are inserted at the front
+ * of it, or removed from [keep, keep+n).
+ *
+ * Column zero stays at column zero on an indent: a selection anchored there is
+ * a selection of whole rows, and moving the anchor would uncover the
+ * indentation that was just put in front of it. */
+static int shift_in(int cx, int n) { return (cx == 0) ? 0 : cx + n; }
+
+static int shift_out(int cx, int keep, int n) {
+  if (cx <= keep) return cx;
+  return (cx >= keep + n) ? cx - n : keep;
+}
+
+/* Record one row edit as part of the group already open.
+ *
+ * `cx0/cy0` is where undo puts the cursor and `cx1/cy1` where redo does; a
+ * group's undo is applied in reverse push order, so every record here carries
+ * the position from before the whole operation and the first-pushed one wins. */
+static void record(int kind, int y, int at, const char *text, int len,
+                   int pre_cx, int pre_cy, int post_cx) {
+  struct uchange *u = uc_new(kind, y, at, text, (size_t)len);
+  u->back = (kind == UC_DELETE);
+  u->cx0 = pre_cx;
+  u->cy0 = pre_cy;
+  u->cx1 = (y == pre_cy) ? post_cx : pre_cx;
+  u->cy1 = pre_cy;
+  undo_push(u);
+  clear_redo();
+}
+
+/* One indent level in front of row y. A blank row is left alone: an indent on
+ * nothing is trailing whitespace, and every editor that does this skips it. */
+static void row_indent(int y, int pre_cx, int pre_cy) {
+  erow *row = row_at(y);
+  char step[64];
+  int n, i;
+
+  if (row->size == 0) return;
+  if (!indent_insert_spaces()) {
+    step[0] = '\t';
+    n = 1;
+  } else {
+    n = tab_width();
+    if (n > (int)sizeof(step)) n = (int)sizeof(step);
+    memset(step, ' ', (size_t)n);
+  }
+  record(UC_INSERT, y, 0, step, n, pre_cx, pre_cy, shift_in(pre_cx, n));
+  editor_row_insert_n(row, 0, step, (size_t)n);
+  for (i = 0; i < V.ncursors; i++) {
+    struct cursor *c = &V.cursors[i];
+    if (c->cy == y) c->cx = shift_in(c->cx, n);
+    if (c->sel_active && c->sy == y) c->sx = shift_in(c->sx, n);
+  }
+}
+
+/* One indent level off the front of row y.
+ *
+ * The rule, because the references do not all agree and a row can be indented
+ * with both characters: the row's indentation goes back to the previous tab
+ * stop, and whole characters come off the end of the whitespace run -- the end
+ * nearest the text -- until it gets there. So four spaces at a width of four
+ * leave nothing, six leave four, and a tab followed by two spaces loses the two
+ * spaces. A tab that straddles the stop is removed whole, because half a tab is
+ * not a thing to leave behind; that undershoots the stop, which is the one case
+ * where this takes off more than it put on. */
+static void row_dedent(int y, int pre_cx, int pre_cy) {
+  erow *row = row_at(y);
+  int n = lead_bytes(row), w = tab_width(), width, target, keep, i;
+
+  if (n == 0) return;
+  width = editor_row_cx_to_rx(row, n);
+  target = width - ((width % w) ? (width % w) : w);
+  if (target < 0) target = 0;
+  keep = n;
+  while (keep > 0 && editor_row_cx_to_rx(row, keep) > target) keep--;
+  if (keep == n) return;
+
+  record(UC_DELETE, y, keep, row->chars + keep, n - keep, pre_cx, pre_cy,
+         shift_out(pre_cx, keep, n - keep));
+  editor_row_delete_n(row, keep, n - keep);
+  for (i = 0; i < V.ncursors; i++) {
+    struct cursor *c = &V.cursors[i];
+    if (c->cy == y) c->cx = shift_out(c->cx, keep, n - keep);
+    if (c->sel_active && c->sy == y) c->sx = shift_out(c->sx, keep, n - keep);
+  }
+}
+
+/* Tab and Shift-Tab over rows: `dir` > 0 indents them, `dir` < 0 dedents.
+ *
+ * Which rows: the ones a selection touches, or one row per cursor when nothing
+ * is selected. A selection that ends at column zero of a row does not include
+ * that row -- it was dragged to the start of it and stopped, and indenting the
+ * row the user is about to reach is not what the drag said.
+ *
+ * The selection is kept, and kept over the same rows: Tab on a block is a
+ * gesture you repeat, and an editor that collapsed the selection after the
+ * first press would make the second one type a tab over the text. */
+void indent_shift(int dir) {
+  int pre_cx = CUR.cx, pre_cy = CUR.cy;
+  int y0, y1, y, i;
+
+  if (V.buf == NULL || row_count() == 0 || dir == 0) return;
+
+  if (CUR.sel_active) {
+    int ax, ay, bx, by;
+    if (!selection_span(&ax, &ay, &bx, &by)) return;
+    y0 = ay;
+    y1 = (bx == 0 && by > ay) ? by - 1 : by;
+  } else {
+    y0 = y1 = CUR.cy;
+    for (i = 0; i < V.ncursors; i++) {
+      if (V.cursors[i].cy < y0) y0 = V.cursors[i].cy;
+      if (V.cursors[i].cy > y1) y1 = V.cursors[i].cy;
+    }
+  }
+  if (y0 < 0) y0 = 0;
+  if (y1 >= row_count()) y1 = row_count() - 1;
+
+  undo_group_begin();
+  for (y = y0; y <= y1; y++) {
+    /* With cursors rather than a selection, only the rows that have one. */
+    if (!CUR.sel_active) {
+      int has = 0;
+      for (i = 0; i < V.ncursors; i++)
+        if (V.cursors[i].cy == y) has = 1;
+      if (!has) continue;
+    }
+    if (dir > 0) row_indent(y, pre_cx, pre_cy);
+    else row_dedent(y, pre_cx, pre_cy);
+  }
+  undo_group_end();
+}
+
+/* Backspace in a row's leading whitespace, eating one indent level rather than
+ * one space. Returns 0 when this is not that keystroke, and the ordinary
+ * Backspace runs instead.
+ *
+ * Only in the whitespace and only when there is more than one character to
+ * take: a single character is what plain Backspace already does, and leaving it
+ * there keeps a run of them coalescing into one undo step. That is also what
+ * keeps this invisible in a tab-indented file, where one indent level is one
+ * character. */
+int indent_backspace(void) {
+  erow *row;
+  int w, rx, target, keep;
+
+  if (V.buf == NULL || CUR.sel_active || CUR.cy >= row_count()) return 0;
+  if (CUR.cx <= 0) return 0;
+  row = row_at(CUR.cy);
+  if (CUR.cx > lead_bytes(row)) return 0;
+
+  w = tab_width();
+  rx = editor_row_cx_to_rx(row, CUR.cx);
+  if (rx <= 0) return 0;
+  target = rx - ((rx % w) ? (rx % w) : w);
+  if (target < 0) target = 0;
+  keep = CUR.cx;
+  while (keep > 0 && editor_row_cx_to_rx(row, keep) > target) keep--;
+  if (CUR.cx - keep < 2) return 0;
+
+  record(UC_DELETE, CUR.cy, keep, row->chars + keep, CUR.cx - keep,
+         CUR.cx, CUR.cy, keep);
+  editor_row_delete_n(row, keep, CUR.cx - keep);
+  CUR.cx = keep;
+  return 1;
+}

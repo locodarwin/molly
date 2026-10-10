@@ -159,6 +159,12 @@ struct cursor {
   int cx, cy, rx;
   int sel_active;   /* a selection is in progress (anchor + this cursor) */
   int sx, sy;       /* selection anchor; this cursor is the far end */
+  /* The order this one was added in, counting from the view's `cursorseq`. The
+   * list itself is kept in document order, so "the one I just added" is not the
+   * last entry and cannot be recovered from the positions -- and three commands
+   * are about exactly that one: skip this match, take the last one back, and
+   * which cursor the next match is searched from. */
+  int seq;
 };
 
 
@@ -274,6 +280,7 @@ struct view {
   int ncursors;            /* >= 1 */
   int cursorcap;
   int primary;             /* index into cursors[]; the one that scrolls */
+  int cursorseq;           /* last `seq` handed to a cursor; 0 when collapsed */
   int drowoff;             /* first *display* row on screen (see struct drow) */
   int coloff;
   int screenrows;
@@ -841,6 +848,8 @@ int indent_auto_default(void);
 int indent_insert_spaces(void);
 int indent_insert_spaces_default(void);
 void editor_newline_and_indent(void);
+void indent_shift(int dir);
+int indent_backspace(void);
 void indent_insert_step(void);
 void indent_set_auto(int v);
 void indent_set_insert_spaces(int v);
@@ -1087,6 +1096,10 @@ int editor_row_cx_to_charcol(erow *row, int cx);
 int editor_row_cx_to_rx(erow *row, int cx);
 int editor_row_rx_to_cx(erow *row, int rx);
 void cursors_collapse(void);
+int cursors_newest(void);
+int cursors_skip_next(void);
+int cursors_drop_last(void);
+int cursors_add_all(void);
 void cursors_init(void);
 
 /* cursors.c */

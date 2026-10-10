@@ -24,6 +24,12 @@ void cursors_collapse(void) {
     V.ncursors = 1;
   }
   V.primary = 0;
+  /* Back to one cursor is back to the start of the numbering: the survivor is
+   * the oldest there is, and nothing is left for `cursors_newest()` to pick
+   * out. Letting the counter run on would work too and would eventually
+   * overflow. */
+  V.cursors[0].seq = 0;
+  V.cursorseq = 0;
 }
 
 /* Clamp every cursor into the buffer. A deletion can leave a cursor past the

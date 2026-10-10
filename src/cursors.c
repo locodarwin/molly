@@ -129,8 +129,21 @@ int cursors_add(int cy, int cx) {
   memset(&V.cursors[V.ncursors], 0, sizeof(struct cursor));
   V.cursors[V.ncursors].cy = cy;
   V.cursors[V.ncursors].cx = cx;
+  V.cursors[V.ncursors].seq = ++V.cursorseq;
   V.ncursors++;
   return 1;
+}
+
+/* The cursor added last, which is not the last entry: the list is in document
+ * order and a match found by wrapping to the top of the file sorts first.
+ *
+ * Ties cannot happen between two added cursors, since every add takes a fresh
+ * number; a tie at 0 is the cursor the view started with against itself. */
+int cursors_newest(void) {
+  int i, best = 0;
+  for (i = 1; i < V.ncursors; i++)
+    if (V.cursors[i].seq > V.cursors[best].seq) best = i;
+  return best;
 }
 
 /* Add a cursor with a selection over [cx, ex) of row cy -- what a command that
@@ -407,51 +420,68 @@ static int next_occurrence(const char *needle, int nlen, int oy, int ox,
   return 0;
 }
 
-/* Ctrl-D. The first press selects the word under the cursor; each one after that
- * puts another cursor on the next occurrence of what is already selected.
+/* Select the word under the cursor, which is what the first press of any of
+ * these does when nothing is selected yet.
  *
  * Two presses to get two cursors is how every editor that has this behaves, and
  * it is what makes the gesture safe: the first press shows you what is about to
  * be matched before anything is multiplied. */
-int cursors_add_next(void) {
-  struct cursor *last;
-  int ax, ay, bx, by, y, x, nlen;
-  char needle[512];
-
-  if (row_count() == 0) return 0;
-
-  /* Nothing selected: select the word and stop. */
-  if (!CUR.sel_active) {
-    int s, e;
-    if (!word_under(CUR.cy, CUR.cx, &s, &e)) {
-      editor_set_status_message("No word at the cursor");
-      return 0;
-    }
-    CUR.sy = CUR.cy;
-    CUR.sx = s;
-    CUR.cx = e;
-    CUR.sel_active = 1;
-    return 1;
+static int select_word_here(void) {
+  int s, e;
+  if (!word_under(CUR.cy, CUR.cx, &s, &e)) {
+    editor_set_status_message("No word at the cursor");
+    return 0;
   }
+  CUR.sy = CUR.cy;
+  CUR.sx = s;
+  CUR.cx = e;
+  CUR.sel_active = 1;
+  return 1;
+}
 
-  /* Search from the last cursor in document order, so repeated presses walk
-   * down the file rather than all finding the same next match. */
+/* What the newest cursor has selected, as text to search for, and the position
+ * it was found at -- which is where the next search starts and what tells
+ * next_occurrence() that it has come back round.
+ *
+ * The newest rather than the last in document order, because after a search has
+ * wrapped to the top of the file those are not the same cursor, and every one
+ * of these commands is about the match the user just landed on. Walking down
+ * from an older one would hand back a match that is already taken. */
+static int needle_from_newest(char *buf, int cap, int *nlen, int *oy, int *ox) {
+  const struct cursor *c;
+  int ax, ay, bx, by;
+
   cursors_sort();
-  last = &V.cursors[V.ncursors - 1];
-  if (!selection_span_of(last, &ax, &ay, &bx, &by)) return 0;
+  c = &V.cursors[cursors_newest()];
+  if (!selection_span_of(c, &ax, &ay, &bx, &by)) return 0;
   if (ay != by) {
     editor_set_status_message("Add cursor needs a selection on one line");
     return 0;
   }
-  nlen = bx - ax;
-  if (nlen <= 0) return 0;
-  if (nlen >= (int)sizeof(needle)) {
+  *nlen = bx - ax;
+  if (*nlen <= 0) return 0;
+  if (*nlen >= cap) {
     editor_set_status_message("Selection is too long to match");
     return 0;
   }
-  memcpy(needle, (*row_at(ay)).chars + ax, (size_t)nlen);
+  memcpy(buf, (*row_at(ay)).chars + ax, (size_t)*nlen);
+  *oy = ay;
+  *ox = ax;
+  return 1;
+}
 
-  if (!next_occurrence(needle, nlen, ay, ax, &y, &x)) {
+/* Ctrl-D. The first press selects the word under the cursor; each one after that
+ * puts another cursor on the next occurrence of what is already selected. */
+int cursors_add_next(void) {
+  int y, x, nlen, oy, ox;
+  char needle[512];
+
+  if (row_count() == 0) return 0;
+  if (!CUR.sel_active) return select_word_here();
+  if (!needle_from_newest(needle, (int)sizeof(needle), &nlen, &oy, &ox))
+    return 0;
+
+  if (!next_occurrence(needle, nlen, oy, ox, &y, &x)) {
     editor_set_status_message("No more occurrences");
     return 0;
   }
@@ -460,6 +490,100 @@ int cursors_add_next(void) {
     return 0;
   }
   editor_set_status_message("%d cursors", V.ncursors);
+  return 1;
+}
+
+/* Alt-D: not this one. The newest cursor moves to the next occurrence rather
+ * than a cursor being added to it, which is the way past a match you do not
+ * want -- without it the only way out is Esc and starting the walk again. */
+int cursors_skip_next(void) {
+  int y, x, nlen, oy, ox, i;
+  char needle[512];
+
+  if (row_count() == 0) return 0;
+  if (!CUR.sel_active) return select_word_here();
+  if (!needle_from_newest(needle, (int)sizeof(needle), &nlen, &oy, &ox))
+    return 0;
+
+  if (!next_occurrence(needle, nlen, oy, ox, &y, &x)) {
+    editor_set_status_message("No more occurrences");
+    return 0;
+  }
+  i = cursors_newest();
+  V.cursors[i].cy = y;
+  V.cursors[i].cx = x + nlen;
+  V.cursors[i].sy = y;
+  V.cursors[i].sx = x;
+  V.cursors[i].sel_active = 1;
+  /* The view follows the cursor that moved: it is the one the next press works
+   * from, and it is the one that has just gone somewhere off screen. */
+  V.primary = i;
+  cursors_dedup();   /* it can land where another cursor already is */
+  if (V.ncursors > 1) editor_set_status_message("%d cursors", V.ncursors);
+  return 1;
+}
+
+/* Alt-U: take the last cursor back, which is the other half of being able to
+ * skip one -- a press too many is as easy as a match you did not want. */
+int cursors_drop_last(void) {
+  int i, j;
+
+  if (V.ncursors < 2) {
+    editor_set_status_message("One cursor");
+    return 0;
+  }
+  i = cursors_newest();
+  for (j = i; j + 1 < V.ncursors; j++) V.cursors[j] = V.cursors[j + 1];
+  V.ncursors--;
+  /* Follow what is now the newest, for the same reason a skip does. */
+  V.primary = cursors_newest();
+  if (V.ncursors == 1) {
+    V.cursors[0].seq = 0;
+    V.cursorseq = 0;
+    editor_set_status_message("One cursor");
+  } else {
+    editor_set_status_message("%d cursors", V.ncursors);
+  }
+  return 1;
+}
+
+/* Alt-A: a cursor on every occurrence, in one press rather than one press each.
+ *
+ * Unlike Ctrl-D this does not need a selection to begin with -- it takes the
+ * word under the cursor and finishes the job, because there is no walk here to
+ * show you the first match before the rest arrive.
+ *
+ * The loop starts each search from the match it just found, so the lap that
+ * comes back to the first one is what ends it; next_occurrence() cannot tell us
+ * that itself, since it only knows the position it was asked to start from. A
+ * match that is already somebody's cursor is stepped over rather than ending
+ * the sweep, so running this twice is not a way to stop early. */
+int cursors_add_all(void) {
+  int nlen, oy, ox, y, x, full = 0;
+  char needle[512];
+
+  if (row_count() == 0) return 0;
+  if (!CUR.sel_active && !select_word_here()) return 0;
+  if (!needle_from_newest(needle, (int)sizeof(needle), &nlen, &oy, &ox))
+    return 0;
+
+  y = oy;
+  x = ox;
+  for (;;) {
+    int ny, nx;
+    if (!next_occurrence(needle, nlen, y, x, &ny, &nx)) break;
+    if (ny == oy && nx == ox) break;
+    if (!cursors_add_sel(ny, nx, nx + nlen) && V.ncursors >= CURSORS_MAX) {
+      full = 1;
+      break;
+    }
+    y = ny;
+    x = nx;
+  }
+
+  if (full) editor_set_status_message("Stopped at %d cursors", V.ncursors);
+  else if (V.ncursors > 1) editor_set_status_message("%d cursors", V.ncursors);
+  else editor_set_status_message("No other occurrences");
   return 1;
 }
 

@@ -54,6 +54,13 @@ static const struct menu_item edit_items[] = {
   {"edit.select-all", 0}, {"edit.select-line", 7}, SEP,
   /* F, which is the only letter in "Filter" this menu has not spent. */
   {"edit.filter", 0},
+  /* Indent and Dedent are not here, and the reason is arithmetic rather than
+   * editorial: this menu already needs thirteen rows, a drop-down paints over
+   * the status bar once it is taller than the text area, and two more items
+   * plus a separator make that reachable on a sixteen-row screen instead of a
+   * twelve-row one. They are in the palette, the help screen and the keymap --
+   * three of the four ways the command table reads -- and they belong here as
+   * soon as a drop-down can handle its own height. See HANDOFF.md. */
 };
 static const struct menu_item search_items[] = {
   {"search.find", 0}, {"search.next", 5}, {"search.prev", 5},

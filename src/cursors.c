@@ -234,7 +234,12 @@ static void edit_one(int what, int arg) {
     case MC_INSERT:      editor_insert_char(arg); break;
     case MC_INDENT:      indent_insert_step(); break;
     case MC_NEWLINE:     editor_newline_and_indent(); break;
-    case MC_DELETE_BACK: editor_delete_char(); break;
+    /* Backspace asks indentation first: in a row's leading whitespace it eats
+     * one indent level, and everywhere else it says so and the ordinary
+     * character delete runs. */
+    case MC_DELETE_BACK:
+      if (!indent_backspace()) editor_delete_char();
+      break;
     case MC_DELETE_FWD:  editor_del_char(); break;
     /* editor_paste() takes the selection itself, so the call above has already
      * happened by the time this runs -- harmless, because the second one finds

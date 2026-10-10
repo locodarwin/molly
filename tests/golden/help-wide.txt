@@ -4,20 +4,20 @@ alpha
 be╔═══════════════════════════ Keyboard Reference ═══════════════════════════╗
 ga║ FILES                                 EDITING                            ║
 ~ ║   Ctrl-S         Save file              Enter          Insert new line   ║
-~ ║   Ctrl-O         Open a file            Tab            Insert tab        ║
-~ ║   Ctrl-N         New buffer             Bksp/Ctrl-H    Delete before     ║
-~ ║   Ctrl-W         Close this buffer      Del            Delete at cursor  ║
-~ ║   Ctrl-Q         Quit                   Ctrl-T         Swap characters   ║
-~ ║   F1             This help screen       Alt-|          Filter through sh ║
-~ ║                                                                          ║
-~ ║ BUFFERS                               FIND & REPLACE                     ║
-~ ║   Ctrl-PgDn      Next buffer            Ctrl-F         Find forward      ║
-~ ║   Ctrl-PgUp      Previous buffer        F3             Find next         ║
-~ ║                                         Shift-F3       Find previous     ║
-~ ║ MENUS                                   Alt-R          Pattern search    ║
-~ ║   F10            Open the menu bar      Ctrl-R         Find & replace    ║
-~ ║   Alt-letter     Open that menu                                          ║
-~ ║   Ctrl-Space     Command palette      CLIPBOARD                          ║
+~ ║   Ctrl-O         Open a file            Tab            Indent the lines  ║
+~ ║   Ctrl-N         New buffer             Shift-Tab      Dedent the lines  ║
+~ ║   Ctrl-W         Close this buffer      Bksp/Ctrl-H    Delete before     ║
+~ ║   Ctrl-Q         Quit                   Del            Delete at cursor  ║
+~ ║   F1             This help screen       Ctrl-T         Swap characters   ║
+~ ║                                         Alt-|          Filter through sh ║
+~ ║ BUFFERS                                                                  ║
+~ ║   Ctrl-PgDn      Next buffer          FIND & REPLACE                     ║
+~ ║   Ctrl-PgUp      Previous buffer        Ctrl-F         Find forward      ║
+~ ║                                         F3             Find next         ║
+~ ║ MENUS                                   Shift-F3       Find previous     ║
+~ ║   F10            Open the menu bar      Alt-R          Pattern search    ║
+~ ║   Alt-letter     Open that menu         Ctrl-R         Find & replace    ║
+~ ║   Ctrl-Space     Command palette                                         ║
 ~ ║ In prompts: Enter accepts   Esc cancels                                  ║
 ~ ║ PgUp/PgDn scroll   any other key returns                                 ║
 ~ ╚══════════════════════════════════════════════════════════════════════════╝

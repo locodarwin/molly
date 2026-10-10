@@ -65,6 +65,18 @@ static int cmd_cursor_add_above(void) {
  * dispatcher's selection_clear(), which still happens -- so one key drops the
  * selection and the extra cursors together, which is the one thing a user
  * reaches for when a gesture has gone wrong. */
+static int cmd_cursor_skip(void) {
+  cursors_skip_next();
+  return CMD_KEEP_SELECTION;
+}
+static int cmd_cursor_drop(void) {
+  cursors_drop_last();
+  return CMD_KEEP_SELECTION;
+}
+static int cmd_cursor_add_all(void) {
+  cursors_add_all();
+  return CMD_KEEP_SELECTION;
+}
 static int cmd_cursor_one(void) {
   if (V.ncursors > 1) {
     cursors_collapse();
@@ -331,6 +343,33 @@ static int cmd_transpose(void) {
 /* Both of these took the selection themselves before there was more than one
  * cursor. cursors_edit() does it per cursor now, which is the same thing when
  * there is one of them. */
+/* Tab. A selection that covers more than one row is a block and gets indented;
+ * anything else is the keystroke it has always been, which replaces a selection
+ * on one row and otherwise types one indent step.
+ *
+ * Only with a single cursor: several cursors each typing a step is what Tab
+ * does there, and it is not obvious that N blocks is what anyone means by it.
+ * CMD_KEEP_SELECTION so the block stays selected and a second press indents it
+ * again -- without it the second press would type over the text. */
+static int cmd_indent(void) {
+  if (V.ncursors == 1 && CUR.sel_active) {
+    int ax, ay, bx, by;
+    if (selection_span(&ax, &ay, &bx, &by) && by > ay) {
+      indent_shift(1);
+      return CMD_KEEP_SELECTION;
+    }
+  }
+  cursors_edit(MC_INDENT, '\t');
+  return 0;
+}
+
+/* Shift-Tab, which has nothing to replace and so is always the block operation:
+ * the selected rows, or one row per cursor when nothing is selected. */
+static int cmd_dedent(void) {
+  indent_shift(-1);
+  return CMD_KEEP_SELECTION;
+}
+
 static int cmd_delete_back(void) {
   cursors_edit(MC_DELETE_BACK, 0);
   return 0;
@@ -566,6 +605,11 @@ static const struct command commands[] = {
   {.name = "edit.delete-forward", .label = "Delete",
    .help = "Delete at cursor", .group = "EDITING", .run = cmd_delete_forward},
   {.name = "edit.delete-back", .label = "Backspace", .run = cmd_delete_back},
+  {.name = "edit.indent", .label = "Indent",
+   .help = "Indent the lines", .group = "EDITING", .run = cmd_indent},
+  {.name = "edit.dedent", .label = "Dedent",
+   .help = "Dedent the lines", .group = "EDITING", .run = cmd_dedent,
+   .enabled = have_rows},
   {.name = "edit.transpose", .label = "Transpose characters",
    /* The help column is 17 columns and truncates in silence, so this is written
     * to fit it. "Swap the two characters at the cursor" came out as "Swap the
@@ -585,6 +629,15 @@ static const struct command commands[] = {
    .help = "Cursor below", .group = "CURSORS", .run = cmd_cursor_add_below},
   {.name = "cursor.add-above", .label = "Add cursor above",
    .help = "Cursor above", .group = "CURSORS", .run = cmd_cursor_add_above},
+  {.name = "cursor.skip-next", .label = "Skip this match",
+   .help = "Cursor: skip match", .group = "CURSORS",
+   .run = cmd_cursor_skip, .enabled = have_rows},
+  {.name = "cursor.add-all", .label = "Add cursor at every match",
+   .help = "Cursor: all matches", .group = "CURSORS",
+   .run = cmd_cursor_add_all, .enabled = have_rows},
+  {.name = "cursor.drop-last", .label = "Drop the last cursor",
+   .help = "Drop last cursor", .group = "CURSORS",
+   .run = cmd_cursor_drop, .enabled = cursors_several},
   {.name = "cursor.one", .label = "One cursor",
    .help = "Back to one cursor", .group = "CURSORS",
    .run = cmd_cursor_one, .enabled = cursors_several},
@@ -978,6 +1031,20 @@ static const struct binding default_bindings[] = {
   {"esc",       "cursor.one"},
   {"ctrl-down", "cursor.add-below"},
   {"ctrl-up",   "cursor.add-above"},
+  /* Ctrl-D takes the match and Alt-D steps over it, which is the only pair of
+   * chords for these two that a terminal can carry: the editors that have them
+   * use Ctrl-K Ctrl-D, and molly has no two-chord sequences. Alt-U takes the
+   * last cursor back -- VS Code's Ctrl-U, which molly spent on the line-number
+   * gutter long before this -- and Alt-A is every match at once. */
+  {"alt-d",     "cursor.skip-next"},
+  {"alt-u",     "cursor.drop-last"},
+  {"alt-a",     "cursor.add-all"},
+  /* Tab is a binding rather than a special case in the typed-character path, so
+   * that it reads in the help screen and the menu like every other command and
+   * can be rebound. Unbinding it (`tab = none`) leaves the typed path, which
+   * still types one indent step. */
+  {"tab",       "edit.indent"},
+  {"shift-tab", "edit.dedent"},
   /* Alt-| for the filter, which is where Fresh puts it and the only mnemonic
    * there could be: the character is a pipe, and the command is a pipe. */
   {"alt-|",  "edit.filter"},
@@ -1296,8 +1363,10 @@ void editor_process_key(int c) {
      * cursor it is the ordinary insert and nothing else.
      *
      * Tab goes to indent.c rather than being inserted as a character: whether a
-     * step is a tab or spaces to the next stop is one decision, and this is the
-     * only path a typed tab takes. */
+     * step is a tab or spaces to the next stop is one decision. Tab is bound to
+     * edit.indent, so this is the path only when that binding has been taken
+     * away -- and then a typed tab still indents rather than becoming a
+     * character nobody chose. */
     cursors_edit(c == '\t' ? MC_INDENT : MC_INSERT, c);
   }
   /* Anything else -- Esc, an unbound function or Alt key -- does nothing, but
@@ -1358,8 +1427,21 @@ static const struct help_entry help_entries[] = {
   {NULL,         NULL,             NULL,               "edit.select-all"},
   {NULL,         NULL,             NULL,               "edit.select-line"},
 
+  /* The cursor commands, which MANUAL.md has claimed were here since they
+   * landed and were not: they went into the table and the palette and this
+   * list was not touched. The screen scrolls and HELP_MAXROWS has room, so the
+   * fix is the group rather than the sentence. */
+  {"CURSORS",    NULL, NULL, "cursor.add-next"},
+  {NULL,         NULL, NULL, "cursor.skip-next"},
+  {NULL,         NULL, NULL, "cursor.add-all"},
+  {NULL,         NULL, NULL, "cursor.drop-last"},
+  {NULL,         NULL, NULL, "cursor.add-below"},
+  {NULL,         NULL, NULL, "cursor.add-above"},
+  {NULL,         NULL, NULL, "cursor.one"},
+
   {"EDITING",    NULL,          NULL,           "edit.newline"},
-  {NULL,         "Tab",         "Insert tab",   NULL},
+  {NULL,         NULL,          NULL,           "edit.indent"},
+  {NULL,         NULL,          NULL,           "edit.dedent"},
   {NULL,         "Bksp/Ctrl-H", "Delete before", NULL},
   {NULL,         NULL,          NULL,           "edit.delete-forward"},
   {NULL,         NULL,          NULL,           "edit.transpose"},

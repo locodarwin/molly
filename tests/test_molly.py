@@ -3342,6 +3342,50 @@ def test_multicursor(tmpdir):
                [CDOWN, click(0, TEXTY), ">", SAVE]),
           ">one\ntwo\n")
 
+    print("\nmulti-cursor: skipping a match, and taking one back")
+
+    ALT_D, ALT_U, ALT_A = "\x1bd", "\x1bu", "\x1ba"
+
+    # Alt-D moves the newest cursor on rather than adding one, so the match it
+    # was sitting on is left alone.
+    check("Alt-D steps over the match and takes the next",
+          edit(tmpdir, "red fish\nblue fish\nred bird\n",
+               [CD, ALT_D, "X", SAVE]),
+          "red fish\nblue fish\nX bird\n")
+    check("and the one it skipped is untouched by a later press",
+          edit(tmpdir, "red a\nred b\nred c\n",
+               [CD, ALT_D, CD, "X", SAVE]),
+          "red a\nX b\nX c\n")
+
+    # Alt-U takes the last cursor back, and stops at one.
+    check("Alt-U drops the cursor the last press added",
+          edit(tmpdir, "red fish\nred bird\n", [CD, CD, ALT_U, "X", SAVE]),
+          "X fish\nred bird\n")
+    check("and with one cursor there is nothing to drop",
+          edit(tmpdir, "red fish\nred bird\n", [CD, ALT_U, "X", SAVE]),
+          "X fish\nred bird\n")
+
+    # Alt-A takes the word under the cursor and every other occurrence of it in
+    # one press -- no walk, because there is nothing to walk.
+    check("Alt-A puts a cursor on every match",
+          edit(tmpdir, "red fish\nblue fish\nred bird\n", [ALT_A, "X", SAVE]),
+          "X fish\nblue fish\nX bird\n")
+    check("pressing it twice is the same as once",
+          edit(tmpdir, "red fish\nred bird\n", [ALT_A, ALT_A, "X", SAVE]),
+          "X fish\nX bird\n")
+    check("and a word that occurs once gets one cursor",
+          edit(tmpdir, "alpha\nbeta\n", [DOWN, ALT_A, "X", SAVE]),
+          "alpha\nX\n")
+
+    # The search starts from the cursor added last, not the last one in the
+    # file. Starting on the final match, the second press wraps to the top --
+    # and the third has to carry on from there rather than from the bottom,
+    # where the only match left is one that is already taken.
+    check("a press after a wrap carries on from the cursor that wrapped",
+          edit(tmpdir, "red a\nred b\nred c\n",
+               [DOWN, DOWN, CD, CD, CD, "X", SAVE]),
+          "X a\nX b\nX c\n")
+
     print("\nmulti-cursor: what the status bar says")
 
     out = run([MOLLY, write_file("red\nred\n")], [CD, CD])
@@ -3461,12 +3505,116 @@ def test_indent(tmpdir):
           edit(tmpdir, "alpha\n", [HOME, "\t", "\x1a", SAVE], env=spaces),
           "alpha\n")
 
-    # Tab with a selection replaces it, which is what it did before this
-    # feature and is not the indent-the-block command the roadmap still wants.
-    check("Tab still replaces a selection",
+    # Tab with a selection on one row still replaces it, which is what it has
+    # always done. A selection that reaches into a second row is a block, and
+    # that is the next section.
+    check("Tab still replaces a selection on one row",
           edit(tmpdir, "alpha\n", [HOME, "\x1b[1;2F", "\t", SAVE],
                env=spaces),
           "        \n")
+
+    print("\nindentation: Tab and Shift-Tab over a block")
+
+    # Separate files from cfg()'s, because cfg() writes one path and the
+    # environments it has already handed out would change under them.
+    rc_b = os.path.join(tmpdir, "blockrc")
+
+    def cfgb(text):
+        with open(rc_b, "w") as fh:
+            fh.write(text)
+        return {"MOLLY_CONFIG": rc_b}
+
+    BTAB = "\x1b[Z"
+
+    check("Tab with a selection reaching into a second row indents both",
+          edit(tmpdir, "alpha\nbeta\ngamma\n",
+               [SH_DOWN, SH_RIGHT, "\t", SAVE]),
+          "\talpha\n\tbeta\ngamma\n")
+
+    # The selection survives, which is what makes the gesture repeatable: an
+    # editor that dropped it would have the second press type over the text.
+    check("and a second press indents them again",
+          edit(tmpdir, "alpha\nbeta\n", [SH_DOWN, SH_RIGHT, "\t", "\t", SAVE]),
+          "\t\talpha\n\t\tbeta\n")
+    check("Shift-Tab takes it back off",
+          edit(tmpdir, "alpha\nbeta\n",
+               [SH_DOWN, SH_RIGHT, "\t", BTAB, SAVE]),
+          "alpha\nbeta\n")
+
+    # A selection dragged to the start of a row and stopped has not reached
+    # into it.
+    check("a selection stopping at column zero leaves that row alone",
+          edit(tmpdir, "alpha\nbeta\n", [SH_DOWN, "\t", SAVE]),
+          "\talpha\nbeta\n")
+
+    check("Shift-Tab with no selection dedents the cursor's row",
+          edit(tmpdir, "\talpha\n\tbeta\n", [DOWN, BTAB, SAVE]),
+          "\talpha\nbeta\n")
+
+    # One cursor per row: the same gesture, reaching the rows the cursors are
+    # on and no others.
+    check("Shift-Tab dedents every cursor's row",
+          edit(tmpdir, "\talpha\n\tbeta\n\tgamma\n",
+               ["\x1b[1;5B", "\x1b[1;5B", BTAB, SAVE]),
+          "alpha\nbeta\ngamma\n")
+
+    # A blank row in the middle of a block is left alone: an indent on nothing
+    # is trailing whitespace.
+    check("a blank row inside a block is not indented",
+          edit(tmpdir, "alpha\n\nbeta\n",
+               [SH_DOWN, SH_DOWN, SH_RIGHT, "\t", SAVE]),
+          "\talpha\n\n\tbeta\n")
+
+    check("a block indents with spaces when that is what a step is",
+          edit(tmpdir, "alpha\nbeta\n", [SH_DOWN, SH_RIGHT, "\t", SAVE],
+               env=cfgb("[editor]\ntab width = 4\ninsert spaces = on\n")),
+          "    alpha\n    beta\n")
+
+    # The dedent rule, which the references do not settle: back to the previous
+    # tab stop, whole characters off the end of the whitespace run nearest the
+    # text. Six spaces at a width of four leave four.
+    check("a dedent goes back to the previous stop, not a fixed width",
+          edit(tmpdir, "      alpha\n", [BTAB, SAVE],
+               env=cfgb("[editor]\ntab width = 4\n")),
+          "    alpha\n")
+    check("a tab and two spaces lose the spaces",
+          edit(tmpdir, "\t  alpha\n", [BTAB, SAVE],
+               env=cfgb("[editor]\ntab width = 4\n")),
+          "\talpha\n")
+    check("and a row with no indentation is not an error",
+          edit(tmpdir, "alpha\n", [BTAB, SAVE]), "alpha\n")
+
+    check("a block indents as one undo step",
+          edit(tmpdir, "alpha\nbeta\n",
+               [SH_DOWN, SH_RIGHT, "\t", UNDO, SAVE]),
+          "alpha\nbeta\n")
+
+    print("\nindentation: Backspace in the indentation")
+
+    w4s = cfgb("[editor]\ntab width = 4\ninsert spaces = on\n")
+    check("Backspace in the leading whitespace eats one level",
+          edit(tmpdir, "      alpha\n", [HOME] + [RIGHT] * 6 + ["\x7f", SAVE],
+               env=w4s),
+          "    alpha\n")
+    check("and again from the stop takes the whole level",
+          edit(tmpdir, "    alpha\n", [HOME] + [RIGHT] * 4 + ["\x7f", SAVE],
+               env=w4s),
+          "alpha\n")
+    check("with text behind the cursor it is the ordinary one",
+          edit(tmpdir, "    alpha\n", [HOME] + [RIGHT] * 6 + ["\x7f", SAVE],
+               env=w4s),
+          "    apha\n")
+    check("one space is the ordinary one too",
+          edit(tmpdir, " alpha\n", [HOME, RIGHT, "\x7f", SAVE], env=w4s),
+          "alpha\n")
+    check("and so is one tab, which is already a level",
+          edit(tmpdir, "\t\talpha\n", [HOME, RIGHT, RIGHT, "\x7f", SAVE],
+               env=cfgb("[editor]\ntab width = 4\n")),
+          "\talpha\n")
+    check("a level undoes in one step",
+          edit(tmpdir, "      alpha\n",
+               [HOME] + [RIGHT] * 6 + ["\x7f", UNDO, SAVE], env=w4s),
+          "      alpha\n")
 
     print("\nindentation: a filetype answers for itself")
 

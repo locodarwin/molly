@@ -2,11 +2,10 @@
 
 Written 2026-10-10 and re-measured the same day. `main` and `origin/main` are
 level: everything is committed and pushed, the working tree is clean, nothing
-is half-finished, and CI is green on `bf35a8f`, the last commit that changed
-any code. The last work on it was **soft wrap**, which Shawn picked on
-2026-10-10 — the last of the three features the first handoff named — after the
-four follow-ons to multi-cursor and the CI repairs described under "What only
-CI sees".
+is half-finished, and the last CI run was green. The last work on it was **soft
+wrap**, which Shawn picked on 2026-10-10 — the last of the three features the
+first handoff named — and then the test harness, whose keystroke flake was
+diagnosed and closed the same day: see "What only CI sees".
 
 This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an

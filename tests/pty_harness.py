@@ -65,6 +65,11 @@ def run(argv, keys, rows=24, cols=80, settle=0.4, env=None, status=False):
     first = time.time() + 5.0
     while not out and time.time() < first:
         drain(0.1)
+    if not out:
+        os.kill(pid, signal.SIGKILL)
+        _, wstatus = os.waitpid(pid, 0)
+        raise RuntimeError("%s painted nothing in 5s (wait status %d)"
+                           % (argv[0], wstatus))
     drain(0.1)  # and let the rest of the opening frame follow it
 
     for key in keys:
@@ -86,9 +91,19 @@ def run(argv, keys, rows=24, cols=80, settle=0.4, env=None, status=False):
         time.sleep(0.06)
         drain(0.02)
 
-    deadline = time.time() + settle
-    while time.time() < deadline:
-        drain(0.1)
+    # Wait for molly to go quiet rather than for a fixed interval. `settle` is
+    # the floor -- a test that wants a particular frame needs that long -- and
+    # past it the wait continues while output is still arriving, because a key
+    # that has been written is not a key that has been read: killing molly
+    # mid-repaint can kill it before the Ctrl-S the test was about, and the
+    # check then compares a file nobody saved against the one it wrote. The cap
+    # is what stops a molly that will not stop talking from stalling the suite.
+    floor, cap = time.time() + settle, time.time() + settle + 3.0
+    while time.time() < cap:
+        before = len(out)
+        drain(0.15)
+        if len(out) == before and time.time() >= floor:
+            break
 
     try:
         os.kill(pid, signal.SIGKILL)

@@ -544,13 +544,22 @@ them was a bug in molly.
   there and passed here. Molly follows Perl, PCRE and 3.14;
   `PY_B_MATCHES_EMPTY` in `tests/fuzz_regex.py` skips that one shape when the
   reference predates it, and counts what it skipped.
-- **The pty harness raced molly's start.** It slept 0.3s and began typing, and
-  molly enters raw mode with `TCSAFLUSH`, which discards input that arrived
-  before it got there. On a loaded runner the first keystrokes vanished and the
-  test compared a file nobody had typed into -- "arrow up" and "SS3 home",
-  once each, in different runs, which is what an intermittent red run looked
-  like. It now waits for molly's first byte, written just after that
-  `tcsetattr`.
+- **Three pty checks have lost every keystroke, once each, on the runner and
+  never here.** "arrow up", "SS3 home" and "arrow down", in three different
+  runs; each reports a file nobody typed into, with no stray characters in it.
+  Two causes were found and closed and the third is still open:
+  the harness slept 0.3s before typing and molly enters raw mode with
+  `TCSAFLUSH`, which discards input that arrived before it got there, so it now
+  waits for molly's first byte, written just after that `tcsetattr`; and it
+  killed molly on a timer `settle` seconds after the last key, which can land
+  before molly has read the Ctrl-S the check was about, so it now waits for
+  molly's output to go quiet, with `settle` as the floor and a 3s cap. "arrow
+  down" failed *after* the first of those, so the second is a hypothesis and
+  not a diagnosis. **It did not reproduce here**: 25 runs pinned to one CPU
+  against six busy loops lost nothing, and neither did killing molly 0.05s
+  after the last keystroke. If it happens again, the harness now raises with
+  the wait status when molly paints nothing at all in 5s, which is the one
+  explanation that would otherwise look exactly like this.
 
 ### Operational mistakes to not repeat
 

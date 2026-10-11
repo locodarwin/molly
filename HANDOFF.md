@@ -15,7 +15,25 @@ This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
 
-**Latest:** inserting a command's output (`Alt-!`, Edit → Insert output…),
+**Latest:** resizing a split, picked by Shawn on 2026-10-11 as "#2" from the
+same menu. `window_move_border()` in `src/window.c` moves the innermost split
+along the arrow's axis one cell, tmux's rule: the arrow says which way the
+*border* goes, so one chord means the same line from either window. A border
+is held to the minimum of every window in the half it moves into, nested ones
+included (`min_extent()`), which `layout_node()` alone never promised. Dragging
+works on the `│` and on an upper window's status bar. Two things found on the
+way and fixed: a split's share was in thousandths, which cannot put a border on
+every cell past two thousand columns (it is 1/65536ths now, swept to 2047 in the
+unit tests); and the help screen padded keys in bytes, which nothing noticed
+until a key had an arrow glyph in it. Chosen without asking: **Ctrl-Shift-arrows**
+as the chords — which costs the CUA word selection if molly ever gets word
+movement — and two literal help rows (`Ctrl-Shift-←→`, `Ctrl-Shift-↑↓`) in
+place of four, because "Ctrl-Shift-Right" overflows the 14-column key column;
+those two rows do not follow a rebinding. The Window menu is nine columns wider
+for the same chord name. Pty checks are `test_split_resize`; the golden is
+`help-windows`.
+
+**Before that:** inserting a command's output (`Alt-!`, Edit → Insert output…),
 picked by Shawn on 2026-10-11 as "#1" from a ranked menu. `editor_insert_output()`
 in `src/filter.c` runs the command with empty input through `filter_run()` and
 hands the result to `cursors_insert_text()`, so it lands at every cursor and the
@@ -382,11 +400,6 @@ commit:
 - **Italic for comments.** `ROADMAP.md` said italic would be what a comment
   wants; the colour is doing that work instead, because italic means a fourth
   cell modifier, the SGR for it, and `tests/screen.py` learning to read it.
-- **Resizing a split.** `struct window` stores the cut as a fraction, so a
-  grow/shrink command is a few lines on that field; what is missing is the
-  gesture and the chord. Dragging the separator with the mouse is the one users
-  will reach for, and `window_mouse()` already ignores clicks that land on it,
-  which is where that would hook in.
 
 The drop-down's height is **not** a pattern the menu *band* can reuse, which is
 the thing to know before picking the band's clipping off the list below: a

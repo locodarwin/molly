@@ -1157,10 +1157,12 @@ places to look — at two files, or at two parts of the same one.
     F6            Next window
     Shift-F6      Previous window
     F9            Close this window
+    Ctrl-Shift-←  Move the border beside this window left (→ for right)
+    Ctrl-Shift-↑  Move the border above or below it up (↓ for down)
 
 `Window ▸ Split right`, `Window ▸ Split below` and the rest do the same, plus
 `Window ▸ Only this window`, which closes all but the one you are in. The
-command palette reaches all six by name.
+command palette reaches all ten by name.
 
 The new window starts out showing the same file at the same place, with the
 keyboard in it. From there the two diverge: each window has its own cursor, its
@@ -1206,6 +1208,34 @@ the same way it always has one buffer.
 
 Closing a window gives its space back to the window it was split from, so
 closing the second of two restores exactly the screen you had before the split.
+
+### Making one window bigger
+
+A split starts out even. To change that, move the border between the windows —
+with the keyboard, or by dragging it.
+
+`Ctrl-Shift` and an arrow moves the border beside the window you are in by one
+column, or the border above or below it by one row. **The arrow says which way
+the border goes**, not whether your window grows: `Ctrl-Shift-←` moves the line
+between two side-by-side windows to the left whichever of them you are in, so
+it makes the left one narrower and the right one wider either way. If a window
+has borders on both sides, the one that moves is the one it was split along
+last.
+
+With the mouse, drag the `│` between side-by-side windows, or the status bar of
+the upper of two stacked windows — that bar is the border between them. The
+bottom window's status bar is above nothing and does not move. A click that
+does not drag only moves the keyboard, as it always did.
+
+A border stops where a window would go below its minimum, including windows
+split inside the half it is moving into; the keyboard says so on the message
+line. The border keeps its *proportion* rather than its column, so resizing the
+terminal afterwards scales your layout rather than resetting it.
+
+`Window ▸ Move border left` (and right, up and down) do the same from the menu.
+On the help screen the four chords are two rows, `Ctrl-Shift-←→` and
+`Ctrl-Shift-↑↓`, and those two rows show the default chords even if you rebind
+them.
 
 ### When there is no room
 
@@ -1303,6 +1333,7 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     F8       Split, new window below
     F6 / Shift-F6  Next / previous window
     F9       Close this window
+    Ctrl-Shift-Arrow  Move the border beside, above or below this window
     Ctrl-Q   Quit (asks what to do with unsaved changes)
     Ctrl-B   List the open buffers
     Ctrl-F   Open the Find dialog (case-insensitive by default)

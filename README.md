@@ -74,9 +74,9 @@ Everything olly does, molly does. These all work today:
   table-driven, with a `[syntax <name>]` block in the config file enough to
   teach it another language.
 - **Window splits**: `F7` puts a new window to the right, `F8` below, `F6`
-  walks them and `F9` closes one. Each window has its own cursor, scroll
-  position, gutter and status bar, and two windows on one file are two views of
-  the same text.
+  walks them and `F9` closes one. `Ctrl-Shift` and an arrow moves a border, and
+  so does dragging it. Each window has its own cursor, scroll position, gutter
+  and status bar, and two windows on one file are two views of the same text.
 - **Multiple cursors**: `Ctrl-D` selects the word under the cursor and then
   each next occurrence, `Ctrl-Up`/`Ctrl-Down` build a column, `Alt`-click puts
   one anywhere, `Esc` goes back to one. Typing, deleting, `Enter`, `Tab` and
@@ -150,6 +150,7 @@ resize the terminal window.
 | `F7` / `F8` | Split, new window right / below |
 | `F6` / `Shift-F6` | Next / previous window |
 | `F9` | Close this window |
+| `Ctrl-Shift-Arrow` | Move the border beside, above or below this window |
 | `Ctrl-Q` | Quit (asks several times with unsaved changes) |
 | `Ctrl-F` | Search forward |
 | `F3` / `Shift-F3` | Find next / previous match (`Ctrl-N` / `Ctrl-P` too) |

@@ -174,6 +174,14 @@ so a short terminal never puts a command out of reach. (Below about eight rows
 there is not even room for that: the box keeps a border, one item and a border,
 and takes the status row if it must — one item beats none.)
 
+**A terminal too narrow for the band shortens it rather than cutting it off.**
+The seven titles want 43 columns. Narrower than that the gaps between them
+close to one space, which lasts down to 37; narrower still, every title becomes
+its underlined letter — ` F E S V G W H` — which is also the `Alt` key that
+opens it, and clicking a letter opens its menu. The menu that is open is
+written out in full over its drop-down, so you can still see which one you are
+in. No title is ever dropped.
+
 Running a command from a menu is the same as running it from its key, down to
 the details: choosing **Quit** from the File menu with unsaved changes opens the
 same dialog `Ctrl-Q` does.

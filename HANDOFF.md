@@ -15,7 +15,20 @@ This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
 
-**Latest:** italic comments, picked by Shawn on 2026-10-11. Italic is a
+**Latest:** the narrow menu band, which Shawn decided on 2026-10-11 from three
+options ("squeeze, then letters", over an overflow marker or leaving it
+clipped). `menu_band_layout()` in `src/menu.c` picks one of four layouts by
+width: two-space gaps (43 columns and up), one-space gaps (down to 37), letters
+with the open menu's title in full, and letters only. The drop-down's layout
+calls it again rather than reading the last draw, because in the third layout
+switching menus moves the titles. The open title is drawn last, so its
+highlight's padding is not painted over by a neighbour's one-column gap. Unit
+sweep `test_menu_band` (every width from 14 to 120, every open menu); pty
+checks `test_menu_band`; goldens `menu-band-squeezed`, `menu-band-letters`,
+`menu-band-letters-open` (and `-256`). 35 existing narrow goldens changed in
+their band row and nowhere else — checked section by section, not eyeballed.
+
+**Before that:** italic comments, picked by Shawn on 2026-10-11. Italic is a
 property of a theme role, as bold already was — `theme_entry` and `struct style`
 gained a field, only `ROLE_SYN_COMMENT` sets it, and `grid.c` emits SGR 3/23 —
 not a fourth `ATTR_` cell modifier, because nothing draws a comment without it.
@@ -442,13 +455,6 @@ commit:
   people reach for it for, and a rectangular selection is a different model:
   every selection in molly is a pair of positions and a rectangle is not.
 
-The drop-down's height is **not** a pattern the menu *band* can reuse, which is
-the thing to know before picking the band's clipping off the list below: a
-drop-down could scroll because it has a selected item to keep in view, and the
-band's titles are also its Alt mnemonics, so scrolling one out of sight hides a
-menu whose letter still opens it. That one still needs a decision, not a
-scroll.
-
 ### Found along the way, not fixed
 
 - ~~**Nothing converts a file's existing indentation.**~~ **Done** on
@@ -467,13 +473,9 @@ scroll.
   `menu-edit-narrow` is still the snapshot at twelve rows, now of the scroll
   rather than of the clipping, and `menu-edit-scrolled` is the other arrow
   state at both colour depths.
-- **The menu band itself still clips**, and the Window menu made it clip
-  sooner. Seven titles need 43 columns; below that the tail is cut, so at 36
-  columns the bar reads `File  Edit  Search  View  Go  Windo` and Help is gone
-  from it — still reachable on Alt-H, but not visible. That is the grid clipping
-  a layer rather than a layout decision, and unlike the drop-downs there is no
-  obvious right answer: the titles are also the Alt mnemonics, so dropping one
-  hides a menu. `tests/golden/resize-gutter.txt` is the snapshot that shows it.
+- ~~**The menu band itself still clips.**~~ **Done** on 2026-10-11: below 43
+  columns the gaps close, below 37 the titles become their mnemonic letters,
+  and the open one is written out. `menu_band_layout()` in `src/menu.c`.
 - ~~**An Options dialog has nothing to do but exist.**~~ **Done** on
   2026-10-11: View → Options…, `src/optdlg.c`, over `setting_info()`,
   `setting_live()` and `setting_set()` in `config.c`.

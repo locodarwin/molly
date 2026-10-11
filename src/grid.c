@@ -297,6 +297,10 @@ static void emit_style(struct abuf *ab, struct style *have,
               want->underline ? 4 : 5);
     have->underline = want->underline;
   }
+  if (want->italic != have->italic) {
+    ab_append(ab, want->italic ? "\x1b[3m" : "\x1b[23m", want->italic ? 4 : 5);
+    have->italic = want->italic;
+  }
 }
 
 /* Emit one row, if anything in it changed.

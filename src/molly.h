@@ -739,8 +739,10 @@ enum cell_role {
  * Separate from the role on purpose. A menu item's mnemonic is the item's own
  * colors plus an underline; if the modifier were part of the role, every container
  * would need a second role for its mnemonic, and a third for its mnemonic while
- * selected. Bold is what a dialog title wants, and italic will be what a comment
- * wants once there is syntax highlighting. */
+ * selected. Bold is what a dialog title wants. Italic is what a comment wants,
+ * and it is a property of the comment's role in the theme rather than one of
+ * these, for the same reason bold on a heading is: nothing draws a comment
+ * without it. */
 #define ATTR_BOLD      0x01
 #define ATTR_UNDERLINE 0x02
 
@@ -752,6 +754,7 @@ struct style {
   unsigned char reverse;
   unsigned char bold;
   unsigned char underline;
+  unsigned char italic;
 };
 
 /* --- regular expressions ----------------------------------------------------
@@ -1081,6 +1084,9 @@ int style_eq(const struct style *a, const struct style *b);
 int style_is_default(const struct style *s);
 int theme_depth(void);
 int theme_detect_depth(const char *term, const char *colorterm);
+int theme_detect_italic(const char *term);
+int theme_italic(void);
+void theme_set_italic(int on);
 void style_default(struct style *out);
 void style_emit_color(struct abuf *ab, int color, int is_bg);
 void theme_init(void);

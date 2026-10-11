@@ -3007,6 +3007,55 @@ def test_tabbar(tmpdir):
 
 # --------------------------------------------------- syntax highlighting ----
 
+def test_italic(tmpdir):
+    """Comments in italic, and the terminals that do not get it.
+
+    theme.c's tests cover which role is italic and which TERM names get it;
+    what a pty shows is that it reaches the screen on a comment and nowhere
+    else, and that a terminal known to draw it badly is spared it.
+    """
+    print("\nitalic: comments lean, code does not")
+
+    path = os.path.join(tmpdir, "lean.c")
+    with open(path, "w") as fh:
+        fh.write("int x; // note\n/* block */\n")
+    TEXT = TEXT_ROW - 1
+
+    def paint(env, rc=None):
+        e = dict(env)
+        if rc is not None:
+            q = os.path.join(tmpdir, "italicrc")
+            with open(q, "w") as fh:
+                fh.write(rc)
+            e["MOLLY_CONFIG"] = q
+        out = run([MOLLY, path], [], rows=12, cols=40, env=e)
+        scr = Screen(12, 40)
+        scr.feed(out)
+        return scr
+
+    def leaning(scr, row):
+        return "".join("i" if "i" in m else "." for m in scr.mods[row][:14])
+
+    scr = paint({"TERM": "xterm-256color"})
+    check("a line comment is italic, the code before it is not",
+          leaning(scr, TEXT), "." * 7 + "i" * 7)
+    check("a block comment is italic", leaning(scr, TEXT + 1), "i" * 11 + "...")
+    check("and nothing the harness does not understand was sent",
+          [u for u in scr.unhandled if u.startswith("SGR")], [])
+
+    scr = paint({"TERM": "xterm"})
+    check("sixteen colours lean too", leaning(scr, TEXT), "." * 7 + "i" * 7)
+
+    scr = paint({"TERM": "screen-256color"})
+    check("not under a screen TERM, where tmux would draw it reversed",
+          leaning(scr, TEXT), "." * 14)
+    check("but the comment keeps its colour", scr.colors[TEXT][8][0], 244)
+
+    scr = paint({"TERM": "linux"})
+    check("nor on the Linux console", leaning(scr, TEXT + 1), "." * 14)
+
+
+
 def test_syntax(tmpdir):
     """Highlighting from the outside: is the text actually coloured?
 
@@ -4674,6 +4723,7 @@ def main():
         test_buffers(tmpdir)
         test_tabbar(tmpdir)
         test_syntax(tmpdir)
+        test_italic(tmpdir)
         test_splits(tmpdir)
         test_split_resize(tmpdir)
         test_filter(tmpdir)

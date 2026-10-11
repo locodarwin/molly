@@ -289,6 +289,24 @@ static void paint_shaded(void) {
   grid_flush();
 }
 
+static void paint_comment(void) {
+  grid_begin();
+  grid_role(ROLE_SYN_COMMENT);
+  grid_puts(0, 0, "abc", 3);
+  grid_flush();
+}
+
+/* A comment straight into a string: both have a colour of their own, so the
+ * change is not a reset, and italic has to be turned off by name. */
+static void paint_comment_then_string(void) {
+  grid_begin();
+  grid_role(ROLE_SYN_COMMENT);
+  grid_puts(0, 0, "ab", 2);
+  grid_role(ROLE_SYN_STRING);
+  grid_puts(0, 2, "cd", 2);
+  grid_flush();
+}
+
 static void test_grid_emission(void) {
   char out[4096];
 
@@ -308,6 +326,20 @@ static void test_grid_emission(void) {
 
   grid_capture(out, sizeof(out), paint_underline);
   contains("underline turns on and off again", out, "\x1b[4mabc\x1b[24m");
+
+  /* The sixteen-colour table, which is the one loaded when theme_init has not
+   * run: a comment is bright black and italic. */
+  theme_set_italic(1);
+  grid_capture(out, sizeof(out), paint_comment);
+  contains("a comment is italic", out, "\x1b[1;1H\x1b[90m\x1b[3mabc\x1b[m\x1b[K");
+  grid_capture(out, sizeof(out), paint_comment_then_string);
+  contains("italic is turned off by name when no reset does it", out,
+           "\x1b[3mab\x1b[33m\x1b[23mcd");
+  theme_set_italic(0);
+  grid_capture(out, sizeof(out), paint_comment);
+  contains("with the setting off, a comment is only its colour", out,
+           "\x1b[1;1H\x1b[90mabc\x1b[m\x1b[K");
+  theme_set_italic(1);
 
   /* The shadow's point: the text is still there, in a different role. */
   grid_capture(out, sizeof(out), paint_shaded);
@@ -370,6 +402,38 @@ static void test_theme_styles(void) {
 
   theme_style(ROLE_COUNT + 7, &st);
   check("a role out of range falls back to text", style_is_default(&st), 1);
+
+  /* Italic belongs to comments and to nothing else. */
+  theme_set_italic(1);
+  theme_style(ROLE_SYN_COMMENT, &st);
+  check("a comment is italic", st.italic, 1);
+  check("an italic style is not the default", style_is_default(&st), 0);
+  theme_style(ROLE_SYN_STRING, &st);
+  check("a string is not italic", st.italic, 0);
+  theme_style(ROLE_TEXT, &st);
+  check("text is not italic", st.italic, 0);
+  theme_set_italic(0);
+  theme_style(ROLE_SYN_COMMENT, &st);
+  check("the setting turns it off", st.italic, 0);
+  check("and the setting reads back", theme_italic(), 0);
+  theme_set_italic(1);
+}
+
+static void test_theme_italic(void) {
+  printf("\ntheme: which terminals get italic\n");
+  check("xterm draws italic", theme_detect_italic("xterm-256color"), 1);
+  check("tmux's own TERM draws italic", theme_detect_italic("tmux-256color"), 1);
+  check("kitty draws italic", theme_detect_italic("xterm-kitty"), 1);
+  check("the Linux console does not", theme_detect_italic("linux"), 0);
+  check("nor screen, which tmux shows as reverse", theme_detect_italic("screen"), 0);
+  check("nor screen-256color", theme_detect_italic("screen-256color"), 0);
+  check("nor screen.xterm-256color", theme_detect_italic("screen.xterm-256color"), 0);
+  check("nor a vt100", theme_detect_italic("vt100"), 0);
+  check("nor dumb", theme_detect_italic("dumb"), 0);
+  check("nor no TERM at all", theme_detect_italic(NULL), 0);
+  check("nor an empty one", theme_detect_italic(""), 0);
+  check("a name that only starts like linux is fine",
+        theme_detect_italic("linuxish"), 1);
 }
 
 /* The byte forms matter: keeping 0-15 on the short SGR codes is what makes a gray
@@ -3427,6 +3491,7 @@ int main(void) {
   test_grid_emission();
   test_theme_depth();
   test_theme_styles();
+  test_theme_italic();
   test_theme_color_bytes();
   test_palette_matcher();
   test_input_field();

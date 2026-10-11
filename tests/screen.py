@@ -69,6 +69,7 @@ class Screen:
         self.bg = None
         self.bold = False
         self.underline = False
+        self.italic = False
         self.cursor_visible = True
         self.unhandled = []
         self._clear_all()
@@ -107,7 +108,8 @@ class Screen:
         self._clear_all()
 
     def _mod_str(self):
-        return ("b" if self.bold else "") + ("u" if self.underline else "")
+        return (("b" if self.bold else "") + ("i" if self.italic else "") +
+                ("u" if self.underline else ""))
 
     def _put(self, ch):
         w = char_width(ch)
@@ -252,10 +254,15 @@ class Screen:
                     self.bg = None
                     self.bold = False
                     self.underline = False
+                    self.italic = False
                 elif v == 1:
                     self.bold = True
                 elif v == 22:
                     self.bold = False
+                elif v == 3:
+                    self.italic = True
+                elif v == 23:
+                    self.italic = False
                 elif v == 4:
                     self.underline = True
                 elif v == 24:
@@ -344,7 +351,7 @@ class Screen:
         return out
 
     def mod_rows(self):
-        """Bold and underline, as "row: startcol-endcol flags" runs.
+        """Bold, italic and underline, as "row: startcol-endcol flags" runs.
 
         A separate section rather than more letters in the attribute map: a
         mnemonic is its container's colors plus an underline, so modifiers combine

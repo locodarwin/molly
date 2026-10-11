@@ -37,7 +37,6 @@
 
 /* Ctrl-Q's countdown. It belongs to the quit command, not to the dispatcher,
  * which only decides whether to reset it. */
-static int quit_times = KILO_QUIT_TIMES;
 
 static int cmd_newline(void) {
   cursors_edit(MC_NEWLINE, 0);
@@ -91,35 +90,22 @@ static int cmd_quit(void) {
    * was that every "are you sure?" multiplies, and this is the first one: quit
    * with three files open and one of them edited and the edited one may not be
    * the one on screen. */
-  int dirty = buf_dirty_count();
-  if (dirty > 0 && quit_times > 0) {
-    int i;
-    const char *name = "a file";
-    for (i = 0; i < buf_count(); i++) {
-      if (!buf_at(i)->dirty) continue;
-      name = buf_at(i)->filename ? buf_at(i)->filename : "[No Name]";
-      break;
+  if (buf_dirty_count() > 0) {
+    int ans = editor_quit_dialog();
+    if (ans == QUIT_CANCEL) return CMD_KEEP_SELECTION;
+    if (ans == QUIT_SAVE) {
+      /* Save All goes through the ordinary save, a buffer at a time, so a
+       * nameless one gets its prompt and a file changed on disk gets its
+       * question. Any buffer still dirty afterwards was aborted, and quitting
+       * then would be the data loss the dialog exists to prevent: stop on it. */
+      int i;
+      for (i = 0; i < buf_count(); i++) {
+        if (!buf_at(i)->dirty) continue;
+        buf_show(i);
+        editor_save();
+        if (buf_at(i)->dirty) return CMD_KEEP_SELECTION;
+      }
     }
-    /* The first dirty one is named, because with one buffer open -- still the
-     * common case -- naming it is strictly more useful than saying "1 file", and
-     * with several the count is what matters and the name is a starting point.
-     *
-     * It is not a list in a dialog yet, which is what the roadmap asks for. That
-     * wants a dialog with Save All / Discard / Cancel on it, and it is a feature
-     * rather than a message. */
-    if (dirty == 1)
-      editor_set_status_message(
-          "WARNING!!! %s has unsaved changes. Press Ctrl-Q %d more times to quit.",
-          name, quit_times);
-    else
-      editor_set_status_message(
-          "WARNING!!! %d files have unsaved changes. "
-          "Press Ctrl-Q %d more times to quit.",
-          dirty, quit_times);
-    quit_times--;
-    /* The countdown must survive, and so must any selection: this keypress is a
-     * warning rather than an action. */
-    return CMD_KEEP_SELECTION | CMD_KEEP_QUIT_COUNT;
   }
   write_all(STDOUT_FILENO, "\x1b[2J", 4);
   write_all(STDOUT_FILENO, "\x1b[H", 3);
@@ -193,6 +179,12 @@ static int cmd_close(void) {
     else editor_set_status_message("Closed - now %s (%d of %d)",
         B.filename ? B.filename : "[No Name]", buf_current() + 1, buf_count());
   }
+  return 0;
+}
+
+static int cmd_buffer_list(void) {
+  int i = editor_buffer_dialog();
+  if (i >= 0 && i != buf_current()) buf_show(i);
   return 0;
 }
 
@@ -600,6 +592,8 @@ static const struct command commands[] = {
   {.name = "file.quit", .label = "Quit",
    .help = "Quit", .group = "FILES", .run = cmd_quit},
 
+  {.name = "buffer.list", .label = "Buffers…",
+   .help = "List buffers", .group = "BUFFERS", .run = cmd_buffer_list},
   {.name = "buffer.next", .label = "Next buffer",
    .help = "Next buffer", .group = "BUFFERS", .run = cmd_buffer_next,
    .enabled = several_buffers},
@@ -1033,6 +1027,7 @@ static const struct binding default_bindings[] = {
   {"ctrl-pagedown", "buffer.next"},
   {"ctrl-pageup",   "buffer.prev"},
   {"ctrl-q", "file.quit"},
+  {"ctrl-b", "buffer.list"},
   /* F1 first, so it is the one the menus and the help screen print. */
   {"f1",     "view.help"},
   {"ctrl-?", "view.help"},
@@ -1419,7 +1414,6 @@ void editor_process_key(int c) {
   }
 
   if (!(res & CMD_KEEP_QUIT_COUNT)) {
-    quit_times = KILO_QUIT_TIMES;
     close_warned_id = -1;
   }
 }

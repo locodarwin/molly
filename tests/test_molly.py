@@ -1403,11 +1403,11 @@ def test_recovery_prompt(tmpdir):
 
     setup()
     out = run([MOLLY, path], ["r", "\x11"])
-    check("a restored buffer counts as unsaved work (quit warns)",
-          any("unsaved" in m.lower() for m in status_lines(out)), True)
+    check("a restored buffer counts as unsaved work (quit asks)",
+          b"Unsaved changes" in out, True)
 
     setup()
-    run([MOLLY, path], ["r", "\x11", "\x11", "\x11", "\x11"])
+    run([MOLLY, path], ["r", "\x11", "d"])
     check("quitting a restored buffer without saving cleans up anyway",
           os.path.exists(rec), False)
 
@@ -1820,8 +1820,9 @@ def test_menu(tmpdir):
 
     # A menu choice is the same command as its key, dispatcher flags included: Quit
     # from the File menu counts down exactly as Ctrl-Q does.
-    check("Quit from the menu keeps the quit countdown",
-          msg(["X", "\x1bf", "q"]).startswith("WARNING!!!"), True)
+    check("Quit from the menu opens the unsaved-changes dialog",
+          "Unsaved changes" in "\n".join(screen(["X", "\x1bf", "q"]).text()),
+          True)
 
     # Unavailable items are skipped, not merely greyed: with nothing searched for,
     # Down from Find goes past Find Next and Find Previous to Match Case.
@@ -2072,8 +2073,9 @@ def test_palette(tmpdir):
 
     # A command run from the palette is the same command as from its key,
     # dispatcher flags included: Quit still counts down on a dirty buffer.
-    check("Quit from the palette keeps the quit countdown",
-          msg(["X", PALETTE, "quit", "\r"]).startswith("WARNING!!!"), True)
+    check("Quit from the palette opens the unsaved-changes dialog",
+          "Unsaved changes" in "\n".join(
+              screen(["X", PALETTE, "quit", "\r"]).text()), True)
 
     # A click on a row chooses it, as a click on a menu item does.
     scr = screen([PALETTE, "line numbers"])
@@ -2690,15 +2692,58 @@ def test_buffers(tmpdir):
     # the second buffer and then we switch away from it, so a quit that only
     # looked at the current buffer would let the file go.
     out = go([a, b], [CPGDN, "X", CPGUP, "\x11"])
-    check("quit warns about a dirty buffer that is not the current one",
-          any("unsaved changes" in m for m in status_lines(out)), True)
+    check("quit asks about a dirty buffer that is not the current one",
+          b"Unsaved changes" in out and b.encode() in out, True)
     out = go([a, b], ["X", CPGDN, "Y", CPGUP, "\x11"])
-    check("and counts them when there are several",
-          any("2 files have unsaved changes" in m for m in status_lines(out)),
-          True)
+    check("and lists every one of them when there are several",
+          a.encode() in out and b.encode() in out, True)
     out, st = run([MOLLY, a, b], ["\x11"], status=True)
     check("with nothing unsaved it quits at once",
           os.WIFEXITED(st) and os.WEXITSTATUS(st) == 0, True)
+
+    # The dialog's three answers. Both files are edited, and the one on screen is
+    # not the one edited first, so Save All has to walk the list.
+    def rewrite():
+        for p, t in ((a, "aaa\n"), (b, "bbb\n")):
+            with open(p, "w") as fh:
+                fh.write(t)
+
+    def read(p):
+        with open(p) as fh:
+            return fh.read()
+
+    rewrite()
+    out, st = run([MOLLY, a, b], ["X", CPGDN, "Y", "\x11", "s"], status=True)
+    check("Save All writes every unsaved buffer and quits",
+          (read(a), read(b), os.WIFEXITED(st)),
+          ("Xaaa\n", "Ybbb\n", True))
+    rewrite()
+    out, st = run([MOLLY, a, b], ["X", CPGDN, "Y", "\x11", "d"], status=True)
+    check("Discard quits and leaves both files alone",
+          (read(a), read(b), os.WIFEXITED(st)), ("aaa\n", "bbb\n", True))
+    rewrite()
+    for label, keys in (("Esc", ["\x1b"]), ("Tab to Cancel and Enter", ["\t", "\t", "\r"])):
+        rewrite()
+        out, st = run([MOLLY, a, b], ["X", "\x11"] + keys, status=True)
+        scr = Screen(24, 80)
+        scr.feed(out)
+        check("Cancel by %s keeps the editor running, dialog gone" % label,
+              (os.WIFEXITED(st), "Unsaved changes" in "\n".join(scr.text()),
+               read(a)), (False, False, "aaa\n"))
+
+    print("\nbuffers: the buffer list")
+    out = go([a, b], ["\x02"])
+    check("Ctrl-B opens the list with every buffer in it",
+          b"Buffers" in out and a.encode() in out and b.encode() in out, True)
+    out = go([a, b], ["\x02", DOWN, "\r"])
+    check("Enter shows the chosen buffer",
+          "[2/2]" in status_row(out), True)
+    out = go([a, b], [CPGDN, "\x02", UP, "\r"])
+    check("and the selection starts on the current one",
+          "[1/2]" in status_row(out), True)
+    out = go([a, b], ["\x02", DOWN, "\x1b"])
+    check("Esc leaves the current buffer where it was",
+          "[1/2]" in status_row(out), True)
 
     print("\nbuffers: crash recovery covers all of them")
 

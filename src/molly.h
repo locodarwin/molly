@@ -36,7 +36,6 @@
 #include <time.h>
 #include <unistd.h>
 #define KILO_TAB_STOP 8
-#define KILO_QUIT_TIMES 3
 #define MOLLY_VERSION "0.1.0-dev"
 
 #define CTRL_KEY(k) ((k) & 0x1f)
@@ -1055,6 +1054,11 @@ void theme_style(unsigned char role, struct style *out);
 
 /* ui.c */
 char *editor_open_dialog(void);
+int editor_buffer_dialog(void);
+int editor_quit_dialog(void);
+#define QUIT_SAVE    1
+#define QUIT_DISCARD 2
+#define QUIT_CANCEL  0
 char *editor_prompt(char *prompt, void (*callback)(char *, int));
 void editor_help(void);
 void editor_open_in_new_buffer(char *path);

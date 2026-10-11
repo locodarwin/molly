@@ -79,7 +79,7 @@ static const struct menu_item view_items[] = {
 static const struct menu_item go_items[] = {
   {"goto.line", 0}, SEP,
   /* N and P, since Go has nothing else competing for either. */
-  {"buffer.next", 0}, {"buffer.prev", 0},
+  {"buffer.next", 0}, {"buffer.prev", 0}, {"buffer.list", 0},
 };
 /* S and B, the first letters of the words that differ -- "Split right" and
  * "Split below" both begin with S, and it is the second word that says which is

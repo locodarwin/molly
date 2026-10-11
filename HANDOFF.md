@@ -21,10 +21,10 @@ Discard / Cancel) are done, in `src/bufdlg.c`, picked by Shawn on 2026-10-10 as
 "1" from a ranked menu. The Ctrl-Q countdown, `quit_times` and
 `KILO_QUIT_TIMES` are gone; `CMD_KEEP_QUIT_COUNT` stays because the close
 warning still uses it. Save All walks the dirty buffers through `editor_save()`
-and refuses to quit if any is still dirty afterwards. **The full `make test` was
-last run before one test fix** (a quit test named the wrong file); the other 757
-checks passed on that run, and the fixed one has not been re-run — run the suite
-first. The counts in the table below predate this feature. Not done: the dialog's
+and refuses to quit if any is still dirty afterwards. The full `make test`
+passes on it: the pty stage includes the fixed quit test, and six goldens (the Go
+menu and the palette, which gained `Buffers…`) were regenerated after the feature
+commit, which had left them stale. The counts in the table below predate this feature. Not done: the dialog's
 mouse path has no test, and neither is in `make test-oom`.
 
 **Nothing else is in flight.** The drop-down's height is done end to end, in the arc

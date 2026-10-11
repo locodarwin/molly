@@ -5,8 +5,8 @@ alpha                     │  Go to line…          Ctrl-G │
 beta                      ├──────────────────────────────┤
 gamma                     │  Next buffer       Ctrl-PgDn │
 ~                         │  Previous buffer   Ctrl-PgUp │
+~                         │  Buffers…             Ctrl-B │
 ~                         └──────────────────────────────┘
-~
 ~
 ~
 ~
@@ -23,8 +23,8 @@ gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 ..........................gggggggggggggggggggggggggggggggggg
 g.........................gggggggggggggggggggggggggggggggggg
 g.........................gggggggggggggggggggggggggggggggggg
+g.........................gggggggggggggggggggggggggggggggggg
 g...........................gggggggggggggggggggggggggggggggg
-g
 g
 g
 g
@@ -39,9 +39,9 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 4: 26-57 7/8  58-59 8/0
 5: 26-26 7/8  27-56 15/8  57-57 7/8  58-59 8/0
 6: 0-0 8/-  26-26 7/8  27-56 15/8  57-57 7/8  58-59 8/0
-7: 0-0 8/-  26-57 7/8  58-59 8/0
-8: 0-0 8/-  28-59 8/0
-9: 0-0 8/-
+7: 0-0 8/-  26-26 7/8  27-56 15/8  57-57 7/8  58-59 8/0
+8: 0-0 8/-  26-57 7/8  58-59 8/0
+9: 0-0 8/-  28-59 8/0
 10: 0-0 8/-
 11: 0-0 8/-
 12: 0-0 8/-
@@ -53,5 +53,6 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 3: 29-29 u
 5: 29-29 u
 6: 29-29 u
+7: 29-29 u
 --- cursor ---
 row 3 col 1 visible 0

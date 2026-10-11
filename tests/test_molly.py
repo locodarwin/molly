@@ -4224,6 +4224,80 @@ def test_indent_convert(tmpdir):
     check("and says so when there was nothing to do",
           "No indentation to convert in this file" in rows[23], True)
 
+
+def test_options(tmpdir):
+    """View > Options: every setting, changed in place.
+
+    The dialog reads config.c's table and writes through setting_set(), both
+    unit-tested. What is here is the keys -- Space, the arrows, typed digits --
+    that Enter keeps a change, Esc puts everything back, Ctrl-S writes mollyrc,
+    and a click flips an on/off row. The effects are proved on the file: a Tab
+    typed after turning insert spaces on is spaces on disk.
+    """
+    print("\noptions: the dialog")
+
+    OPT = ["\x1bv", "o"]           # View, then O
+    DOWN = "\x1b[B"
+    RIGHT = "\x1b[C"
+
+    def rows(keys, env=None):
+        scr = Screen(24, 80)
+        scr.feed(run([MOLLY, write_file(tmpdir, "o.txt", "x\n")], keys, env=env))
+        return scr.text()
+
+    text = rows(OPT)
+    joined = "\n".join(text)
+    check("View > Options opens it", "Options" in joined, True)
+    check("with every setting, by section",
+          ("editor  tab width" in joined, "shell   timeout" in joined),
+          (True, True))
+    check("and says what the selected one does",
+          "[editor] columns a tab character occupies" in joined, True)
+
+    # Insert spaces is the second row. Space flips it, Enter keeps it, and the
+    # Tab typed afterwards writes spaces.
+    check("Space flips a setting and Enter keeps it",
+          edit(tmpdir, "x\n", OPT + [DOWN, " ", "\r", "\t", SAVE]),
+          "        x\n")
+    check("Esc puts it back",
+          edit(tmpdir, "x\n", OPT + [DOWN, " ", "\x1b", 0.3, "\t", SAVE]),
+          "\tx\n")
+    rows_after = rows(OPT + [DOWN, " ", "\x1b"])
+    check("and says nothing changed", "Options unchanged" in rows_after[23], True)
+
+    # Digits replace a number, put into effect when the selection moves on.
+    check("typed digits set a number",
+          edit(tmpdir, "x\n", OPT + ["4", DOWN, " ", "\r", "\t", SAVE]),
+          "    x\n")
+    text = rows(OPT + ["99", "\r"] + OPT)
+    check("clamped to its range", any("tab width" in r and r.rstrip(" ║").endswith("16")
+                                      for r in text), True)
+    text = rows(OPT + [RIGHT, RIGHT])
+    check("Right steps a number up",
+          any("tab width" in r and r.rstrip(" ║").endswith("10") for r in text), True)
+    # A pause after Esc, or Esc then Alt-V arrive as Esc Esc v.
+    text = rows(OPT + [RIGHT, RIGHT, "\x1b", 0.3] + OPT)
+    check("and Esc takes the steps back too",
+          any("tab width" in r and r.rstrip(" ║").endswith("8") for r in text), True)
+
+    # A click on an on/off row flips it, found on the screen rather than
+    # worked out from the dialog's centring.
+    text = rows(OPT)
+    y = next(i for i, r in enumerate(text) if "insert spaces" in r)
+    x = text[y].index("insert spaces")
+    click = ["\x1b[<0;%d;%dM" % (x + 1, y + 1), "\x1b[<0;%d;%dm" % (x + 1, y + 1)]
+    check("a click flips an on/off setting",
+          edit(tmpdir, "x\n", OPT + click + ["\r", "\t", SAVE]), "        x\n")
+
+    # Ctrl-S keeps the change and writes it to the config file.
+    rc = os.path.join(tmpdir, "optrc")
+    if os.path.exists(rc):
+        os.unlink(rc)
+    text = rows(OPT + [DOWN, " ", "\x13"], env={"MOLLY_CONFIG": rc})
+    check("Ctrl-S saves to mollyrc", "Options saved to" in text[23], True)
+    with open(rc) as fh:
+        check("with the change in it", "insert spaces = on" in fh.read(), True)
+
 def test_insert_output(tmpdir):
     """Alt-!: a command's output at the cursor, with nothing sent to it.
 
@@ -4595,6 +4669,7 @@ def main():
         test_undo_cap(tmpdir)
         test_config(tmpdir)
         test_save_settings(tmpdir)
+        test_options(tmpdir)
         test_cua_keymap(tmpdir)
         test_buffers(tmpdir)
         test_tabbar(tmpdir)

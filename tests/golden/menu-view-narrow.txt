@@ -11,9 +11,9 @@
 ├──────────────────────┤
 │  Redraw           F5 │
 ├──────────────────────┤
+│  Option              │
 │  Save s              │
 └──────────────────────┘
-~
 ~
 sample.txt - 3 lines
 HELP: Ctrl-S = save | Ct
@@ -32,8 +32,8 @@ gggggggggggggggggggggggg
 gggggggggggggggggggggggg
 gggggggggggggggggggggggg
 gggggggggggggggggggggggg
+gggggggggggggggggggggggg
 g.gggggggggggggggggggggg
-g
 RRRRRRRRRRRRRRRRRRRRRRRR
 
 --- colors ---
@@ -50,9 +50,9 @@ RRRRRRRRRRRRRRRRRRRRRRRR
 11: 0-0 7/8  1-22 15/8  23-23 7/8
 12: 0-23 7/8
 13: 0-0 7/8  1-22 15/8  23-23 7/8
-14: 0-23 7/8
-15: 0-0 8/-  2-23 8/0
-16: 0-0 8/-
+14: 0-0 7/8  1-22 15/8  23-23 7/8
+15: 0-23 7/8
+16: 0-0 8/-  2-23 8/0
 --- modifiers ---
 1: 1-1 u  7-7 u  13-13 u  21-21 u
 3: 3-3 u
@@ -63,5 +63,6 @@ RRRRRRRRRRRRRRRRRRRRRRRR
 9: 8-8 u
 11: 3-3 u
 13: 3-3 u
+14: 3-3 u
 --- cursor ---
 row 2 col 1 visible 0

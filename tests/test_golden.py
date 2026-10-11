@@ -392,6 +392,14 @@ def main():
     # tree, so this is grep -r over every file the run has written so far --
     # which is why the word is one no other golden's text contains, and the
     # file it is in is the only match whatever order the directory lists in.
+    # View > Options: every setting, the first row selected, at both depths;
+    # and at a size where the list has to scroll inside the dialog.
+    check("options", ["\x1bv", "o"], files={"sample.txt": THREE_LINES})
+    check("options-256", ["\x1bv", "o"], files={"sample.txt": THREE_LINES},
+          env={"TERM": "xterm-256color"})
+    check("options-narrow", ["\x1bv", "o", "\x1b[F"], rows=12, cols=34,
+          files={"sample.txt": THREE_LINES})
+
     QUOKKA = {"sample.txt": THREE_LINES, "found.txt": "a\nthe quokka\nb\n"}
     check("grep-results", ["\x05", "quokka", "\r"], files=QUOKKA)
     check("grep-results-256", ["\x05", "quokka", "\r"], files=QUOKKA,

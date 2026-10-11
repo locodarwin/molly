@@ -1,0 +1,76 @@
+--- screen ---
+ File  Edit  Search  View  Go  Window  Help
+alpha
+beta
+gamma   ╔══════════════════════════ Options ═══════════════════════════╗
+~       ║  editor  tab width                                         8 ║
+~       ║  editor  insert spaces                                   off ║
+~       ║  editor  auto indent                                      on ║
+~       ║  editor  undo steps                                    32768 ║
+~       ║  view    line numbers                                    off ║
+~       ║  view    menu bar                                         on ║
+~       ║  view    tab bar                                          on ║
+~       ║  view    syntax                                           on ║
+~       ║  view    soft wrap                                       off ║
+~       ║  input   mouse                                            on ║
+~       ║  shell   timeout                                          10 ║
+~       ║  shell   output limit                                   8192 ║
+~       ║  search  match case                                      off ║
+~       ║  search  regular expression                              off ║
+~       ║ [editor] columns a tab character occupies (1-16)             ║
+~       ║ Space/←→ change  Enter keep  Ctrl-S save  Esc undo all       ║
+~       ╚══════════════════════════════════════════════════════════════╝
+~
+sample.txt - 3 lines                                                 Ln 1, Col 1
+HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | F3 = next | F1 = help
+--- attrs ---
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+
+
+........gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.........gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-79 252/235
+4: 8-35 245/238  36-42 231/238  43-71 245/238
+5: 0-0 8/-  8-8 245/238  9-9 252/238  10-69 234/110  70-70 252/238  71-71 245/238  72-73 240/234
+6: 0-0 8/-  8-8 245/238  9-70 252/238  71-71 245/238  72-73 240/234
+7: 0-0 8/-  8-8 245/238  9-70 252/238  71-71 245/238  72-73 240/234
+8: 0-0 8/-  8-8 245/238  9-70 252/238  71-71 245/238  72-73 240/234
+9: 0-0 8/-  8-8 245/238  9-70 252/238  71-71 245/238  72-73 240/234
+10: 0-0 8/-  8-8 245/238  9-70 252/238  71-71 245/238  72-73 240/234
+11: 0-0 8/-  8-8 245/238  9-70 252/238  71-71 245/238  72-73 240/234
+12: 0-0 8/-  8-8 245/238  9-70 252/238  71-71 245/238  72-73 240/234
+13: 0-0 8/-  8-8 245/238  9-70 252/238  71-71 245/238  72-73 240/234
+14: 0-0 8/-  8-8 245/238  9-70 252/238  71-71 245/238  72-73 240/234
+15: 0-0 8/-  8-8 245/238  9-70 252/238  71-71 245/238  72-73 240/234
+16: 0-0 8/-  8-8 245/238  9-70 252/238  71-71 245/238  72-73 240/234
+17: 0-0 8/-  8-8 245/238  9-70 252/238  71-71 245/238  72-73 240/234
+18: 0-0 8/-  8-8 245/238  9-70 252/238  71-71 245/238  72-73 240/234
+19: 0-0 8/-  8-8 245/238  9-70 252/238  71-71 245/238  72-73 240/234
+20: 0-0 8/-  8-8 245/238  9-70 252/238  71-71 245/238  72-73 240/234
+21: 0-0 8/-  8-71 245/238  72-73 240/234
+22: 0-0 8/-  10-73 240/234
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u  39-39 u
+4: 36-42 b
+--- cursor ---
+row 2 col 1 visible 0

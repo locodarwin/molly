@@ -1,0 +1,44 @@
+--- screen ---
+ File  Edit  Search  View  Go  Win
+alph╔═══════ Options ════════╗
+beta║  view    soft wrap off ║
+gamm║  input   mouse      on ║
+~   ║  shell   timeout    10 ║
+~   ║  shell   output l 8192 ║
+~   ║  search  match cas off ║
+~   ║  search  regular e off ║
+~   ║ [search] read the sear ║
+~   ║ Space/←→ change  Enter ║
+samp╚════════════════════════╝ol 1
+HELP: Ctrl-S = save | Ctrl-Q = qui
+--- attrs ---
+gggggggggggggggggggggggggggggggggg
+....gggggggggggggggggggggggggg
+....gggggggggggggggggggggggggggg
+....gggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggg
+g...gggggggggggggggggggggggggggg
+RRRRggggggggggggggggggggggggggggRR
+......gggggggggggggggggggggggggg
+--- colors ---
+1: 0-33 7/0
+2: 4-12 7/8  13-19 15/8  20-29 7/8
+3: 4-4 7/8  5-28 15/8  29-29 7/8  30-31 8/0
+4: 4-4 7/8  5-28 15/8  29-29 7/8  30-31 8/0
+5: 0-0 8/-  4-4 7/8  5-28 15/8  29-29 7/8  30-31 8/0
+6: 0-0 8/-  4-4 7/8  5-28 15/8  29-29 7/8  30-31 8/0
+7: 0-0 8/-  4-4 7/8  5-28 15/8  29-29 7/8  30-31 8/0
+8: 0-0 8/-  4-4 7/8  5-5 15/8  6-27 15/4  28-28 15/8  29-29 7/8  30-31 8/0
+9: 0-0 8/-  4-4 7/8  5-28 15/8  29-29 7/8  30-31 8/0
+10: 0-0 8/-  4-4 7/8  5-28 15/8  29-29 7/8  30-31 8/0
+11: 4-29 7/8  30-31 8/0
+12: 6-31 8/0
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u
+2: 13-19 b
+--- cursor ---
+row 2 col 1 visible 0

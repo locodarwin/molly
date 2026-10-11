@@ -440,6 +440,11 @@ static int cmd_menu_bar(void) {
  * knowing that configuration exists: Ctrl-U still just flips V.linenum, and the
  * settings table finds out by asking when this runs. The Options dialogs, when
  * they arrive, call exactly this. */
+static int cmd_options(void) {
+  editor_options_dialog();
+  return 0;
+}
+
 static int cmd_save_settings(void) {
   const char *err = NULL;
   const char *path = config_path();
@@ -771,6 +776,10 @@ static const struct command commands[] = {
   {.name = "view.soft-wrap", .label = "Soft wrap",
    .help = "Wrap long lines", .group = "VIEW", .run = cmd_wrap,
    .checked = wrap_on},
+  /* Unbound, beside Save settings: both are things done now and then from the
+   * menu, and every setting in it already has a toggle or a chord of its own
+   * for the times it is wanted mid-keystroke. */
+  {.name = "app.options", .label = "Options…", .run = cmd_options},
   {.name = "app.save-settings", .label = "Save settings",
    .help = "Save settings to mollyrc", .group = "VIEW", .run = cmd_save_settings},
 

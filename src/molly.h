@@ -1089,6 +1089,7 @@ void theme_style(unsigned char role, struct style *out);
 /* ui.c */
 char *editor_open_dialog(void);
 int editor_buffer_dialog(void);
+void editor_options_dialog(void);
 int editor_quit_dialog(void);
 #define QUIT_SAVE    1
 #define QUIT_DISCARD 2

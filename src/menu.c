@@ -82,7 +82,7 @@ static const struct menu_item view_items[] = {
    * that change how the text is drawn rather than what is in it. */
   {"view.soft-wrap", 5},
   SEP, {"view.repaint", 0},
-  SEP, {"app.save-settings", 0},
+  SEP, {"app.options", 0}, {"app.save-settings", 0},
 };
 static const struct menu_item go_items[] = {
   {"goto.line", 0}, SEP,

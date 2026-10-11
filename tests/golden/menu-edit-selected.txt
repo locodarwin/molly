@@ -15,7 +15,7 @@ gamma │  Redo                 Ctrl-Y │
 ~     │  Dedent            Shift-Tab │
 ~     ├──────────────────────────────┤
 ~     │  Filter through…       Alt-| │
-~     └──────────────────────────────┘
+~     └─────────────────────────────▾┘
 ~
 sample.txt - 3 lines                          Ln 1, Col 3  Sel 2
 HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | F3 = next

@@ -58,8 +58,9 @@ static const struct menu_item edit_items[] = {
    * now a question of how much of it a short terminal can show at once rather
    * than of what may be in it: see menu_dropdown_height(). */
   {"edit.indent", 0}, {"edit.dedent", 0}, SEP,
-  /* F, which is the only letter in "Filter" this menu has not spent. */
-  {"edit.filter", 0},
+  /* F, which is the only letter in "Filter" this menu has not spent, and the O
+   * of "output" for the same reason: I is Indent's. */
+  {"edit.filter", 0}, {"edit.insert-output", 7},
 };
 static const struct menu_item search_items[] = {
   {"search.find", 0}, {"search.next", 5}, {"search.prev", 5},

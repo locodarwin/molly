@@ -1845,7 +1845,7 @@ def test_menu(tmpdir):
                0.3]).startswith("HELP:"), True)
 
     # A drop-down's height is the text area's, not the grid's. The Edit menu is
-    # the tall one -- eight items and three separators, thirteen rows with its
+    # the tall one -- eleven items and four separators, seventeen rows with its
     # borders -- and a twelve-row terminal has eight to give it. What used to
     # happen there was that the box was clamped to the grid, so its tail was
     # drawn off the bottom and could be selected but not seen, and the drop
@@ -1865,17 +1865,17 @@ def test_menu(tmpdir):
     # the border at each end that has more behind it -- the shape the tab bar
     # uses for the same problem.
     check("an arrow says there is more below", "\u25be" in short.text()[8], True)
-    check("the tail is not drawn", "Filter" in "\n".join(short.text()), False)
+    check("the tail is not drawn", "Insert" in "\n".join(short.text()), False)
     tail = screen(["\x1be", END], rows=12, cols=28)
-    # "Filter" rather than its whole label: Shift-Tab is the widest shortcut in
-    # this menu, so at 28 columns the label column is squeezed to "Filter thro".
+    # "Insert" rather than its whole label: Shift-Tab is the widest shortcut in
+    # this menu, so at 28 columns the label column is squeezed to "Insert outp".
     check("End scrolls the last item into the box",
-          "Filter" in tail.text()[7], True)
+          "Insert" in tail.text()[7], True)
     check("the arrow moves to the top border", "\u25b4" in tail.text()[1], True)
     check("and goes from the bottom one, which has nothing behind it",
           "\u25be" in tail.text()[8], False)
     check("the item scrolled to is the one Enter runs",
-          any("Filter through:" in l
+          any("Insert output of:" in l
               for l in screen(["\x1be", END, "\r"], rows=12, cols=28).text()),
           True)
     # The arrows are clickable, and a click shows the row past the edge it
@@ -3895,6 +3895,95 @@ def test_filter(tmpdir):
           screen_rows(out)[1].startswith("keep"), True)
 
 
+
+def test_insert_output(tmpdir):
+    """Alt-!: a command's output at the cursor, with nothing sent to it.
+
+    The running is filter_run(), which test_filter and the unit tests already
+    cover. What is here is what is new: where the output lands, the one newline
+    that comes off it, every cursor at once, and the same refusals the filter
+    makes when a command fails.
+    """
+    print("\ninsert output: what lands, and where")
+
+    INS = "\x1b!"           # Alt-!
+    FILT = "\x1b|"
+    CDOWN = "\x1b[1;5B"
+
+    def ins(original, cmd, before=(), extra=(), name="o.txt"):
+        return edit(tmpdir, original,
+                    list(before) + [INS, cmd, "\r"] + list(extra) + [SAVE],
+                    name=name)
+
+    # The case it is for: one line, mid-line, and the line is not split.
+    check("one line of output goes in at the cursor, inline",
+          ins("ab\n", "echo X", before=[RIGHT]), "aXb\n")
+
+    # Several lines: the cursor's line is split by the output's own newlines,
+    # and the last line of output joins what followed the cursor.
+    check("several lines split the line they land in",
+          ins("end\n", "printf 'a\\nb\\n'"), "a\nbend\n")
+
+    # Only one terminator comes off. A blank line the command printed on
+    # purpose is part of the answer.
+    check("only the last newline comes off",
+          ins("z\n", "printf 'x\\n\\n'"), "x\nz\n")
+
+    # A selection is replaced, as typing or pasting over one replaces it.
+    check("a selection is replaced by the output",
+          ins("old\nkeep\n", "echo new", before=[SH_END]), "new\nkeep\n")
+
+    # Every cursor gets it, and the command runs once rather than per cursor:
+    # the count file is the proof, since output alone could not tell.
+    count = os.path.join(tmpdir, "ran")
+    check("every cursor gets the output",
+          ins("a\nb\nc\n", "echo x >> %s; echo X" % count,
+              before=[CDOWN, CDOWN]),
+          "Xa\nXb\nXc\n")
+    with open(count) as fh:
+        check("and the command ran once, not once per cursor",
+              fh.read(), "x\n")
+
+    # An empty buffer is a fine place to start from, unlike the filter's.
+    check("an empty buffer takes output",
+          "hi" in screen_rows(run(
+              [MOLLY, os.path.join(tmpdir, "blank.txt")],
+              [INS, "echo hi", "\r"]))[1], True)
+
+    print("\ninsert output: when it goes wrong, nothing goes in")
+
+    check("a failing command inserts nothing",
+          ins("keep\n", "echo partial; exit 4"), "keep\n")
+    rows = screen_rows(run([MOLLY, write_file(tmpdir, "p.txt", "keep\n")],
+                           [INS, "exit 4", "\r"]))
+    check("and says what the status was", "exited 4" in rows[23], True)
+    check("and the buffer is not marked modified", "(modified)" in rows[22],
+          False)
+    check("a command that prints nothing says so",
+          "no output" in screen_rows(run(
+              [MOLLY, write_file(tmpdir, "q.txt", "keep\n")],
+              [INS, "true", "\r"]))[23], True)
+    check("Esc at the prompt runs nothing",
+          edit(tmpdir, "keep\n", [INS, "echo X", "\x1b", SAVE]), "keep\n")
+
+    print("\ninsert output: undo, running it again, and the menu")
+
+    # The replaced selection comes back in the same step as the output goes.
+    check("undo takes the output and the replaced selection back together",
+          ins("old\n", "echo new", before=[SH_END], extra=[UNDO]), "old\n")
+    check("an empty prompt repeats the last command",
+          ins("|\n", "echo X", extra=[INS, "\r"]), "XX|\n")
+    # Its own last command, not the filter's. Checked from the side where a
+    # shared one would show: the filter repeating `echo X` would replace the
+    # whole file with "X", where `sort` repeated here would print nothing and
+    # prove nothing.
+    check("and the filter does not repeat it",
+          edit(tmpdir, "b\na\n", [INS, "echo X", "\r", FILT, "\r", SAVE]),
+          "Xb\na\n")
+    check("Edit > Insert output reaches it",
+          edit(tmpdir, "|\n", ["\x1be", "o", "echo M", "\r", SAVE]),
+          "M|\n")
+
 def test_soft_wrap(tmpdir):
     print("\nsoft wrap: Alt-Z lays a long line out over several screen rows, "
           "breaking it at a space, and never touches the file")
@@ -4184,6 +4273,7 @@ def main():
         test_syntax(tmpdir)
         test_splits(tmpdir)
         test_filter(tmpdir)
+        test_insert_output(tmpdir)
         test_indent(tmpdir)
         test_multicursor(tmpdir)
         test_soft_wrap(tmpdir)

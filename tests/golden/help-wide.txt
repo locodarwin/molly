@@ -10,14 +10,14 @@ ga║ FILES                                 EDITING                            �
 ~ ║   Ctrl-Q         Quit                   Del            Delete at cursor  ║
 ~ ║   F1             This help screen       Ctrl-T         Swap characters   ║
 ~ ║                                         Alt-|          Filter through sh ║
-~ ║ BUFFERS                                                                  ║
-~ ║   Ctrl-PgDn      Next buffer          FIND & REPLACE                     ║
-~ ║   Ctrl-PgUp      Previous buffer        Ctrl-F         Find forward      ║
-~ ║                                         F3             Find next         ║
-~ ║ MENUS                                   Shift-F3       Find previous     ║
-~ ║   F10            Open the menu bar      Alt-R          Pattern search    ║
-~ ║   Alt-letter     Open that menu         Ctrl-R         Find & replace    ║
-~ ║   Ctrl-Space     Command palette                                         ║
+~ ║ BUFFERS                                 Alt-!          Insert sh output  ║
+~ ║   Ctrl-PgDn      Next buffer                                             ║
+~ ║   Ctrl-PgUp      Previous buffer      FIND & REPLACE                     ║
+~ ║                                         Ctrl-F         Find forward      ║
+~ ║ MENUS                                   F3             Find next         ║
+~ ║   F10            Open the menu bar      Shift-F3       Find previous     ║
+~ ║   Alt-letter     Open that menu         Alt-R          Pattern search    ║
+~ ║   Ctrl-Space     Command palette        Ctrl-R         Find & replace    ║
 ~ ║ In prompts: Enter accepts   Esc cancels                                  ║
 ~ ║ PgUp/PgDn scroll   any other key returns                                 ║
 ~ ╚══════════════════════════════════════════════════════════════════════════╝

@@ -486,6 +486,14 @@ static int cmd_filter(void) {
   return CMD_KEEP_SELECTION;
 }
 
+/* Insert what a command prints. No CMD_KEEP_SELECTION: a selection is replaced
+ * on success, and on failure it is cleared the way a failed paste would leave
+ * it -- there is nothing on the screen this command promised to keep. */
+static int cmd_insert_output(void) {
+  editor_insert_output();
+  return 0;
+}
+
 /* ---- windows -------------------------------------------------------------
  *
  * Named by where the new window lands rather than by the axis of the cut. "Split
@@ -726,6 +734,12 @@ static const struct command commands[] = {
   {.name = "edit.filter", .label = "Filter through…",
    .help = "Filter through sh", .group = "EDITING", .run = cmd_filter,
    .enabled = have_rows},
+  /* Not "Insert command output…", for the filter's reason: seven more columns
+   * on the widest menu molly has, to say what the prompt then says. No
+   * `enabled`: unlike the filter it needs no text, and an empty buffer is a
+   * fine place to start from `ls`. */
+  {.name = "edit.insert-output", .label = "Insert output…",
+   .help = "Insert sh output", .group = "EDITING", .run = cmd_insert_output},
 
   {.name = "window.split-right", .label = "Split right",
    .help = "New window right", .group = "WINDOWS",
@@ -1070,6 +1084,9 @@ static const struct binding default_bindings[] = {
   /* Alt-| for the filter, which is where Fresh puts it and the only mnemonic
    * there could be: the character is a pipe, and the command is a pipe. */
   {"alt-|",  "edit.filter"},
+  /* Alt-! beside it: `!` is the shell in vi's `:r !date` and in Emacs's M-!,
+   * which is this command's nearest relative in either. */
+  {"alt-!",  "edit.insert-output"},
 
   {"ctrl-f", "search.find"},
   /* F3 first for the same reason F1 is: it is what gets printed. Shift-F3 is the
@@ -1471,6 +1488,7 @@ static const struct help_entry help_entries[] = {
   {NULL,         NULL,          NULL,           "edit.delete-forward"},
   {NULL,         NULL,          NULL,           "edit.transpose"},
   {NULL,         NULL,          NULL,           "edit.filter"},
+  {NULL,         NULL,          NULL,           "edit.insert-output"},
 
   {"FIND & REPLACE", NULL, NULL, "search.find"},
   {NULL,             NULL, NULL, "search.next"},

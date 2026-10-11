@@ -79,10 +79,14 @@ int editor_buffer_dialog(void) {
       if (ev.type == MOUSE_WHEEL_UP) widget_list_move(&widgets[0], -3);
       else if (ev.type == MOUSE_WHEEL_DOWN) widget_list_move(&widgets[0], 3);
       else if (ev.type == MOUSE_PRESS && ev.button == MOUSE_BUTTON_LEFT) {
+        /* A click on a row chooses it, as in the palette and unlike the Open
+         * dialog: there a click has more to do -- a directory to walk into, a
+         * file to look at before opening -- and here there is nothing to do with
+         * a buffer but show it. */
         int k = ev.y - (lp->y + 1 + widgets[0].y);
         if (k >= 0 && k < widgets[0].h && widgets[0].top + k < buf_count()) {
-          widgets[0].sel = widgets[0].top + k;
-          widget_list_clamp(&widgets[0]);
+          chosen = widgets[0].top + k;
+          break;
         }
       }
       continue;

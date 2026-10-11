@@ -1050,7 +1050,8 @@ A clean session quits at once.
 
 `Ctrl-B`, or **Go → Buffers…**, lists every open buffer, with `*` marking the
 unsaved ones. Up and Down move, Enter shows the chosen buffer, Esc leaves things
-as they were.
+as they were. A click on a buffer shows it at once, and the wheel scrolls the
+list.
 
 ### Crashes
 

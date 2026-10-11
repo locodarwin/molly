@@ -55,8 +55,8 @@ passes on it: the pty stage includes the fixed quit test, and six goldens (the G
 menu and the palette, which gained `Buffers…`) were regenerated after the feature
 commit, which had left them stale. The counts in the table below predate this feature. Both dialogs' mouse paths
 were tested and both added to `make test-oom` on 2026-10-11;
-a click in the buffer list only selects, as in the Open
-dialog, where in the palette it chooses -- the two lists still disagree.
+a click in the buffer list now chooses, as the palette's does
+(Shawn's call); the Open dialog's click still only selects, on purpose.
 
 **Nothing else is in flight.** The drop-down's height is done end to end, in the arc
 this repo keeps: `803c5fe` the geometry and the scroll with no menu changed,

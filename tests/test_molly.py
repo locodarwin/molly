@@ -2812,14 +2812,12 @@ def test_buffers(tmpdir):
     # click there is a click outside it.
     b_row = find([a, b], ["\x02"], b)
     check("the buffer list draws the second buffer", b_row is not None, True)
-    out = go([a, b], ["\x02"] + click(b_row) + ["\r"])
-    check("a click selects a row, and Enter shows it",
+    # A click chooses, as in the palette. The release lands after the dialog
+    # has gone, on the text, which is the case worth seeing survive.
+    out = go([a, b], ["\x02"] + click(b_row))
+    check("a click on a row shows that buffer",
           "[2/2]" in status_row(out), True)
-    # A click only selects, as it does in the Open dialog: the list stays up
-    # until Enter. Esc after the click proves nothing was chosen by it.
-    out = go([a, b], ["\x02"] + click(b_row) + ["\x1b"])
-    check("the click alone chooses nothing",
-          "[1/2]" in status_row(out), True)
+    check("and closes the list", "Buffers" in "\n".join(screen_of(out)), False)
     title = find([a, b], ["\x02"], "Buffers")
     out = go([a, b], ["\x02"] + click(title) + ["\r"])
     check("a click on the frame moves no selection",

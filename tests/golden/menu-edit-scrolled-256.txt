@@ -1,5 +1,5 @@
 --- screen ---
- File  Edit  Search  View  G
+ F Edit S V G W H
 ┌─────────────────────────▴┐
 │  Dedent        Shift-Tab │
 │  Tabs to spa             │
@@ -25,7 +25,7 @@ g.gggggggggggggggggggggggggg
 RRRRRRRRRRRRRRRRRRRRRRRRRRRR
 
 --- colors ---
-1: 0-5 252/235  6-11 234/110  12-27 252/235
+1: 0-1 252/235  2-7 234/110  8-27 252/235
 2: 0-27 245/238
 3: 0-0 245/238  1-26 252/238  27-27 245/238
 4: 0-0 245/238  1-26 252/238  27-27 245/238
@@ -36,7 +36,7 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRR
 9: 0-27 245/238
 10: 0-0 8/-  2-27 240/234
 --- modifiers ---
-1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u
+1: 1-1 u  3-3 u  8-8 u  10-10 u  12-12 u  14-14 u  16-16 u
 3: 3-3 u
 4: 4-4 u
 5: 7-7 u

@@ -1765,6 +1765,49 @@ def test_mouse(tmpdir):
           .startswith("Xline1"), True)
 
 
+def test_menu_band(tmpdir):
+    """A band too narrow for its titles closes its gaps, then goes to letters.
+
+    menu.c's own tests sweep the layout over every width; what a pty shows is
+    that the letters are the keys and the click targets they look like, and that
+    the open menu's name comes back in full over its drop-down.
+    """
+    print("\nmenu band: narrow terminals keep every title")
+
+    path = os.path.join(tmpdir, "band.txt")
+    with open(path, "w") as fh:
+        fh.write("alpha\n")
+
+    def screen(keys, cols):
+        scr = Screen(14, cols)
+        scr.feed(run([MOLLY, path], list(keys), rows=14, cols=cols))
+        return scr
+
+    check("at 40 columns the gaps close and Help stays",
+          screen([], 40).text()[0].rstrip(),
+          " File Edit Search View Go Window Help")
+    scr = screen([], 30)
+    check("at 30 every title is its letter", scr.text()[0].rstrip(),
+          " F E S V G W H")
+    check("and every letter is underlined, as the mnemonic it is",
+          scr.mod_rows()[0], "1: 1-1 u  3-3 u  5-5 u  7-7 u  9-9 u  11-11 u  13-13 u")
+    scr = screen(["\x1bw"], 30)
+    check("the open menu is written out", scr.text()[0].rstrip(),
+          " F E S V G Window H")
+    check("over its own items", "Split" in scr.text()[2], True)
+    scr = screen(["\x1bw", "\x1b[C"], 30)
+    check("Right moves to Help, which takes the name",
+          scr.text()[0].rstrip(), " F E S V G W Help")
+    # Help's letter is column 13 (1-based 14): the cell a user would click.
+    scr = screen(["\x1b[<0;14;1M", "\x1b[<0;14;1m"], 30)
+    check("a click on a letter opens its menu", scr.text()[0].rstrip(),
+          " F E S V G W Help")
+    check("the right one", "Keyboard help" in scr.text()[2], True)
+    scr = screen(["\x1b[<0;8;1M", "\x1b[<0;8;1m"], 30)
+    check("and so does a click on View's V", scr.text()[0].rstrip(),
+          " F E S View G W H")
+
+
 def test_menu(tmpdir):
     print("\nmenu bar: built from the command table, reached by key and by mouse")
 
@@ -4687,6 +4730,7 @@ def main():
         test_input_decoding(tmpdir)
         test_mouse(tmpdir)
         test_menu(tmpdir)
+        test_menu_band(tmpdir)
         test_prompt_field(tmpdir)
         test_palette(tmpdir)
         test_command_table(tmpdir)

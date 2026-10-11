@@ -1,5 +1,5 @@
 --- screen ---
- File  Edit  Search  Vie
+ F E S View G W H
 ┌──────────────────────┐
 │  Comman   Ctrl-Space │
 ├──────────────────────┤
@@ -37,7 +37,7 @@ g.gggggggggggggggggggggg
 RRRRRRRRRRRRRRRRRRRRRRRR
 
 --- colors ---
-1: 0-19 7/0  20-23 15/4
+1: 0-5 7/0  6-11 15/4  12-23 7/0
 2: 0-23 7/8
 3: 0-0 7/8  1-22 15/4  23-23 7/8
 4: 0-23 7/8
@@ -54,7 +54,7 @@ RRRRRRRRRRRRRRRRRRRRRRRR
 15: 0-23 7/8
 16: 0-0 8/-  2-23 8/0
 --- modifiers ---
-1: 1-1 u  7-7 u  13-13 u  21-21 u
+1: 1-1 u  3-3 u  5-5 u  7-7 u  12-12 u  14-14 u  16-16 u
 3: 3-3 u
 5: 3-3 u
 6: 3-3 u

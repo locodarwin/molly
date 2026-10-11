@@ -1,5 +1,5 @@
 --- screen ---
- File  Edit  Search  View  Go
+ F E Search V G W H
 ┌────────────────────────────┐
 │  Find…              Ctrl-F │
 │  Find next              F3 │
@@ -29,7 +29,7 @@ g.gggggggggggggggggggggggggggg
 RRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 
 --- colors ---
-1: 0-11 7/0  12-19 15/4  20-29 7/0
+1: 0-3 7/0  4-11 15/4  12-29 7/0
 2: 0-29 7/8
 3: 0-0 7/8  1-28 15/4  29-29 7/8
 4: 0-0 7/8  1-28 0/8  29-29 7/8
@@ -42,7 +42,7 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 11: 0-29 7/8
 12: 0-0 8/-  2-29 8/0
 --- modifiers ---
-1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u
+1: 1-1 u  3-3 u  5-5 u  12-12 u  14-14 u  16-16 u  18-18 u
 3: 3-3 u
 6: 9-9 u
 7: 5-5 u

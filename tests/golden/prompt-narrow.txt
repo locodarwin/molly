@@ -1,5 +1,5 @@
 --- screen ---
- File  Edit  Search
+ F E S V G W H
 alpha
 beta
 gamma
@@ -21,6 +21,6 @@ RRRRRRRRRRRRRRRRRRRR
 5: 0-0 8/-
 6: 0-0 8/-
 --- modifiers ---
-1: 1-1 u  7-7 u  13-13 u
+1: 1-1 u  3-3 u  5-5 u  7-7 u  9-9 u  11-11 u  13-13 u
 --- cursor ---
 row 8 col 20 visible 1

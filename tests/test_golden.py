@@ -209,6 +209,14 @@ def main():
           files={"sample.txt": THREE_LINES})
     # Hidden, the band gives its row back to the text; opened while hidden, it draws
     # over the first line rather than reflowing the screen.
+    # A band narrower than its seven titles: first the gaps close, then each
+    # title becomes its letter, and the open one is written out over its menu.
+    check("menu-band-squeezed", [], rows=8, cols=40, files={"sample.txt": THREE_LINES})
+    check("menu-band-letters", [], rows=8, cols=30, files={"sample.txt": THREE_LINES})
+    check("menu-band-letters-open", ["\x1bs"], rows=12, cols=30,
+          files={"sample.txt": THREE_LINES})
+    check("menu-band-letters-open-256", ["\x1bs"], rows=12, cols=30,
+          files={"sample.txt": THREE_LINES}, env={"TERM": "xterm-256color"})
     check("menu-bar-hidden", ["\x1bv", "m"], rows=16, cols=64,
           files={"sample.txt": THREE_LINES})
     check("menu-bar-hidden-open", ["\x1bv", "m", "\x1b[21~"], rows=16, cols=64,

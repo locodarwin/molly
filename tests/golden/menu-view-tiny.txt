@@ -1,5 +1,5 @@
 --- screen ---
- File  Edit  Searc
+ F E S View G W H
 ┌────────────────┐
 │  Command palet │
 ├────────────────┤
@@ -37,7 +37,7 @@ g.gggggggggggggggg
 RRRRRRRRRRRRRRRRRR
 
 --- colors ---
-1: 0-17 7/0
+1: 0-5 7/0  6-11 15/4  12-17 7/0
 2: 0-17 7/8
 3: 0-0 7/8  1-16 15/4  17-17 7/8
 4: 0-17 7/8
@@ -54,7 +54,7 @@ RRRRRRRRRRRRRRRRRR
 15: 0-17 7/8
 16: 0-0 8/-  2-17 8/0
 --- modifiers ---
-1: 1-1 u  7-7 u  13-13 u
+1: 1-1 u  3-3 u  5-5 u  7-7 u  12-12 u  14-14 u  16-16 u
 3: 3-3 u
 5: 3-3 u
 6: 3-3 u

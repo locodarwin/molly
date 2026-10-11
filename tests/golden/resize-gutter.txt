@@ -1,5 +1,5 @@
 --- screen ---
- File  Edit  Search  View  Go  Windo
+ F E S V G W H
 1 │ alpha
 2 │ beta
 3 │ gamma
@@ -42,6 +42,6 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 11: 0-4 8/-
 12: 0-4 8/-
 --- modifiers ---
-1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u
+1: 1-1 u  3-3 u  5-5 u  7-7 u  9-9 u  11-11 u  13-13 u
 --- cursor ---
 row 2 col 5 visible 1

@@ -1,5 +1,5 @@
 --- screen ---
- File  Edit
+ F E S V G W
 日本語 text
 
 tabbed
@@ -25,6 +25,6 @@ RRRRRRRRRRRR
 7: 0-0 8/-
 8: 0-0 8/-
 --- modifiers ---
-1: 1-1 u  7-7 u
+1: 1-1 u  3-3 u  5-5 u  7-7 u  9-9 u  11-11 u
 --- cursor ---
 row 2 col 1 visible 1

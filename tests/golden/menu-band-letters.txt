@@ -1,0 +1,26 @@
+--- screen ---
+ F E S V G W H
+alpha
+beta
+gamma
+~
+~
+sample.txt - 3 lines
+HELP: Ctrl-S = save | Ctrl-Q =
+--- attrs ---
+gggggggggggggggggggggggggggggg
+
+
+
+g
+g
+RRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-29 7/0
+5: 0-0 8/-
+6: 0-0 8/-
+--- modifiers ---
+1: 1-1 u  3-3 u  5-5 u  7-7 u  9-9 u  11-11 u  13-13 u
+--- cursor ---
+row 2 col 1 visible 1

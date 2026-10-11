@@ -1,5 +1,5 @@
 --- screen ---
- File  Edit  Search  View
+ F E S V Go W H
 ┌────────────────────────┐
 │  Go to lin      Ctrl-G │
 ├────────────────────────┤
@@ -25,7 +25,7 @@ g
 RRRRRRRRRRRRRRRRRRRRRRRRRR
 
 --- colors ---
-1: 0-25 7/0
+1: 0-7 7/0  8-11 15/4  12-25 7/0
 2: 0-25 7/8
 3: 0-0 7/8  1-24 15/4  25-25 7/8
 4: 0-25 7/8
@@ -36,7 +36,7 @@ RRRRRRRRRRRRRRRRRRRRRRRRRR
 9: 0-0 8/-  2-25 8/0
 10: 0-0 8/-
 --- modifiers ---
-1: 1-1 u  7-7 u  13-13 u  21-21 u
+1: 1-1 u  3-3 u  5-5 u  7-7 u  9-9 u  12-12 u  14-14 u
 3: 3-3 u
 7: 3-3 u
 --- cursor ---

@@ -1,5 +1,5 @@
 --- screen ---
- File  Edit  Search  View  Go  Window  H
+ File Edit Search View Go Window Help
 # A heading long enough to have to wrap
 somewhere
 
@@ -39,7 +39,7 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 11: 0-22 3/-
 12: 0-2 3/-
 --- modifiers ---
-1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u  39-39 u
+1: 1-1 u  6-6 u  11-11 u  18-18 u  23-23 u  26-26 u  33-33 u
 2: 0-39 b
 3: 0-8 b
 --- cursor ---

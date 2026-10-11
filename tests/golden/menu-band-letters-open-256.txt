@@ -1,0 +1,44 @@
+--- screen ---
+ F E Search V G W H
+┌────────────────────────────┐
+│  Find…              Ctrl-F │
+│  Find next              F3 │
+│  Find previous    Shift-F3 │
+│  Match case                │
+│  Regular expres      Alt-R │
+├────────────────────────────┤
+└───────────────────────────▾┘
+~
+sample.txt - 3 lines
+HELP: Ctrl-S = save | Ctrl-Q =
+--- attrs ---
+gggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggg
+RRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-3 252/235  4-11 234/110  12-29 252/235
+2: 0-29 245/238
+3: 0-0 245/238  1-28 234/110  29-29 245/238
+4: 0-0 245/238  1-28 243/238  29-29 245/238
+5: 0-0 245/238  1-28 243/238  29-29 245/238
+6: 0-0 245/238  1-28 252/238  29-29 245/238
+7: 0-0 245/238  1-28 252/238  29-29 245/238
+8: 0-29 245/238
+9: 0-29 245/238
+10: 0-0 8/-  2-29 240/234
+--- modifiers ---
+1: 1-1 u  3-3 u  5-5 u  12-12 u  14-14 u  16-16 u  18-18 u
+3: 3-3 u
+6: 9-9 u
+7: 5-5 u
+--- cursor ---
+row 2 col 1 visible 0

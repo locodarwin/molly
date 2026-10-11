@@ -952,6 +952,7 @@ void init_editor(void);
 
 /* menu.c */
 int menu_bar_mouse(const struct layer *self, const struct mouse_event *ev);
+int menu_band_layout(int width, int open, int *col, int *cols);
 int menu_count(void);
 /* A drop-down's own height and its scroll position: arithmetic over row numbers
  * and item counts, with no screen in it, so the cases that only appear on a

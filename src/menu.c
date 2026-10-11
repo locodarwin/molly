@@ -119,9 +119,9 @@ static const struct menu menus[] = {
 
 #define NMENUS COUNT(menus)
 
-/* Columns before the first title, and between titles. */
+/* Columns before the first title. The gap between titles is the band's to
+ * choose; see menu_band_layout(). */
 #define BAR_PAD 1
-#define TITLE_GAP 1
 
 /* Two columns at the left of every item for a tick, so a menu's labels line up
  * whether or not anything in it is checkable. */
@@ -166,32 +166,85 @@ static int item_is_enabled(const struct menu *m, int i) {
 
 /* --- the band ------------------------------------------------------------- */
 
+/* Where each title goes in a band `width` columns wide, with menu `open` open
+ * (-1 for none): col[i] is its first column and cols[i] how many it shows.
+ *
+ * Seven titles need 43 columns at the band's two-space gaps, and narrower than
+ * that the band used to lose its tail -- Help went first, still on Alt-H but
+ * nowhere on screen. Dropping titles is the wrong answer because each one is
+ * also the letter that opens it, so instead the band gives up space in the
+ * order it matters least: the gaps go to one column, then every title becomes
+ * its mnemonic letter, which is still the key that opens it. The open menu keeps
+ * its whole name when that fits, because a column of items under a lone "W" is
+ * the one place the letter does not say enough.
+ *
+ * Returns which of those four it chose, 0 to 3, for the tests. Below about
+ * fourteen columns even the letters clip, which is a terminal nobody edits in. */
+static int menu_title_cols(int i, int letters, int open) {
+  if (letters && i != open) return 1;
+  return utf8_str_cols(menus[i].title);
+}
+
+int menu_band_layout(int width, int open, int *col, int *cols) {
+  int mode, i;
+  for (mode = 0; mode < 4; mode++) {
+    int letters = mode >= 2;
+    int gap = mode == 0 ? 2 : 1;
+    int keep = mode == 2 ? open : -1;
+    int need = BAR_PAD - gap;
+    if (mode == 2 && open < 0) continue;
+    for (i = 0; i < NMENUS; i++) need += gap + menu_title_cols(i, letters, keep);
+    if (need <= width || mode == 3) {
+      int x = BAR_PAD;
+      for (i = 0; i < NMENUS; i++) {
+        col[i] = x;
+        cols[i] = menu_title_cols(i, letters, keep);
+        x += cols[i] + gap;
+      }
+      return mode;
+    }
+  }
+  return 3;  /* not reached */
+}
+
+/* Draw title i in `cols` columns: the whole word, or only its mnemonic letter. */
+static void band_title(int y, int i, int x, int cols) {
+  const char *t = menus[i].title;
+  int mn = menus[i].mnemonic >= 0 ? menus[i].mnemonic : 0;
+  int off = utf8_col_to_byte(t, mn);
+  int nb;
+  int whole = cols == utf8_str_cols(t);
+
+  grid_role(i == open_menu ? ROLE_MENUBAR_SELECTED : ROLE_MENUBAR);
+  /* A column of padding each side, so the highlight is a block around the word
+   * rather than a tight box against the letters. */
+  grid_fill(y, x - 1, cols + 2, ' ');
+  (void)utf8_char_cols(t, (int)strlen(t), off, &nb);
+  if (whole) grid_puts(y, x, t, (int)strlen(t));
+  if (menus[i].mnemonic >= 0) {
+    grid_attrs(ATTR_UNDERLINE);
+    grid_puts(y, whole ? x + mn : x, t + off, nb);
+    grid_attrs(0);
+  } else if (!whole) {
+    grid_puts(y, x, t + off, nb);
+  }
+}
+
 void menu_bar_draw(const struct layer *self) {
-  int i, x = self->x + BAR_PAD;
+  int i;
 
   grid_role(ROLE_MENUBAR);
   grid_fill(self->y, self->x, self->w, ' ');
 
+  menu_band_layout(self->w, open_menu, title_col, title_cols);
   for (i = 0; i < NMENUS; i++) {
-    int cols = utf8_str_cols(menus[i].title);
-    int selected = (i == open_menu);
-    title_col[i] = x;
-    title_cols[i] = cols;
-    grid_role(selected ? ROLE_MENUBAR_SELECTED : ROLE_MENUBAR);
-    /* A column of padding each side, so the highlight is a block around the word
-     * rather than a tight box against the letters. */
-    grid_fill(self->y, x - 1, cols + 2, ' ');
-    grid_puts(self->y, x, menus[i].title, (int)strlen(menus[i].title));
-    if (menus[i].mnemonic >= 0) {
-      int off = utf8_col_to_byte(menus[i].title, menus[i].mnemonic);
-      int nb;
-      (void)utf8_char_cols(menus[i].title, (int)strlen(menus[i].title), off, &nb);
-      grid_attrs(ATTR_UNDERLINE);
-      grid_puts(self->y, x + menus[i].mnemonic, menus[i].title + off, nb);
-      grid_attrs(0);
-    }
-    x += cols + 1 + TITLE_GAP;
+    title_col[i] += self->x;
+    if (i != open_menu) band_title(self->y, i, title_col[i], title_cols[i]);
   }
+  /* The open one last: at one-column gaps its highlight's padding is the
+   * neighbours' gap, and drawn first it would be painted over. */
+  if (open_menu >= 0 && open_menu < NMENUS)
+    band_title(self->y, open_menu, title_col[open_menu], title_cols[open_menu]);
   grid_role(ROLE_TEXT);
 }
 
@@ -570,6 +623,10 @@ static void dropdown_layout(struct layer *l) {
   int wx, wy, ww, wh, last_row;
 
   if (w > grid_cols()) w = grid_cols();
+  /* Worked out again rather than read from the last draw: in the narrowest
+   * band the open title is the one written out in full, so switching menus
+   * moves the titles, and the band has not been drawn with the new one yet. */
+  menu_band_layout(grid_cols(), open_menu, title_col, title_cols);
   l->x = title_col[open_menu] - 1;
   if (l->x + w > grid_cols()) l->x = grid_cols() - w;
   if (l->x < 0) l->x = 0;

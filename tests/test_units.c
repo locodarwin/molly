@@ -3209,6 +3209,45 @@ static void test_wrap(void) {
  * reached the bottom laid its drop shadow over the status bar. Both only happen
  * on a terminal short enough that nobody runs one, which is exactly why they
  * are tested here rather than left to a snapshot. */
+/* The band at every width: which of its four layouts it picks, and that what
+ * it picks is all on screen, in order, and never overlapping. */
+static void test_menu_band(void) {
+  int col[16], cols[16], n = menu_count(), w, open, i, bad;
+
+  printf("\nmenu: the band gives up gaps, then words, never titles\n");
+  check("80 columns is the full band", menu_band_layout(80, -1, col, cols), 0);
+  check("and Help starts where it always did", col[n - 1], 39);
+  check("43 is the narrowest full band", menu_band_layout(43, -1, col, cols), 0);
+  check("42 closes the gaps to one", menu_band_layout(42, -1, col, cols), 1);
+  check("which ends Help at the last column of 37",
+        col[n - 1] + cols[n - 1], 37);
+  check("37 is the narrowest squeezed band", menu_band_layout(37, -1, col, cols), 1);
+  check("36 is letters", menu_band_layout(36, -1, col, cols), 3);
+  check("each one column", cols[0] + cols[n - 1], 2);
+  check("a column apart", col[1] - col[0], 2);
+  check("with a menu open, it keeps its name",
+        menu_band_layout(36, n - 2, col, cols), 2);
+  check("in full", cols[n - 2], 6);
+  check("and Help moves along for it", col[n - 1], 18);
+  check("too narrow for even that, it is a letter too",
+        menu_band_layout(16, n - 2, col, cols), 3);
+  check("the squeezed band does not need letters for an open menu",
+        menu_band_layout(40, 0, col, cols), 1);
+
+  bad = 0;
+  for (w = 14; w <= 120; w++) {
+    for (open = -1; open < n; open++) {
+      menu_band_layout(w, open, col, cols);
+      if (col[0] < 1) bad++;
+      for (i = 0; i < n; i++) {
+        if (cols[i] < 1 || col[i] + cols[i] > w) bad++;
+        if (i > 0 && col[i] <= col[i - 1] + cols[i - 1]) bad++;
+      }
+    }
+  }
+  check("from 14 columns up, every title is on screen and none overlap", bad, 0);
+}
+
 static void test_menu_dropdown(void) {
   printf("\nmenu drop-downs: how tall a box may be, and which items it shows\n");
 
@@ -3515,6 +3554,7 @@ int main(void) {
   test_indent_block();
   test_indent_convert();
   test_wrap();
+  test_menu_band();
   test_menu_dropdown();
   test_buflist();
   test_filter();

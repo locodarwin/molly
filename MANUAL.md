@@ -504,9 +504,32 @@ in indented twice.
 - **It does not reindent a block to match its surroundings.** `Tab` and
   `Shift-Tab` move the rows you selected by one level each; nothing works out
   what level they *should* be at, which is the same missing grammar.
-- **Nothing rewrites what is already there.** Turning `insert spaces` on does
-  not convert a file's existing tabs, and turning it off does not convert its
-  spaces. Molly changes what the next keystroke writes, never what it finds.
+- **A setting does not rewrite what is already there.** Turning
+  `insert spaces` on does not convert a file's existing tabs, and turning it
+  off does not convert its spaces: a setting changes what the next keystroke
+  writes, never what it finds. Converting is a command of its own, below.
+
+### Converting a file's indentation
+
+`Edit ▸ Tabs to spaces` and `Edit ▸ Spaces to tabs` rewrite the indentation
+that is already there — of the lines a selection touches, or of the whole file
+when nothing is selected. Both are in the command palette too, and neither has
+a key, since it is something you do to a file once rather than as you type.
+
+They change **only the indentation**, the whitespace in front of the first
+character on each line. A tab after that is left alone, because it may be part
+of the content: a column in a tab-separated file, or the tab a Makefile recipe
+needs. A line that is nothing but whitespace is left alone too.
+
+The width used is the tab width in force for the file, so the text does not
+move on screen. Converting to tabs puts in as many tabs as there are whole tab
+stops and keeps whatever is left over as spaces — ten columns at a width of
+eight is a tab and two spaces — so alignment that was not on a tab stop stays
+where it was. The conversion is one undo step, and the selection is kept, so
+converting a block and then converting it back is two commands.
+
+To have `Tab` go on writing the same kind of indentation afterwards, set
+[`insert spaces`](#configuration) to match.
 
 ## Moving Around
 

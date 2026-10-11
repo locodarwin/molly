@@ -15,7 +15,16 @@ This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
 
-**Latest:** find in files (`Ctrl-E`, Search → Find in files…), the first of
+**Latest:** converting indentation (Edit → Tabs to spaces / Spaces to tabs),
+the second of the three. `indent_convert()` rewrites only the leading
+whitespace — a tab after the text may be data — of the selected rows or the
+whole file, at the tab width in force, as one undo step. Chosen without asking:
+no chord (it is a once-per-file thing, like Save settings), not on the help
+screen (an unbound command there reads as a blank key), and a converted-to-tabs
+width that is not a whole number of stops keeps its remainder as spaces rather
+than rounding. Pty checks are `test_indent_convert`.
+
+**Before that:** find in files (`Ctrl-E`, Search → Find in files…), the first of
 three items Shawn asked for together on 2026-10-11 ("all the medium items":
 this, converting indentation, and an Options dialog). `src/grep.c` builds one
 `sh` line — `git grep` in a work tree, `grep -r` outside — and runs it through
@@ -419,11 +428,10 @@ scroll.
 
 ### Found along the way, not fixed
 
-- **Nothing converts a file's existing indentation.** `[editor] insert spaces`
-  changes what the next `Tab` writes and nothing else, so a file of tabs stays
-  a file of tabs. Converting one — retab, or "indent with spaces" over a
-  selection — is a separate editing command nobody has asked for yet, and the
-  manual says plainly that molly does not do it.
+- ~~**Nothing converts a file's existing indentation.**~~ **Done** on
+  2026-10-11: Edit → Tabs to spaces / Spaces to tabs, `indent_convert()` in
+  `src/indent.c`. Leading whitespace only, at the file's tab width, remainder
+  kept as spaces when converting to tabs.
 - ~~**The quit warning is a message, not a list.**~~ **Fixed** by the quit
   dialog (`c3dd3b4`), which lists every unsaved buffer.
 - ~~**The help screen's columns truncate on bytes, not columns.**~~ **Fixed**

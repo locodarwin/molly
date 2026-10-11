@@ -93,6 +93,7 @@ Everything olly does, molly does. These all work today:
   the old one, `Tab` types a tab or spaces to the next tab stop, and the tab
   width, the choice of character and auto-indent are each settable for
   everything in `[editor]` or for one language in `[syntax <name>]`.
+  `Edit ▸ Tabs to spaces` and `Spaces to tabs` convert what a file already has.
 - **Filter through a shell command**: `Alt-|` pipes the selection — or the whole
   file — through `sort`, `jq`, `fmt`, `black` or any pipeline, and replaces it
   with the output. One undo step, with a timeout, an output cap and `Esc` to

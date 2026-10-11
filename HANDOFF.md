@@ -15,7 +15,18 @@ This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
 
-**Latest:** converting indentation (Edit → Tabs to spaces / Spaces to tabs),
+**Latest:** the Options dialog (View → Options…), the last of the three.
+`src/optdlg.c` lists config.c's table — section, name, value, and the selected
+row's comment — and changes go through `setting_set()`, so a setting added to
+the table appears here untouched. Changes are live; Enter keeps them, Ctrl-S
+also writes mollyrc, Esc restores every value the dialog opened with. Numbers
+step with ←/→ or take typed digits, applied on leaving the row. Chosen without
+asking: no chord, View menu rather than a new Options menu, and Esc as
+undo-all rather than close-keeping. The three indentation defaults still marked
+"chosen without asking" are now one Space each in this dialog. Pty checks are
+`test_options`; goldens `options` at both depths and `options-narrow`.
+
+**Before that:** converting indentation (Edit → Tabs to spaces / Spaces to tabs),
 the second of the three. `indent_convert()` rewrites only the leading
 whitespace — a tab after the text may be data — of the selected rows or the
 whole file, at the tab width in force, as one undo step. Chosen without asking:
@@ -451,10 +462,9 @@ scroll.
   a layer rather than a layout decision, and unlike the drop-downs there is no
   obvious right answer: the titles are also the Alt mnemonics, so dropping one
   hides a menu. `tests/golden/resize-gutter.txt` is the snapshot that shows it.
-- **An Options dialog has nothing to do but exist.** Write-back, the settings
-  table and the live-value read-back are all in place and all exercised by
-  `View ▸ Save Settings`; the dialog is now presentation over a finished
-  mechanism.
+- ~~**An Options dialog has nothing to do but exist.**~~ **Done** on
+  2026-10-11: View → Options…, `src/optdlg.c`, over `setting_info()`,
+  `setting_live()` and `setting_set()` in `config.c`.
 
 Everything else — the cheap Edit/View/Navigate items, soft wrap,
 the integrated terminal, LSP, big-file handling — is argued in `ROADMAP.md` §5

@@ -101,7 +101,8 @@ Everything olly does, molly does. These all work today:
   command's output at the cursor instead — `date`, `git rev-parse HEAD`.
 - **Keyboard reference built in**: press `F1` at any time.
 - **Configurable**: `~/.config/molly/mollyrc` holds the settings and the
-  keymap, and `View ▸ Save Settings` writes it for you.
+  keymap; `View ▸ Options…` changes any setting in place, and
+  `View ▸ Save Settings` writes the file for you.
 - No runtime dependencies. Compiles with any C11 compiler.
 
 ## Install

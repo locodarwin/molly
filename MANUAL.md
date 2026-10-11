@@ -1583,9 +1583,35 @@ Every warning names the line it came from. `MOLLY_DUMP_CONFIG` prints the whole
 parsed configuration and every warning without starting the editor, which is
 the quickest way to check a file you have just edited.
 
+### The Options dialog
+
+**View ▸ Options…** lists every setting in the table above on one screen, with
+its section, its current value, and — for the one selected — what it does:
+
+     editor  tab width                         8
+     editor  insert spaces                   off
+     shell   timeout                          10
+    [editor] columns a tab character occupies (1-16)
+
+| Key | Action |
+| --- | --- |
+| `↑` `↓` `PgUp` `PgDn` | Choose a setting |
+| `Space`, or a click | Turn an on/off setting on or off |
+| `←` `→` | Turn it off / on, or step a number down / up |
+| Digits | Type a number; `Backspace` takes one back |
+| `Enter` | Keep the changes for this session |
+| `Ctrl-S` | Keep them and save them to `mollyrc` |
+| `Esc` | Put back everything as it was when the dialog opened |
+
+Changes take effect as you make them, so you can see what a setting does before
+deciding to keep it; `Esc` undoes all of them at once. A typed number takes
+effect when you move off it or close the dialog, and is held to the setting's
+range. The dialog changes the `[editor]` defaults: a `[syntax <name>]`
+override in your `mollyrc` still wins for that filetype.
+
 ### Saving settings
 
-**File ▸ Save Settings** writes the current state of everything in the table
+**View ▸ Save Settings** writes the current state of everything in the table
 above to `mollyrc`, creating `~/.config/molly/` if it is not there. So the way
 to keep a setting is to change it the usual way — `Ctrl-U` for the gutter,
 `View ▸ Menu Bar` for the bar, the Find dialog's checkboxes — and then save.

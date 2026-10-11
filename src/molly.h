@@ -928,6 +928,11 @@ void init_editor(void);
 /* menu.c */
 int menu_bar_mouse(const struct layer *self, const struct mouse_event *ev);
 int menu_count(void);
+/* A drop-down's own height and its scroll position: arithmetic over row numbers
+ * and item counts, with no screen in it, so the cases that only appear on a
+ * terminal too short for a menu are provable without one. */
+int menu_dropdown_height(int nitems, int top, int last_row);
+int menu_dropdown_scroll(int nitems, int vis, int sel, int off);
 int menu_for_mnemonic(int ch);
 int menu_mnemonic_char(int i);
 int menu_is_open(void);

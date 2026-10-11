@@ -2837,6 +2837,77 @@ static void test_wrap(void) {
   V.wrap = 0;
 }
 
+/* The drop-down's own arithmetic, which is where the menu's height used to go
+ * wrong: it was clamped to the grid rather than to the text area, so a menu
+ * taller than the screen lost its tail off the bottom and a menu that merely
+ * reached the bottom laid its drop shadow over the status bar. Both only happen
+ * on a terminal short enough that nobody runs one, which is exactly why they
+ * are tested here rather than left to a snapshot. */
+static void test_menu_dropdown(void) {
+  printf("\nmenu drop-downs: how tall a box may be, and which items it shows\n");
+
+  /* Room to spare: the box is the list plus its two borders. The Edit menu's
+   * eleven items on an 80x24 terminal, where the last row a box may touch is
+   * 21 -- the text area's last, with the status row and the message bar under
+   * it. */
+  check("a menu with room is the list plus two borders",
+        menu_dropdown_height(11, 1, 21), 13);
+  /* The row after the box belongs to the drop shadow, which restyles what is
+   * under it: that is the one row of slack the height leaves, and the reason
+   * a menu ending exactly on the last text row is still one too tall. */
+  check("a box ending one row short of the limit fits",
+        menu_dropdown_height(11, 1, 14), 13);
+  check("one ending on the limit itself does not",
+        menu_dropdown_height(11, 1, 13), 12);
+  check("the shadow's row is the slack", menu_dropdown_height(5, 1, 5), 4);
+  /* Shorter than any menu, where the floor wins: a border, one item, a border.
+   * The shadow does land on the chrome there, and one item with an arrow under
+   * it still says more than an empty box. */
+  check("a screen with no room floors at three rows",
+        menu_dropdown_height(11, 1, 2), 3);
+  check("and so does one with none at all",
+        menu_dropdown_height(11, 1, 0), 3);
+
+  /* Nothing to scroll: the window starts at the top whatever it is handed. */
+  check("a list that fits starts at the top",
+        menu_dropdown_scroll(11, 11, 7, 0), 0);
+  check("and is pulled back there from any offset",
+        menu_dropdown_scroll(11, 11, 7, 5), 0);
+  /* The window moves only as far as it must, which is what makes walking the
+   * list with the arrow keys scroll a row at a time rather than a boxful. */
+  check("an item below the window pushes it down one",
+        menu_dropdown_scroll(11, 6, 6, 0), 1);
+  check("an item inside it moves nothing",
+        menu_dropdown_scroll(11, 6, 4, 3), 3);
+  check("an item above it pulls it up to that item",
+        menu_dropdown_scroll(11, 6, 2, 4), 2);
+  check("the last item puts the window at the end",
+        menu_dropdown_scroll(11, 6, 10, 0), 5);
+  /* A terminal can get taller as well as shorter, and an offset left from the
+   * shorter box would leave the bottom rows of the taller one empty. */
+  check("a taller box gives the rows back",
+        menu_dropdown_scroll(11, 10, 10, 5), 1);
+  check("a list shorter than the box cannot scroll",
+        menu_dropdown_scroll(3, 6, 1, 2), 0);
+
+  /* Over every shape a terminal and a menu can make between them, rather than
+   * the handful above: the selected item is always drawn, and the window never
+   * hangs off the end of a list long enough to fill it. */
+  {
+    int n, vis, sel, off, unseen = 0, hanging = 0;
+    for (n = 1; n <= 16; n++)
+      for (vis = 1; vis <= 16; vis++)
+        for (sel = 0; sel < n; sel++)
+          for (off = -2; off <= 18; off++) {
+            int got = menu_dropdown_scroll(n, vis, sel, off);
+            if (sel < got || sel >= got + vis) unseen++;
+            if (got < 0 || (got > 0 && got + vis > n)) hanging++;
+          }
+    check("the selection is inside the window at every size", unseen, 0);
+    check("and the window never hangs off the end", hanging, 0);
+  }
+}
+
 static void test_cursors_list(void) {
   printf("\ncursors: the list stays ordered and distinct\n");
 
@@ -3076,6 +3147,7 @@ int main(void) {
   test_cursors_more();
   test_indent_block();
   test_wrap();
+  test_menu_dropdown();
   test_buflist();
   test_filter();
   test_windows();

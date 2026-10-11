@@ -387,27 +387,43 @@ def main():
     # captured it either -- the same gap the View menu had, and the reason both
     # are here now: Cut and Copy are greyed out without a selection, so the
     # dimming and the separator placement are only provable by snapshot.
-    check("menu-edit", ["\x1be"], rows=16, cols=64,
+    # Twenty rows rather than sixteen, which is what this menu now needs to show
+    # itself whole: a drop-down is clamped to the text area, the row after the
+    # box belongs to its drop shadow, and thirteen rows of Edit menu plus a
+    # shadow do not fit above a sixteen-row terminal's status bar. The snapshot
+    # is here for the dimming and the separators, so it is given the room; what
+    # the menu does when it has less is menu-edit-narrow, below.
+    check("menu-edit", ["\x1be"], rows=20, cols=64,
           files={"sample.txt": THREE_LINES})
     # With a selection, so the three items that depend on one are live. This is
     # the pair menu-search-disabled / menu-search-enabled already makes for the
     # Search menu.
     check("menu-edit-selected", ["\x1b[1;2C", "\x1b[1;2C", "\x1be"],
-          rows=16, cols=64, files={"sample.txt": THREE_LINES})
+          rows=20, cols=64, files={"sample.txt": THREE_LINES})
     # Narrower *and* shorter than the drop-down. The Edit menu needs thirteen
     # rows -- two borders, eight items and three separators -- and this screen
-    # has twelve with the band taking one of them, so the last item and the
-    # bottom border are cut off by the grid. The snapshot is here to make that
-    # visible rather than to approve of it: see the note in HANDOFF.md, which
-    # has the arithmetic. It became reachable when the filter joined this menu;
-    # before that the Edit menu fit this screen exactly.
+    # has eight to give it: the band takes one, the status row and the message
+    # bar take two, and the drop shadow's row is the slack the height leaves.
+    # So the box is eight rows, the list is scrolled to keep the highlighted
+    # item in it, and an arrow sits on the border at each end that has more
+    # behind it. This used to be the snapshot of the box being clamped to the
+    # *grid* instead: the tail was drawn off the bottom where it could be
+    # selected but not seen, and the shadow dimmed half the status bar.
     check("menu-edit-narrow", ["\x1be"], rows=12, cols=28,
           files={"sample.txt": THREE_LINES})
+    # The same menu scrolled to its end, which is the other arrow state: End
+    # takes the highlight to the last item, the box follows it down, and the
+    # bottom arrow goes out because there is nothing behind it any more.
+    check("menu-edit-scrolled", ["\x1be", "\x1b[F"], rows=12, cols=28,
+          files={"sample.txt": THREE_LINES})
+    check("menu-edit-scrolled-256", ["\x1be", "\x1b[F"], rows=12, cols=28,
+          files={"sample.txt": THREE_LINES},
+          env={"TERM": "xterm-256color"})
     # The same menu on a screen tall enough for it, which is what the narrow
     # width alone was meant to be testing.
-    check("menu-edit-short-cols", ["\x1be"], rows=16, cols=28,
+    check("menu-edit-short-cols", ["\x1be"], rows=20, cols=28,
           files={"sample.txt": THREE_LINES})
-    check("menu-edit-256", ["\x1be"], rows=16, cols=64,
+    check("menu-edit-256", ["\x1be"], rows=20, cols=64,
           files={"sample.txt": THREE_LINES},
           env={"TERM": "xterm-256color"})
 
@@ -434,9 +450,13 @@ def main():
     # first item read "Command pCtrl-Space". What these pin now is a gap between
     # the two columns at every width, and a column of padding before the right
     # border so a squeezed label does not look like it has broken out of the box.
-    check("menu-view-narrow", ["\x1bv"], rows=12, cols=24,
+    # Eighteen rows rather than twelve, for the reason menu-edit was given
+    # twenty: these two are about the *width*, and on twelve rows the box is
+    # scrolled as well as squeezed, which proves the squeeze over four items
+    # instead of ten. menu-edit-narrow is where a short screen is the subject.
+    check("menu-view-narrow", ["\x1bv"], rows=18, cols=24,
           files={"sample.txt": THREE_LINES})
-    check("menu-view-tiny", ["\x1bv"], rows=12, cols=18,
+    check("menu-view-tiny", ["\x1bv"], rows=18, cols=18,
           files={"sample.txt": THREE_LINES})
     # The Search menu is the one with the widest shortcut (Shift-F3), so it is
     # where the squeeze starts earliest.

@@ -1,16 +1,16 @@
 --- screen ---
  File  Edit  Search  View  G
-┌──────────────────────────┐
-│  Undo             Ctrl-Z │
-│  Redo             Ctrl-Y │
-├──────────────────────────┤
+┌─────────────────────────▴┐
 │  Cut              Ctrl-X │
 │  Copy             Ctrl-C │
 │  Paste            Ctrl-V │
 ├──────────────────────────┤
 │  Select all       Ctrl-A │
 │  Select line      Ctrl-L │
-├──────────────────────────┤
+└─────────────────────────▾┘
+~
+sample.txt - 3 lines
+HELP: Ctrl-S = save | Ctrl-Q
 --- attrs ---
 gggggggggggggggggggggggggggg
 gggggggggggggggggggggggggggg
@@ -21,25 +21,23 @@ gggggggggggggggggggggggggggg
 gggggggggggggggggggggggggggg
 gggggggggggggggggggggggggggg
 gggggggggggggggggggggggggggg
-gggggggggggggggggggggggggggg
-gggggggggggggggggggggggggggg
-gggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggg
+RRRRRRRRRRRRRRRRRRRRRRRRRRRR
+
 --- colors ---
 1: 0-5 7/0  6-11 15/4  12-27 7/0
 2: 0-27 7/8
 3: 0-0 7/8  1-26 0/8  27-27 7/8
 4: 0-0 7/8  1-26 0/8  27-27 7/8
-5: 0-27 7/8
-6: 0-0 7/8  1-26 0/8  27-27 7/8
-7: 0-0 7/8  1-26 0/8  27-27 7/8
-8: 0-0 7/8  1-26 0/8  27-27 7/8
+5: 0-0 7/8  1-26 0/8  27-27 7/8
+6: 0-27 7/8
+7: 0-0 7/8  1-26 15/4  27-27 7/8
+8: 0-0 7/8  1-26 15/8  27-27 7/8
 9: 0-27 7/8
-10: 0-0 7/8  1-26 15/4  27-27 7/8
-11: 0-0 7/8  1-26 15/8  27-27 7/8
-12: 0-27 7/8
+10: 0-0 8/-  2-27 8/0
 --- modifiers ---
 1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u
-10: 3-3 u
-11: 10-10 u
+7: 3-3 u
+8: 10-10 u
 --- cursor ---
 row 2 col 1 visible 0

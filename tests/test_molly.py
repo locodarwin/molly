@@ -1843,6 +1843,46 @@ def test_menu(tmpdir):
           msg(["\x1bv", 0.2, "\x1b[<0;2;8M", "\x1b[<0;2;8m",
                0.3]).startswith("HELP:"), True)
 
+    # A drop-down's height is the text area's, not the grid's. The Edit menu is
+    # the tall one -- eight items and three separators, thirteen rows with its
+    # borders -- and a twelve-row terminal has eight to give it. What used to
+    # happen there was that the box was clamped to the grid, so its tail was
+    # drawn off the bottom and could be selected but not seen, and the drop
+    # shadow landed on the status bar and dimmed the half of it that says which
+    # line the cursor is on.
+    short = screen(["\x1be"], rows=12, cols=28)
+    # The status row by its attributes rather than its text: at 28 columns the
+    # text is the head of a temp-directory path, which says nothing, while the
+    # whole row being reverse-video says it is the status bar and not a box.
+    check("a menu taller than the screen leaves the status bar alone",
+          short.attr_rows()[10], "R" * 28)
+    check("and the message line under it",
+          short.text()[11].startswith("HELP:"), True)
+    check("the box closes two rows above the status row",
+          short.text()[8].startswith("\u2514"), True)
+    # The items that do not fit are scrolled rather than lost, with an arrow on
+    # the border at each end that has more behind it -- the shape the tab bar
+    # uses for the same problem.
+    check("an arrow says there is more below", "\u25be" in short.text()[8], True)
+    check("the tail is not drawn", "Filter" in "\n".join(short.text()), False)
+    tail = screen(["\x1be", END], rows=12, cols=28)
+    check("End scrolls the last item into the box",
+          "Filter through" in tail.text()[7], True)
+    check("the arrow moves to the top border", "\u25b4" in tail.text()[1], True)
+    check("and goes from the bottom one, which has nothing behind it",
+          "\u25be" in tail.text()[8], False)
+    check("the item scrolled to is the one Enter runs",
+          any("Filter through:" in l
+              for l in screen(["\x1be", END, "\r"], rows=12, cols=28).text()),
+          True)
+    # The arrows are clickable, and a click shows the row past the edge it
+    # points at: the \u25be sits on the bottom border row, two columns in from the
+    # right-hand corner -- row 9, column 27 as the terminal counts them.
+    clicked = screen(["\x1be", 0.2, "\x1b[<0;27;9M", "\x1b[<0;27;9m"],
+                     rows=12, cols=28)
+    check("clicking the arrow scrolls the list",
+          "Filter through" in clicked.text()[7], True)
+
     # Hiding the band gives its row back to the text; opening a menu while it is
     # hidden draws the band over the first line instead of reflowing the screen.
     hidden = screen(["\x1bv", "m"])

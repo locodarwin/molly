@@ -129,6 +129,12 @@ static const struct menu menus[] = {
  * bar's draw function, which has to know which title to light up. */
 static int open_menu = -1;
 static int open_item = 0;
+/* First item the open drop-down shows, and how many it has room for. Both are
+ * worked out by the layout pass and read by the draw and the mouse, the way
+ * title_col is -- a click has to be resolved against the rows that were drawn,
+ * not against the list. */
+static int open_off = 0;
+static int open_vis = 0;
 
 int menu_is_open(void) {
   return open_menu >= 0;
@@ -281,6 +287,49 @@ static void dropdown_cols(const struct menu *m, int w, struct dd_cols *out) {
   out->accel = 0;
 }
 
+/* How tall a drop-down may be, in rows, for `nitems` items opening at row
+ * `top` with `last_row` the last row it may touch.
+ *
+ * Three things have to fit inside that and did not before: the two border rows,
+ * an item row each, and the drop shadow -- which lands on the row *after* the
+ * box and restyles what is under it rather than painting over it, so a shadow
+ * that reaches the status bar dims the half of it that says which line the
+ * cursor is on. Hence `last_row - top` rather than `last_row - top + 1`: the
+ * row the shadow needs is the one row of slack this leaves.
+ *
+ * The floor is three rows -- a border, one item, a border -- because a terminal
+ * can always be made shorter than any menu, and a box with nothing in it says
+ * less than a box with one item in it and an arrow saying there are more. On a
+ * screen that short the floor wins and the shadow does land on the chrome;
+ * everything above about eight rows is the case this is written for. */
+int menu_dropdown_height(int nitems, int top, int last_row) {
+  int h = nitems + 2;
+  int room = last_row - top;
+  if (h > room) h = room;
+  if (h < 3) h = 3;
+  return h;
+}
+
+/* Which item a drop-down showing `vis` of `nitems` starts at, given that `sel`
+ * is selected and that it was showing from `off`.
+ *
+ * The same shape as the tab bar's scroll and the text area's: a window that
+ * moves only as far as it must to keep the selected item inside it, so walking
+ * down a menu with the arrow keys scrolls a row at a time at the bottom rather
+ * than jumping by a boxful, and walking back up retraces it. The clamp comes
+ * first because the terminal can get taller as well as shorter: `vis` grows,
+ * and an offset that was right for the old height would leave the last rows of
+ * the box empty with items above them scrolled away. */
+int menu_dropdown_scroll(int nitems, int vis, int sel, int off) {
+  int max = nitems - vis;
+  if (max < 0) max = 0;
+  if (off > max) off = max;
+  if (off < 0) off = 0;
+  if (sel < off) off = sel;
+  if (sel >= off + vis) off = sel - vis + 1;
+  return off;
+}
+
 #define BOX_TL "\xe2\x94\x8c"
 #define BOX_TR "\xe2\x94\x90"
 #define BOX_BL "\xe2\x94\x94"
@@ -290,12 +339,20 @@ static void dropdown_cols(const struct menu *m, int w, struct dd_cols *out) {
 #define BOX_LT "\xe2\x94\x9c"
 #define BOX_RT "\xe2\x94\xa4"
 #define TICK   "\xe2\x9c\x93"   /* U+2713 */
+/* The arrows that say there are items off the top or the bottom, on the border
+ * row at that end. The small triangles rather than the big ones, to sit in a
+ * line of box drawing the way the tab bar's ‹ and › sit in a row of tabs. */
+#define MENU_UP_ARROW   "\xe2\x96\xb4"   /* U+25B4 */
+#define MENU_DOWN_ARROW "\xe2\x96\xbe"   /* U+25BE */
+/* Columns in from the right-hand border that an arrow sits at, so the pair
+ * lines up vertically like the thumb of a scroll bar. */
+#define MENU_ARROW_INSET 2
 
 static void dropdown_draw(const struct layer *self) {
   const struct menu *m = &menus[open_menu];
   int x = self->x, y = self->y, w = self->w, h = self->h;
   struct dd_cols cols;
-  int i;
+  int i, k;
 
   dropdown_cols(m, w, &cols);
 
@@ -320,27 +377,30 @@ static void dropdown_draw(const struct layer *self) {
     grid_puts(y + i, x + w - 1, BOX_V, 3);
   }
 
-  for (i = 0; i < m->nitems; i++) {
-    int row = y + 1 + i;
+  for (k = 0; k < open_vis; k++) {
+    int item = open_off + k;
+    int row = y + 1 + k;
     const struct command *c;
     unsigned char role;
     int enabled, checked;
     char accel[32];
 
-    if (item_is_separator(m, i)) {
-      int k;
+    if (item >= m->nitems) break;
+
+    if (item_is_separator(m, item)) {
+      int bx;
       grid_role(ROLE_MENU_FRAME);
       grid_puts(row, x, BOX_LT, 3);
-      for (k = 1; k < w - 1; k++) grid_puts(row, x + k, BOX_H, 3);
+      for (bx = 1; bx < w - 1; bx++) grid_puts(row, x + bx, BOX_H, 3);
       grid_puts(row, x + w - 1, BOX_RT, 3);
       continue;
     }
 
-    c = item_cmd(m, i);
+    c = item_cmd(m, item);
     if (c == NULL) continue;
-    enabled = item_is_enabled(m, i);
+    enabled = item_is_enabled(m, item);
     checked = (c->checked != NULL && c->checked());
-    role = (i == open_item) ? ROLE_MENU_SELECTED
+    role = (item == open_item) ? ROLE_MENU_SELECTED
                             : (enabled ? ROLE_MENU : ROLE_MENU_DISABLED);
 
     grid_role(role);
@@ -356,13 +416,13 @@ static void dropdown_draw(const struct layer *self) {
        * multiply out. A disabled item gets no underline: there is nothing to press.
        * Nor does a letter the truncation above cut off: underlining a column the
        * label no longer reaches would mark whatever the shortcut put there. */
-      if (m->items[i].mnemonic >= 0 && enabled &&
-          m->items[i].mnemonic < shown_cols) {
-        int off = utf8_col_to_byte(label, m->items[i].mnemonic);
+      if (m->items[item].mnemonic >= 0 && enabled &&
+          m->items[item].mnemonic < shown_cols) {
+        int off = utf8_col_to_byte(label, m->items[item].mnemonic);
         int nb;
         (void)utf8_char_cols(label, (int)strlen(label), off, &nb);
         grid_attrs(ATTR_UNDERLINE);
-        grid_puts(row, x + 1 + CHECK_COLS + m->items[i].mnemonic, label + off, nb);
+        grid_puts(row, x + 1 + CHECK_COLS + m->items[item].mnemonic, label + off, nb);
         grid_attrs(0);
       }
     }
@@ -370,10 +430,24 @@ static void dropdown_draw(const struct layer *self) {
       int aw = utf8_str_cols(accel);
       grid_role(role);
       /* One column of padding before the border, so the shortcut does not look
-       * wedged against it. */
+       * wedged against item. */
       grid_puts(row, x + w - 2 - aw, accel, (int)strlen(accel));
     }
   }
+
+  /* The arrows sit *in* the border, so they go on after the frame has drawn its
+   * run of BOX_H over the row. Nothing says how far the list is scrolled beyond
+   * their presence: a menu is short enough that "there is more below" is the
+   * whole of what a reader needs, and a proportional thumb in a column one cell
+   * wide would be inventing precision it cannot show. */
+  if (w > MENU_ARROW_INSET) {
+    grid_role(ROLE_MENU_FRAME);
+    if (open_off > 0)
+      grid_puts(y, x + w - MENU_ARROW_INSET, MENU_UP_ARROW, 3);
+    if (open_off + open_vis < m->nitems)
+      grid_puts(y + h - 1, x + w - MENU_ARROW_INSET, MENU_DOWN_ARROW, 3);
+  }
+
   grid_role(ROLE_TEXT);
   grid_cursor_hide();
 }
@@ -400,11 +474,41 @@ static int first_selectable(const struct menu *m) {
   return 0;
 }
 
+/* Open a different menu from the one that is open: its first usable item, and
+ * its list scrolled back to the top. All four ways of moving along the bar go
+ * through here -- the arrow keys, an Alt letter, a click on another title and
+ * the first open -- because a menu that remembered the last one's scroll offset
+ * would open showing its middle. */
+static void menu_switch_to(int index) {
+  open_menu = index;
+  open_item = first_selectable(&menus[index]);
+  open_off = 0;
+}
+
 static int last_selectable(const struct menu *m) {
   int i;
   for (i = m->nitems - 1; i >= 0; i--)
     if (!item_is_separator(m, i) && item_is_enabled(m, i)) return i;
   return 0;
+}
+
+/* Show the row past the edge the clicked arrow points at.
+ *
+ * The window follows the selection and nothing else, so moving the selection is
+ * the only thing that can move the window: this takes it to the first item past
+ * the edge, which scrolls by exactly the one row the arrow is offering. A
+ * selection sitting in the middle of the box therefore jumps to the edge, which
+ * is the right answer for a click that means "show me what is down there". If
+ * there is nothing selectable past the edge -- a tail of separators or of
+ * unavailable items -- nothing moves, and the arrow stays lit because the items
+ * are still there to be scrolled to. */
+static void menu_step_past_edge(const struct menu *m, int dir) {
+  int from = (dir > 0) ? open_off + open_vis - 1 : open_off;
+  int to;
+  if (from < 0) from = 0;
+  if (from >= m->nitems) from = m->nitems - 1;
+  to = next_selectable(m, from, dir);
+  if (to != from) open_item = to;
 }
 
 /* The item whose mnemonic is `ch`, or -1. Case-insensitive, and only among items
@@ -452,20 +556,46 @@ int menu_for_mnemonic(int ch) {
   return -1;
 }
 
-/* Lay the drop-down out under its title, kept on screen at the right-hand edge. */
+/* Lay the drop-down out under its title, kept on screen at the right-hand edge
+ * and inside the text area at the bottom. */
 static void dropdown_layout(struct layer *l) {
   const struct menu *m = &menus[open_menu];
   int w = menu_width(m);
-  int h = m->nitems + 2;
+  int h;
   int bar_y = E.menubar ? 0 : 0;   /* the band's row either way; see menu_open */
+  int wx, wy, ww, wh, last_row;
 
   if (w > grid_cols()) w = grid_cols();
   l->x = title_col[open_menu] - 1;
   if (l->x + w > grid_cols()) l->x = grid_cols() - w;
   if (l->x < 0) l->x = 0;
   l->y = bar_y + 1;
-  if (l->y + h > grid_rows()) h = grid_rows() - l->y;
-  if (h < 3) h = 3;
+
+  /* The bottom is the text area's, not the grid's. The last row of the window
+   * area is a window's status row -- every window carries its own -- and under
+   * that is the message bar, so the last row a drop-down may touch is two above
+   * the end of the area. The window area is itself floored at a minimum height,
+   * which on a terminal shorter than that is taller than the grid, so the grid
+   * still has the last word. */
+  screen_window_area(&wx, &wy, &ww, &wh);
+  (void)wx; (void)ww;
+  last_row = wy + wh - 2;
+  if (last_row > grid_rows() - 2) last_row = grid_rows() - 2;
+
+  h = menu_dropdown_height(m->nitems, l->y, last_row);
+  open_vis = h - 2;
+  open_off = menu_dropdown_scroll(m->nitems, open_vis, open_item, open_off);
+  /* A separator as the first visible row reads as a second border rather than
+   * as a divider between two groups, since the group above it is scrolled away.
+   * So the window starts one later when it can: only while scrolled, only if
+   * the row it gives up is not the last the box can show, and only if the
+   * selection stays inside -- a tidier top is not worth hiding the highlight.
+   * The scroll above is the thing that keeps the selection visible; this is
+   * allowed to prefer a row and never to overrule it. */
+  if (open_off > 0 && open_off < m->nitems - open_vis &&
+      item_is_separator(m, open_off) && open_item > open_off)
+    open_off++;
+
   l->w = w;
   l->h = h;
   l->draw = dropdown_draw;
@@ -490,8 +620,7 @@ int menu_open(int index) {
   li = layer_push(&dd);
   if (li < 0) return 0;
 
-  open_menu = index;
-  open_item = first_selectable(&menus[open_menu]);
+  menu_switch_to(index);
 
   for (;;) {
     const struct menu *m = &menus[open_menu];
@@ -519,8 +648,7 @@ int menu_open(int index) {
         for (i = 0; i < NMENUS; i++) {
           if (ev.y == lp->y - 1 && ev.x >= title_col[i] - 1 &&
               ev.x <= title_col[i] + title_cols[i]) {
-            open_menu = i;
-            open_item = first_selectable(&menus[open_menu]);
+            menu_switch_to(i);
             break;
           }
         }
@@ -529,11 +657,25 @@ int menu_open(int index) {
             ev.y < lp->y || ev.y >= lp->y + lp->h) {
           break;   /* a click outside closes, as it does everywhere else */
         }
-        if (k >= 0 && k < m->nitems && !item_is_separator(m, k) &&
-            item_is_enabled(m, k)) {
-          open_item = k;
+        /* On a border row with an arrow on it: one step that way, which is what
+         * makes the next item appear. The tab bar's arrows work the same, and
+         * for the same reason -- the arrow means "there are more", and a
+         * boxful would lose the user's place. */
+        if (ev.type == MOUSE_PRESS && k == -1 && open_off > 0) {
+          menu_step_past_edge(m, -1);
+          continue;
+        }
+        if (ev.type == MOUSE_PRESS && k == open_vis &&
+            open_off + open_vis < m->nitems) {
+          menu_step_past_edge(m, 1);
+          continue;
+        }
+        if (k >= 0 && k < open_vis && open_off + k < m->nitems &&
+            !item_is_separator(m, open_off + k) &&
+            item_is_enabled(m, open_off + k)) {
+          open_item = open_off + k;
           if (ev.type == MOUSE_PRESS) {
-            chosen = item_cmd(m, k);
+            chosen = item_cmd(m, open_item);
             break;
           }
         }
@@ -543,11 +685,9 @@ int menu_open(int index) {
 
     if (c == '\x1b' || c == CTRL_KEY('c')) break;
     if (c == ARROW_LEFT) {
-      open_menu = (open_menu > 0) ? open_menu - 1 : NMENUS - 1;
-      open_item = first_selectable(&menus[open_menu]);
+      menu_switch_to((open_menu > 0) ? open_menu - 1 : NMENUS - 1);
     } else if (c == ARROW_RIGHT) {
-      open_menu = (open_menu + 1) % NMENUS;
-      open_item = first_selectable(&menus[open_menu]);
+      menu_switch_to((open_menu + 1) % NMENUS);
     } else if (c == ARROW_UP) {
       open_item = next_selectable(m, open_item, -1);
     } else if (c == ARROW_DOWN) {
@@ -563,10 +703,7 @@ int menu_open(int index) {
       }
     } else if (IS_ALT_KEY(c)) {
       int mi = menu_for_mnemonic(ALT_KEY_CHAR(c));
-      if (mi >= 0) {
-        open_menu = mi;
-        open_item = first_selectable(&menus[open_menu]);
-      }
+      if (mi >= 0) menu_switch_to(mi);
     } else if (c >= 0x20 && c < 0x7f) {
       int k = item_for_mnemonic(m, c);
       if (k >= 0) {

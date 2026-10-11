@@ -13,6 +13,10 @@
 ├──────────────────────────┤
 │  Filter through    Alt-| │
 └──────────────────────────┘
+~
+~
+~
+~
 sample.txt - 3 lines
 HELP: Ctrl-S = save | Ctrl-Q
 --- attrs ---
@@ -30,7 +34,11 @@ gggggggggggggggggggggggggggg
 gggggggggggggggggggggggggggg
 gggggggggggggggggggggggggggg
 gggggggggggggggggggggggggggg
-RRgggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggg
+g
+g
+g
+RRRRRRRRRRRRRRRRRRRRRRRRRRRR
 
 --- colors ---
 1: 0-5 7/0  6-11 15/4  12-27 7/0
@@ -47,7 +55,10 @@ RRgggggggggggggggggggggggggg
 12: 0-27 7/8
 13: 0-0 7/8  1-26 15/8  27-27 7/8
 14: 0-27 7/8
-15: 2-27 8/0
+15: 0-0 8/-  2-27 8/0
+16: 0-0 8/-
+17: 0-0 8/-
+18: 0-0 8/-
 --- modifiers ---
 1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u
 10: 3-3 u

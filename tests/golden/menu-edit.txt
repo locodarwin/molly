@@ -13,6 +13,10 @@ gamma │  Redo              Ctrl-Y │
 ~     ├───────────────────────────┤
 ~     │  Filter through…    Alt-| │
 ~     └───────────────────────────┘
+~
+~
+~
+~
 sample.txt - 3 lines                                 Ln 1, Col 1
 HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | F3 = next
 --- attrs ---
@@ -30,7 +34,11 @@ g.....ggggggggggggggggggggggggggggggg
 g.....ggggggggggggggggggggggggggggggg
 g.....ggggggggggggggggggggggggggggggg
 g.....ggggggggggggggggggggggggggggggg
-RRRRRRRRgggggggggggggggggggggggggggggRRRRRRRRRRRRRRRRRRRRRRRRRRR
+g.......ggggggggggggggggggggggggggggg
+g
+g
+g
+RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 
 --- colors ---
 1: 0-5 7/0  6-11 15/4  12-63 7/0
@@ -47,7 +55,10 @@ RRRRRRRRgggggggggggggggggggggggggggggRRRRRRRRRRRRRRRRRRRRRRRRRRR
 12: 0-0 8/-  6-34 7/8  35-36 8/0
 13: 0-0 8/-  6-6 7/8  7-33 15/8  34-34 7/8  35-36 8/0
 14: 0-0 8/-  6-34 7/8  35-36 8/0
-15: 8-36 8/0
+15: 0-0 8/-  8-36 8/0
+16: 0-0 8/-
+17: 0-0 8/-
+18: 0-0 8/-
 --- modifiers ---
 1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u  39-39 u
 10: 9-9 u

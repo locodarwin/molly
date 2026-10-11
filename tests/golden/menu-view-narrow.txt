@@ -10,7 +10,13 @@
 ├──────────────────────┤
 │  Redraw           F5 │
 ├──────────────────────┤
-└  Save s              ┘
+│  Save s              │
+└──────────────────────┘
+~
+~
+~
+sample.txt - 3 lines
+HELP: Ctrl-S = save | Ct
 --- attrs ---
 gggggggggggggggggggggggg
 gggggggggggggggggggggggg
@@ -24,6 +30,12 @@ gggggggggggggggggggggggg
 gggggggggggggggggggggggg
 gggggggggggggggggggggggg
 gggggggggggggggggggggggg
+gggggggggggggggggggggggg
+g.gggggggggggggggggggggg
+g
+g
+RRRRRRRRRRRRRRRRRRRRRRRR
+
 --- colors ---
 1: 0-19 7/0  20-23 15/4
 2: 0-23 7/8
@@ -37,6 +49,10 @@ gggggggggggggggggggggggg
 10: 0-0 7/8  1-22 15/8  23-23 7/8
 11: 0-23 7/8
 12: 0-0 7/8  1-22 15/8  23-23 7/8
+13: 0-23 7/8
+14: 0-0 8/-  2-23 8/0
+15: 0-0 8/-
+16: 0-0 8/-
 --- modifiers ---
 1: 1-1 u  7-7 u  13-13 u  21-21 u
 3: 3-3 u

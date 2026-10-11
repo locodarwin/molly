@@ -6,15 +6,16 @@ behaves like a GUI one: menu bar, mouse, dialogs, splits, discoverable
 everything. Molly aims at that experience in C, keeping olly's zero runtime
 dependencies and instant start.
 
-**Current state:** Phases 0 and 1 are done, and Phase 2 has ten features
+**Current state:** Phases 0 and 1 are done, and Phase 2 has eleven features
 finished end to end: regular-expression search and replace on an engine of its
 own, a configuration file with a remappable keymap, the CUA keys, any number of
 files open at once, a tab bar, syntax highlighting for seven languages, window
-splits, a shell filter, indentation that follows the filetype, and multiple
-cursors. Molly is 14,792 lines across `src/molly.h` and thirty-one `.c` files,
-with a menu bar, a mouse, framed dialogs that have buttons and checkboxes on
-them, a command palette and a keyboard reference generated from its own command
-table. 1,426 checks pass (676 pty, 93 golden screens, 657 unit) plus 4,040 fuzz
+splits, a shell filter, indentation that follows the filetype, multiple cursors
+and soft wrap. Molly is 15,760 lines across `src/molly.h` and thirty-two `.c`
+files, with a menu bar whose drop-downs scroll when the terminal is shorter than
+they are, a mouse, framed dialogs that have buttons and checkboxes on them, a
+command palette and a keyboard reference generated from its own command table.
+1,642 checks pass (750 pty, 105 golden screens, 787 unit) plus 4,040 fuzz
 cases and the allocation-failure sweep, and every file is clean under `-Wall -Wextra -Wpedantic -Wshadow`. Still `0.1.0-dev`: the *interface* is
 molly's own, and the *editing* features are mostly still olly's.
 
@@ -354,6 +355,15 @@ and the help screen and prompt behind it.
 - Built from the command table, so a menu entry is a command name and nothing is
   written down twice. Menus list only what exists; placeholders that never work
   are worse than absence.
+- **Landed later, a drop-down that handles its own height** (2026-10-10). The box
+  is measured against the *text area* rather than the grid, with the row after it
+  reserved for its drop shadow, so neither the box nor the shadow can reach the
+  status bar; what does not fit is scrolled, with an arrow in the border at each
+  end that has more behind it and a window that moves only as far as it must to
+  keep the highlighted item in view. The two sums are pure and unit-tested.
+  Before it, a menu taller than the screen lost its tail off the bottom -- where
+  the keyboard could still select an item nobody could see -- and that is what
+  had kept three commands out of two menus.
 
 ### 8. The command palette — **done**
 
@@ -836,12 +846,13 @@ molly runs under `ulimit -v` and has to reach a clean quit.
   previous tab stop, taking whole characters off the end of the whitespace run
   nearest the text — so six spaces at a width of four leave four, and a tab that
   straddles the stop comes off whole and undershoots.
-- **Not in the Edit menu, and that is arithmetic rather than taste.** That menu
-  already needs thirteen rows; a drop-down paints over the status bar once it is
-  taller than the text area, and two more items plus a separator make that
-  reachable on a sixteen-row screen rather than a twelve-row one. The two
-  commands are in the palette, the help screen and the keymap, and they go in
-  the menu when a drop-down can handle its own height.
+- **In the Edit menu since 2026-10-10**, in a group of their own between the
+  commands that work on a selection and the filter. They were out of it for a
+  while on arithmetic rather than taste -- two more items plus a separator put
+  that drop-down's shadow on the status bar of a sixteen-row screen -- and what
+  let them in was the drop-down learning to scroll and to measure itself against
+  the text area. The menu is molly's tallest at sixteen rows, which is now a
+  question of how much of it a short terminal shows at once.
 - **Still to come:** the Options dialogs, which are what write-back was built
   for. Nothing here knows a language: the new line copies the old line's
   indentation and does not add a level after a brace, and nothing works out what
@@ -909,8 +920,8 @@ molly runs under `ulimit -v` and has to reach a clean quit.
   identity. A slice is expressed in *render columns*, not byte offsets, because
   wrapping happens where glyphs land on screen.
 - **Landed, the feature:** `Alt-Z`, the palette, the help screen, and
-  `soft wrap` in `[view]` — every view of the command table but the View menu,
-  which has no room for it. A line breaks after the last space that fits; the gutter numbers it
+  `soft wrap` in `[view]`. The View menu came a few commits later the same day,
+  once a drop-down could handle its own height. A line breaks after the last space that fits; the gutter numbers it
   once and leaves the continuations' number field blank; `↑`/`↓` walk the rows
   of a long line; a click on a continuation row lands where it looks; and
   nothing about the file changes, so a save writes the bytes that were there.
@@ -1154,8 +1165,9 @@ because it decides the shape of the keymap code. It means:
   less urgent than it looked: `[keys]` in `mollyrc` makes olly's four keys four
   lines, so a named set is a convenience rather than the only way back.
 
-The one thing *not* remappable is the eight Alt-letter menu titles, since those
-are structural to the menu bar.
+The one thing *not* remappable is the Alt-letter menu titles -- seven today, one
+per menu, read off the menu table rather than written down -- since those are
+structural to the menu bar.
 
 ---
 
@@ -1174,7 +1186,7 @@ are structural to the menu bar.
 | A hanging indent on continuations | **No** — a continuation starts at the left edge |
 | `Ctrl-Up`/`Ctrl-Down` with wrap on | **Still file rows.** A column of cursors is about lines of code lining up in the file, and that gesture already keeps the render column rather than the byte offset |
 | Whose setting wrap is | **The window's**, like the gutter and the colours: a split can wrap one half and not the other |
-| Where the toggle lives | **`Alt-Z`, which is VS Code's**, plus the palette and the help screen — **not the View menu**, whose drop-down would then be exactly as tall as a sixteen-row screen's text area and drop its shadow on the status bar |
+| Where the toggle lives | **`Alt-Z`, which is VS Code's**, plus the palette, the help screen and — since the drop-down learned its own height — **View ▸ Soft wrap**, ticked when it is on |
 | What a wrapped frame costs | **A walk of the file's rows**, 0.24 ms at 100,000 of them; the row count is cached per row and the walk keeps one step of itself |
 | Multi-cursor | **Done.** Cursors run in document order so one replace-range rule fixes up the rest |
 | What Ctrl-D matches | **Literal text, case-sensitively**, and not through `search.c` -- the Find dialog's modes must not change what it finds |
@@ -1198,8 +1210,8 @@ are structural to the menu bar.
 | What a dedent takes off | **Back to the previous tab stop**, whole characters off the end of the whitespace run nearest the text; a tab that straddles the stop comes off whole |
 | A blank row inside an indented block | **Left alone** — an indent on nothing is trailing whitespace |
 | When `Backspace` eats a level | **Only in the leading whitespace, and only with more than one character to take** — so a tab-indented file never notices |
-| Where indent and dedent live | **Palette, help screen and keymap, not the Edit menu** — that menu's drop-down already paints over the status bar once it outgrows the text area |
-| What the drop-down's height now blocks | **Three commands in two menus**: indent and dedent in Edit, soft wrap in View. One item's worth of work, three items' worth of value |
+| Where indent and dedent live | **Edit ▸ Indent and Edit ▸ Dedent**, plus the palette, the help screen and the keymap — a group of their own between the selection commands and the filter |
+| What a drop-down does with a short terminal | **Scrolls, inside the text area.** The box and its shadow stay above the status bar, an arrow in the border says there is more that way, and the window moves only as far as the highlight makes it |
 | Skip a match / drop a cursor / all matches | **Alt-D, Alt-U, Alt-A** — a terminal cannot carry `Ctrl-K Ctrl-D`, and `Ctrl-U` was spent on the gutter |
 | Which cursor those three work from | **The one added last**, which after a wrap is not the last one in the file — so a cursor carries the order it was added in |
 

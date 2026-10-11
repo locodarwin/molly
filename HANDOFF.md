@@ -1,10 +1,12 @@
 # Handoff
 
-Written 2026-10-10 and re-measured the same day. `main` and `origin/main` are
-level: everything is committed and pushed, the working tree is clean, nothing
-is half-finished, and CI has been green on every push since the harness fix
-landed. The last work on it was **soft wrap**, which Shawn picked on
-2026-10-10 — the last of the three features the first handoff named — and then
+Written 2026-10-10 and re-measured the same day. Everything is committed and
+the working tree is clean; `main` is **three commits ahead of `origin/main`**
+and CI has not run on them yet. The last work on it was the **menu drop-down's
+height**, which Shawn picked on 2026-10-10 after soft wrap: the box now measures
+itself against the text area and scrolls what will not fit, which let indent,
+dedent and soft wrap into the menus that had been too short for them. Before
+that, soft wrap — the last of the three features the first handoff named — and
 the test harness, whose keystroke flake was diagnosed and closed the same day:
 see "What only CI sees".
 
@@ -12,13 +14,16 @@ This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
 
-**Nothing is in flight.** Soft wrap was the last feature and it is done end to
-end, in the arc this repo keeps: `eaa8626` the display-row map with nothing able
-to turn it on, `500c644` the key, the setting and the three views of the command
-table that have room for it, `bf35a8f` the documentation.
+**Nothing is in flight.** The drop-down's height is done end to end, in the arc
+this repo keeps: `803c5fe` the geometry and the scroll with no menu changed,
+`8a93dec` the three items that were waiting on it, and the documentation commit
+after them. Soft wrap before it went the same way: `eaa8626` the display-row map
+with nothing able to turn it on, `500c644` the key, the setting and the three
+views of the command table that had room for it, `bf35a8f` the documentation.
 
-**The three candidates the first handoff named are all done.** What is left is
-the smaller work under "Next by dependency", none of it confirmed as next — ask
+**The three candidates the first handoff named are all done**, and so is the
+drop-down item that was the best value-to-work ratio left. What is left is the
+smaller work under "Next by dependency", none of it confirmed as next — ask
 before starting any of it. The two biggest things on the whole list are now the
 piece-table buffer rewrite and the integrated terminal, and `ROADMAP.md` has
 the argument for each.
@@ -47,8 +52,8 @@ clean build on 2026-10-10; re-measure before quoting them anywhere):
 
 | | |
 | --- | --- |
-| Source | 15,625 lines, `src/molly.h` plus 32 `.c` files |
-| Checks | 1,611 — 737 pty, 103 golden screens, 771 unit |
+| Source | 15,760 lines, `src/molly.h` plus 32 `.c` files |
+| Checks | 1,642 — 750 pty, 105 golden screens, 787 unit |
 | Fuzz | 4,040 cases per `make test` (40 replace, 4,000 regex, seed 42) |
 | Warnings | clean under `-Wall -Wextra -Wpedantic -Wshadow` from a **clean** build; `regex.c` also under `-Wconversion` |
 | OOM sweep | `make test-oom` green: 142 allocations failed in turn, 130 through `die()`, 12 kept running |
@@ -56,11 +61,12 @@ clean build on 2026-10-10; re-measure before quoting them anywhere):
 
 The gate is `make test`: the pty suite, the golden screens, both fuzzers and
 the unit binary. `make test-oom` is the allocation-failure sweep and needs
-`cc` at runtime; it is not part of `make test`. Green at the last commit:
+`cc` at runtime; it is not part of `make test`. Green at `8a93dec`, the last
+commit to change code:
 
 ```text
-737 passed, 0 failed
-103 passed, 0 failed
+750 passed, 0 failed
+105 passed, 0 failed
 40 cases, 0 failed (seed 42)
 4000 cases, 0 failed (seed 42)
 ```
@@ -71,7 +77,7 @@ every keystroke. That run is what closed the keystroke flake: the binary was
 identical to the green one, so the fault could only be in the harness. See
 "What only CI sees".
 
-Since that fix, CI has returned those four numbers on every push: `a2ccf87` in
+Since that fix, CI has returned its four numbers on every push: `a2ccf87` in
 12m38s and `aa2ad2c` in 12m40s, against 14m31s for the run before it on the
 same molly — the harness no longer waits out a session whose program has
 already exited, which is most of two minutes across 737 of them. Those are also
@@ -81,7 +87,7 @@ answered nothing says about itself, which is the shape the flake had.
 
 The pty suite now takes long enough that `make test` runs past ten minutes on a
 cold build, most of it the pty stage alone — about seventeen minutes of it
-before the harness fix and a couple of minutes less after. That is 737 pty
+before the harness fix and a couple of minutes less after. That is 750 pty
 sessions each with a settle time, not a regression; budget for it rather than
 assuming a hang, and start it in the background rather than waiting on it.
 Its output is block-buffered when redirected to a file, so a log that has not
@@ -172,8 +178,8 @@ Full table in `ROADMAP.md` §7. The ones that bite soonest:
 - **The multi-cursor commands are not in the Edit menu.** They are keyboard
   operations, which is the reason transpose is not there either, and the
   palette and the help screen are both generated from the command table so
-  they find them anyway. It also keeps four rows off the one drop-down that
-  already outgrows a short terminal.
+  they find them anyway. It also keeps four rows off molly's tallest drop-down,
+  which is the first to scroll on a short terminal.
 - **`Enter` inside leading whitespace keeps the text in its column.** Only the
   whitespace behind the cursor is copied and the tail keeps its own, so
   splitting `····alpha` after two spaces leaves `alpha` at column four. The
@@ -182,6 +188,13 @@ Full table in `ROADMAP.md` §7. The ones that bite soonest:
   a second function rather than a change to `editor_insert_newline()` — paste
   and the shell filter both split rows through that one, and text that arrives
   indented must not be indented twice.
+- **A drop-down is measured against the text area, not the grid**, and the row
+  after the box belongs to its drop shadow. So the box and the shadow both stay
+  off the status bar, which is what had kept three commands out of two menus,
+  and a menu with more items than rows scrolls instead of losing its tail. The
+  window follows the highlight and nothing else: that is the whole of the state,
+  and it is why clicking a scroll arrow moves the highlight rather than the
+  view.
 - **A wrapped line breaks after the last space that fits**, and at the window
   edge for a word with no space in it. The space it broke after stays on the row
   above, because the slices of a row have to cover every one of its columns:
@@ -286,6 +299,34 @@ reasoning, and each a small change if Shawn disagrees:
   would move arrow-key behaviour on any row with a tab before the cursor, which
   is why it was not done quietly.
 
+The drop-down's height came with five of the same kind. The first four are in
+`src/menu.c` and none is more than a few lines to change; the fifth is in
+`tests/test_golden.py`:
+
+- **The arrows are `▴` and `▾`, two columns in from the right-hand corner**, in
+  the border row at each end that has more behind it. The small triangles rather
+  than the big ones, to sit in a line of box drawing the way the tab bar's `‹`
+  and `›` sit in a row of tabs; the inset lines the pair up like the thumb of a
+  scroll bar. Nothing says *how far* the list is scrolled.
+- **Clicking an arrow moves the highlight to the first item past that edge**,
+  because the window follows the highlight and nothing else — so a click with
+  the highlight in the middle of the box jumps it to the edge rather than
+  scrolling under it. Scrolling the view independently would mean a second piece
+  of state and a rule for what happens to a highlight it scrolls away from.
+- **A scrolled box starts one item later rather than on a separator**, when the
+  row it gives up is not the last it can show and the highlight stays inside. A
+  divider directly under the top border reads as a second border, the group
+  above it having scrolled away.
+- **Indent and Dedent went between the selection commands and the filter**, in a
+  group of their own, on `I` and `D`; **Soft wrap went under Syntax highlighting**
+  on `W`, beside the other toggles that change how the text is drawn. Both are
+  one line in the item tables.
+- **Nine golden screens moved to taller terminals** — four Edit ones to twenty
+  rows, five View ones to eighteen. They are snapshots of dimming, ticks,
+  separators and the column squeeze, and a sixteen-row screen no longer shows
+  the whole of either menu. What stays at twelve rows is `menu-edit-narrow`
+  and the two `menu-edit-scrolled` ones, which are the short screen on purpose.
+
 ### Next by dependency
 
 All eight of the first handoff's items are done: the config file with the CUA
@@ -321,19 +362,6 @@ commit:
   to LATER rather than doing here. A column of cursors covers most of what
   people reach for it for, and a rectangular selection is a different model:
   every selection in molly is a pair of positions and a rectangle is not.
-- **Put Indent, Dedent and Soft wrap in their menus**, all three held up by the
-  drop-down's height rather than by anything of their own. The Edit menu needs
-  thirteen rows already, and a drop-down paints over the status bar once it is
-  taller than the text area: two items and a separator make that reachable on a
-  sixteen-row screen instead of the twelve-row one the golden documents — and
-  `tests/golden/menu-edit*` are at exactly sixteen. Soft wrap is one item in a
-  View menu that needs twelve, which at sixteen rows makes the box exactly as
-  tall as the text area: it fits, and its drop shadow does not, so it lands on
-  the status bar and dims the half that says which line the cursor is on. No
-  menu's shadow reaches the chrome today. All three commands are in the table,
-  the palette, the help screen and the keymap; the menu is the one view each is
-  missing. See the drop-down item further down — it is one item's work and now
-  three items' worth of value.
 - **Italic for comments.** `ROADMAP.md` said italic would be what a comment
   wants; the colour is doing that work instead, because italic means a fourth
   cell modifier, the SGR for it, and `tests/screen.py` learning to read it.
@@ -357,20 +385,13 @@ commit:
   `%.*s`, so a description with a multibyte character in it can be cut mid
   character. No shipped `.help` string has one, so nothing shows it today;
   `utf8_fit_cols()` is what it wants when one does.
-- **A drop-down taller than the screen loses its tail**, and the filter joining
-  the Edit menu made that reachable. A menu needs two border rows plus one per
-  item and separator: the Edit menu now needs thirteen, so on a terminal shorter
-  than fourteen rows its last item is drawn off the bottom by the grid and
-  cannot be seen — though the keyboard will still select it. Before the filter
-  the Edit menu needed eleven and fit a twelve-row screen exactly.
-  `tests/golden/menu-edit-narrow.txt` is the snapshot of it happening and says
-  so in a comment; `menu-edit-short-cols` is the same menu on a screen that
-  fits it. The fix is the shape the tab bar already has — an offset that keeps
-  the selected item visible — and it is about twenty-five lines in `menu.c`.
-  It also has to clamp the box to the *text area* rather than to the grid, and
-  leave the drop shadow's row inside it: the box covering the status bar is what
-  keeps indent and dedent out of the Edit menu, and the shadow reaching it is
-  what keeps soft wrap out of the View menu.
+- ~~**A drop-down taller than the screen loses its tail.**~~ **Fixed**
+  (`803c5fe`), and it was the twenty-five lines the estimate said, plus the
+  arrows and the mouse. The box is measured against the text area with the
+  shadow's row left inside it, and what does not fit is scrolled.
+  `menu-edit-narrow` is still the snapshot at twelve rows, now of the scroll
+  rather than of the clipping, and `menu-edit-scrolled` is the other arrow
+  state at both colour depths.
 - **The menu band itself still clips**, and the Window menu made it clip
   sooner. Seven titles need 43 columns; below that the tail is cut, so at 36
   columns the bar reads `File  Edit  Search  View  Go  Windo` and Help is gone
@@ -458,6 +479,14 @@ later.
   finds whatever the parent typed at it, and re-runs whatever it can parse.
   Seven interpreters and a `kill -9` later: write the probe to a file and run
   `python3 -I` on it, which is what every test in `tests/` already does.
+- **A pty test that walks a menu by counting `Down` keystrokes breaks when the
+  menu gains an item.** Soft wrap joining the View menu turned six Downs from
+  Save Settings into Redraw, and the failure reads as "saving settings reports
+  where it wrote: want True, got False" with nothing about a menu in it. Worse,
+  the check after it opens the file that was never written, so the suite stops
+  there with a traceback and every later group goes unrun — a second gate run,
+  not a second failure. Press `End` for the last item or its mnemonic for any
+  other, both of which say what they mean.
 - **A local in a pty test can shadow a keystroke.** `tests/test_molly.py` keeps
   the keys as short module-level names — `CUT`, `SAVE`, `HOME`, `END`, `COPY`,
   `PASTE` — so a test-local `CUT = "alpha beta…"` silently turns `[CUT]` from
@@ -772,6 +801,11 @@ These all cost real time in the last session.
   killed it — exit 144 — twice.
 - **Background task output files stay empty until the command completes.**
   Reading one immediately tells you nothing.
+- **A `make test` put in the background with `&` is not a tracked task.** The
+  shell the tool runs detaches it, so the "completed" notification arrives
+  seconds later and describes the launch, not the run — and the run is still
+  going. Have the command echo its exit code into the log and wait on that:
+  `until grep -q '^EXIT' log; do sleep 15; done`.
 - **Check what is still running.** A stale ten-seed fuzz loop ate CPU for about
   thirty-seven minutes unnoticed.
 
@@ -825,5 +859,10 @@ the window's and not the screen's, and **F9** to put it back. `molly src/*.c`
 then **F7** and **Ctrl-PgDn** puts a different file in each half. Resize the
 terminal under a split to watch the cut keep its proportion, and shrink it past
 17 columns to see a split refused rather than drawn.
+For the menus at their new height: open **Alt-E** on a terminal twelve or
+fourteen rows tall and watch the list scroll under the arrows, with the status
+bar still readable under the box; the same menu at 24 rows shows all sixteen of
+its rows at once. **Edit ▸ Indent**, **Edit ▸ Dedent** and **View ▸ Soft wrap**
+are the three items that were waiting for it.
 `MANUAL.md` has the regular-expression syntax table, what is not supported, what
 a search matches against, and the configuration reference.

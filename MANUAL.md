@@ -132,14 +132,14 @@ thirty years use: `Ctrl-A` selects everything, `Ctrl-L` selects the line,
 ## The Menu Bar
 
 The band across the top of the screen is molly's main answer to "what can this
-thing do?". Six menus: **File**, **Edit**, **Search**, **View**, **Go** and
-**Help**. (*Tools* and *Options* come with Phase 2; their `Alt` letters are
-reserved already, so adding them will not move anything.)
+thing do?". Seven menus: **File**, **Edit**, **Search**, **View**, **Go**,
+**Window** and **Help**. (*Tools* and *Options* come later; their `Alt` letters
+are held already, so adding them will not move anything.)
 
 | Key | Action |
 | --- | --- |
 | `F10` | Open the menu bar |
-| `Alt-F` `Alt-E` `Alt-S` `Alt-V` `Alt-G` `Alt-H` | Open that menu directly |
+| `Alt-F` `Alt-E` `Alt-S` `Alt-V` `Alt-G` `Alt-W` `Alt-H` | Open that menu directly |
 | `←` / `→` | Move to the previous / next menu |
 | `↑` / `↓` | Move within the open menu |
 | `Home` / `End` | First / last item |
@@ -147,9 +147,10 @@ reserved already, so adding them will not move anything.)
 | `Enter` | Run the highlighted item |
 | `Esc` | Close without running anything |
 
-Eight letters are reserved on `Alt` — `F E S V G T O H`, the last two held for the
-menus that do not exist yet. **Every other `Alt`+letter is free for commands**,
-which is the point of reserving no more than the titles.
+Nine letters are spoken for on `Alt` — `F E S V G W H`, one for each menu, plus
+`T` and `O` held for the two that do not exist yet. **Every other `Alt`+letter
+is free for commands**, which is the point of reserving no more than the
+titles.
 
 Every entry is built from molly's command table, so a menu cannot drift out of
 step with the editor: the label, the shortcut shown down the right-hand side,
@@ -158,6 +159,18 @@ itself. **An item molly cannot run right now is greyed out, skipped by the
 arrows, and deaf to its own letter** — `Paste` with an empty clipboard, `Find
 Next` before you have searched for anything. Items that toggle something show a
 tick when it is on.
+
+**A menu taller than the screen scrolls.** The Edit menu wants sixteen rows and
+the View one thirteen, which is more than a short terminal has to give. The box
+is kept inside the text area — it never covers the status bar, and neither does
+its drop shadow — and the items that do not fit are scrolled rather than drawn
+off the bottom edge. A small `▴` or `▾` on the border says there is more that
+way; the arrows and `Home`/`End` scroll the list as the highlight reaches the
+end of it, and clicking a `▴` or a `▾` shows the next item past that edge. An
+item's underlined letter runs it whether or not there was room to draw the item,
+so a short terminal never puts a command out of reach. (Below about eight rows
+there is not even room for that: the box keeps a border, one item and a border,
+and takes the status row if it must — one item beats none.)
 
 Running a command from a menu is the same as running it from its key, down to
 the details: choosing **Quit** from the File menu with unsaved changes starts the
@@ -206,6 +219,7 @@ Choosing one says why it cannot run and leaves the palette open.
 | Wheel | Scroll the view without moving the cursor |
 | Click a menu title | Open that menu |
 | Click a menu item | Run it |
+| Click a menu's `▴` or `▾` | Scroll the open menu, when it is taller than the screen |
 | Click outside a menu | Close it |
 | Click a list row | Select it (in the file browser) or run it (in the palette) |
 | Wheel over a list | Scroll it |
@@ -420,6 +434,8 @@ one space of it.
 Select text that reaches into a second row and `Tab` indents every row the
 selection touches instead of replacing it. `Shift-Tab` takes a level back off.
 The selection survives both, so you can press `Tab` twice to indent twice.
+**Edit ▸ Indent** and **Edit ▸ Dedent** are the same two commands from the
+menu.
 
 - A selection that stops at **column 0** of a row has not reached into that
   row, and that row is left alone. This is what lets you select whole lines by
@@ -552,12 +568,9 @@ that frame rather than squeezing the text away.
 
 ## Soft Wrap
 
-`Alt-Z` toggles soft wrap (off by default). The command palette has it as
-**Soft wrap**, and `soft wrap = on` in `[view]` starts that way. It is not in
-the View menu, and the reason is arithmetic rather than editorial: one more item
-makes that drop-down exactly as tall as the text area of a sixteen-row
-terminal, where its drop shadow then falls on the status bar. It joins the menu
-when a drop-down can handle its own height.
+`Alt-Z` toggles soft wrap (off by default). **View ▸ Soft wrap** has it too,
+with a tick when it is on; the command palette lists it as **Soft wrap**, and
+`soft wrap = on` in `[view]` starts that way.
 
 With it off, a line longer than the window runs off the right-hand edge and the
 view scrolls sideways to follow the cursor. With it on, the line carries on at
@@ -1406,9 +1419,10 @@ from molly:
   which is what extends a selection. Bind `Shift-Right` to something and you
   lose that, for that key.
 
-The eight `Alt`-letter menu titles cannot be rebound. The menu bar underlines
-the letter whether or not it still opens the menu, so a rebinding would make
-the bar lie about itself.
+The `Alt`-letter menu titles cannot be rebound — seven of them today, one per
+menu, and the set is read off the menu table rather than written down. The menu
+bar underlines the letter whether or not it still opens the menu, so a rebinding
+would make the bar lie about itself.
 
 Multi-key sequences (`Ctrl-K Ctrl-F`) are not supported yet.
 

@@ -14,7 +14,7 @@ gamm║ › li                                                         ║
 ~   ║ Syntax highlighting                                    Alt-Y ║
 ~   ║ Close window                                              F9 ║
 ~   ║ Only this window                                             ║
-~   ║ Regular expression                                     Alt-R ║
+~   ║ Extend block right                           Alt-Shift-Right ║
 ~   ║ ↑↓ choose   Enter run   Esc cancel                           ║
 ~   ╚══════════════════════════════════════════════════════════════╝
 sample.txt - 3 lines                                         Ln 1, Col 1

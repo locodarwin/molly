@@ -622,6 +622,17 @@ def main():
     # second puts a cursor on the next occurrence. So this holds two reverse
     # video runs (the selections) and one coloured cell (the far cursor), on
     # two different rows, which is the whole feature in one screen.
+    # A block selection: a cursor and a highlighted slice on every row it
+    # spans, including a short one, where the cursor sits at the row's end.
+    # The second is over WIDE, where the same display columns are different
+    # bytes on each row and a tab and a wide character straddle the edges.
+    BLOCK = ["\x1b[C", "\x1b[1;4B", "\x1b[1;4B", "\x1b[1;4C", "\x1b[1;4C",
+             "\x1b[1;4C"]
+    check("block-keys", BLOCK, rows=10, cols=40, files={"sample.txt": THREE_LINES})
+    check("block-keys-256", BLOCK, rows=10, cols=40,
+          files={"sample.txt": THREE_LINES}, env={"TERM": "xterm-256color"})
+    check("block-wide", ["\x1b[C", "\x1b[1;4B", "\x1b[1;4B"] + ["\x1b[1;4C"] * 4,
+          rows=10, cols=40, files={"sample.txt": WIDE})
     check("cursors-two", ["\x04", "\x04"], rows=12, cols=40,
           files={"sample.txt": MATCHES})
     check("cursors-two-256", ["\x04", "\x04"], rows=12, cols=40,

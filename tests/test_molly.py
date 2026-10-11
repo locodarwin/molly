@@ -1240,7 +1240,7 @@ def test_help(tmpdir):
                   "FIND & REPLACE", "CLIPBOARD", "HISTORY", "WINDOWS", "VIEW",
                   "F6", "Shift-F6", "F7", "F8", "F9",
                   "Ctrl-S", "Ctrl-Q", "F1", "Ctrl-G", "Ctrl-F", "F3",
-                  "Shift-F3", "Ctrl-T", "Ctrl-R", "Ctrl-E", "F4", "Shift-F4", "Ctrl-Z", "Ctrl-Y", "Ctrl-C",
+                  "Shift-F3", "Ctrl-T", "Ctrl-R", "Ctrl-E", "F4", "Shift-F4", "Alt-Shift-\u2190\u2191\u2192\u2193", "Ctrl-Z", "Ctrl-Y", "Ctrl-C",
                   "Ctrl-X", "Ctrl-V", "Ctrl-A", "Ctrl-L", "F5", "Ctrl-U",
                   "Shift+Arrows", "PgUp/PgDn",
                   "Home/End", "Bksp/Ctrl-H", "Enter accepts", "Esc cancels"]:
@@ -3439,6 +3439,73 @@ def screen_rows(out, rows=24, cols=80):
     return scr.text()
 
 
+def test_block(tmpdir):
+    """Block selection, from the keys and the mouse, through to the file.
+
+    block.c's tests cover the rectangle -- display columns, tabs, wide
+    characters, short rows -- and the paste rules. What only a pty shows is that
+    Alt-Shift and an arrow arrive as their own chord rather than as a plain
+    Shift-arrow, that an Alt-drag draws one, and that the block is on screen as
+    a highlighted rectangle with a cursor on every row.
+    """
+    print("\nblock selection: a rectangle from the keys and the mouse")
+
+    path = os.path.join(tmpdir, "block.txt")
+    BODY = "alpha one\nbeta\ngamma three\ndelta four\n"
+    AU, AD, AR, AL = "\x1b[1;4A", "\x1b[1;4B", "\x1b[1;4C", "\x1b[1;4D"
+    RIGHT, DOWN, SAVE = "\x1b[C", "\x1b[B", ["\x13", "\x11"]
+    TEXT = TEXT_ROW - 1
+
+    def go(keys, body=BODY, save=False):
+        with open(path, "w") as fh:
+            fh.write(body)
+        out = run([MOLLY, path], list(keys) + (SAVE if save else []),
+                  rows=12, cols=40)
+        scr = Screen(12, 40)
+        scr.feed(out)
+        with open(path) as fh:
+            return scr, fh.read()
+
+    def lit(scr, row, n=6):
+        return "".join(scr.attrs[row][:n])
+
+    scr, _ = go([RIGHT, AD, AD, AR, AR, AR])
+    # g is an extra cursor; the primary, on the moving corner's row, is the
+    # terminal's own and leaves no mark in the attributes.
+    check("Alt-Shift-arrows highlight a rectangle", [lit(scr, TEXT + i) for i in range(4)],
+          [".RRRg.", ".RRRg.", ".RRR..", "......"])
+    check("and say how big it is", "Block: 3 rows, 3 columns" in scr.text()[11], True)
+
+    _, text = go([RIGHT, AD, AD, AR, AR, AR, "X"], save=True)
+    check("typing replaces every row's slice", text,
+          "aXa one\nbX\ngXa three\ndelta four\n")
+    _, text = go([RIGHT, AD, AD, AR, AR, AR, "X", "\x1a"], save=True)
+    check("and one Ctrl-Z takes it all back", text, BODY)
+
+    # Esc leaves the primary, on the block's bottom row; two rows down and End
+    # is the end of "delta four", and the second line runs past the file.
+    _, text = go([RIGHT, AD, AR, AR, AR, AL, "\x18", "\x1b", 0.3,
+                  DOWN, DOWN, "\x1b[F", "\x16"], save=True)
+    check("cut, then pasted with one cursor, goes down as a rectangle", text,
+          "aha one\nba\ngamma three\ndelta fourlp\n          et\n")
+
+    # The mouse: Alt held on the press, then a drag. Column 3 of the screen is
+    # display column 2 of the text; the menu bar is the first screen row.
+    press = "\x1b[<8;3;%dM" % (TEXT + 1)
+    drag = "\x1b[<40;6;%dM" % (TEXT + 3)
+    release = "\x1b[<8;6;%dm" % (TEXT + 3)
+    scr, _ = go([press, drag, release])
+    check("an Alt-drag draws a block", [lit(scr, TEXT + i) for i in range(3)],
+          ["..RRRg", "..RRg.", "..RRR."])
+    _, text = go([press, drag, release, "-"], save=True)
+    check("which typing writes into", text,
+          "al- one\nbe-\nga- three\ndelta four\n")
+
+    # Alt on an arrow without Shift is still the arrow: nothing binds it.
+    _, text = go([DOWN, "\x1b[1;3A", "!"], save=True)
+    check("Alt-Up with nothing bound to it is Up", text, "!" + BODY)
+
+
 def test_multicursor(tmpdir):
     """Multi-cursor from the keyboard.
 
@@ -4780,6 +4847,7 @@ def main():
         test_indent(tmpdir)
         test_indent_convert(tmpdir)
         test_multicursor(tmpdir)
+        test_block(tmpdir)
         test_soft_wrap(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)

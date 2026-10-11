@@ -207,9 +207,25 @@ static int cmd_buffer_prev(void) {
 static int cmd_undo(void) { editor_undo(); return 0; }
 static int cmd_redo(void) { editor_redo(); return 0; }
 
+/* A block's rows, a line each, onto the clipboard -- marked as a block, so
+ * that pasting it can put it back down as one. */
+static int copy_block(void) {
+  int n = 0;
+  char *s = block_text(&n);
+  if (s == NULL) return -1;
+  clipboard_set(s, n);
+  E.clip_block = 1;
+  free(s);
+  clipboard_sync_system();
+  return n;
+}
+
 static int cmd_copy(void) {
+  int n;
   /* Copy keeps the selection; everything else drops it. */
-  if (CUR.sel_active) {
+  if ((n = copy_block()) >= 0) {
+    editor_set_status_message("Copied a block of %d rows", V.ncursors);
+  } else if (CUR.sel_active) {
     int n = 0;
     char *s = selection_dup(&n);
     clipboard_set(s, n);
@@ -221,8 +237,13 @@ static int cmd_copy(void) {
 }
 
 static int cmd_cut(void) {
-  /* Copy then delete the selection, as one undo step. */
-  if (CUR.sel_active) {
+  int rows = V.ncursors;
+  /* Copy then delete the selection, as one undo step. A block's slices go
+   * through the multi-cursor delete, which removes each row's and stops. */
+  if (copy_block() >= 0) {
+    cursors_edit(MC_DELETE_BACK, 0);
+    editor_set_status_message("Cut a block of %d rows", rows);
+  } else if (CUR.sel_active) {
     int n = 0;
     char *s = selection_dup(&n);
     clipboard_set(s, n);
@@ -238,7 +259,19 @@ static int cmd_cut(void) {
  * way some GUI editors do when the counts happen to match. One rule that holds
  * however many lines were copied beats two that depend on arithmetic the user
  * has to do in their head. */
-static int cmd_paste(void) { cursors_edit(MC_PASTE, 0); return 0; }
+/* The one exception is a block: see block_paste(). */
+static int cmd_paste(void) {
+  if (!block_paste()) cursors_edit(MC_PASTE, 0);
+  return 0;
+}
+
+/* The block grows from its moving corner. KEEP_SELECTION because the block is
+ * its cursors' selections, and the dispatcher would otherwise drop them the
+ * moment they were made. */
+static int cmd_block_up(void) { block_extend(-1, 0); return CMD_KEEP_SELECTION; }
+static int cmd_block_down(void) { block_extend(1, 0); return CMD_KEEP_SELECTION; }
+static int cmd_block_left(void) { block_extend(0, -1); return CMD_KEEP_SELECTION; }
+static int cmd_block_right(void) { block_extend(0, 1); return CMD_KEEP_SELECTION; }
 
 static int cmd_find(void) { editor_find(); return 0; }
 static int cmd_find_next(void) { editor_find_next(); return 0; }
@@ -715,6 +748,21 @@ static const struct command commands[] = {
   {.name = "cursor.one", .label = "One cursor",
    .help = "Back to one cursor", .group = "CURSORS",
    .run = cmd_cursor_one, .enabled = cursors_several},
+  /* A block selection, from the moving corner. In the palette and on the
+   * help screen as one row, not in a menu, for the reason the cursor commands
+   * above are not. */
+  {.name = "block.up", .label = "Extend block up",
+   .help = "Block up", .group = "CURSORS", .run = cmd_block_up,
+   .enabled = have_rows},
+  {.name = "block.down", .label = "Extend block down",
+   .help = "Block down", .group = "CURSORS", .run = cmd_block_down,
+   .enabled = have_rows},
+  {.name = "block.left", .label = "Extend block left",
+   .help = "Block left", .group = "CURSORS", .run = cmd_block_left,
+   .enabled = have_rows},
+  {.name = "block.right", .label = "Extend block right",
+   .help = "Block right", .group = "CURSORS", .run = cmd_block_right,
+   .enabled = have_rows},
 
   {.name = "edit.select-all", .label = "Select all",
    .help = "Select everything", .group = "SELECTION",
@@ -1153,6 +1201,14 @@ static const struct binding default_bindings[] = {
    * does not report both at once on an arrow. */
   {"ctrl-d",    "cursor.add-next"},
   {"esc",       "cursor.one"},
+  /* Alt-Shift and an arrow, which is Sublime's, Notepad++'s and JetBrains'
+   * block selection -- VS Code adds Ctrl to it, which a terminal cannot carry
+   * alongside Alt. Shift because it selects, Alt because it is the other
+   * kind of selecting, as Alt-click is the other kind of click. */
+  {"alt-shift-up",    "block.up"},
+  {"alt-shift-down",  "block.down"},
+  {"alt-shift-left",  "block.left"},
+  {"alt-shift-right", "block.right"},
   {"ctrl-down", "cursor.add-below"},
   {"ctrl-up",   "cursor.add-above"},
   /* Ctrl-D takes the match and Alt-D steps over it, which is the only pair of
@@ -1586,6 +1642,10 @@ static const struct help_entry help_entries[] = {
   {NULL,         NULL, NULL, "cursor.add-below"},
   {NULL,         NULL, NULL, "cursor.add-above"},
   {NULL,         NULL, NULL, "cursor.one"},
+  /* Fourteen columns, which is the key column's width exactly. */
+  {NULL,         "Alt-Shift-\xe2\x86\x90\xe2\x86\x91\xe2\x86\x92\xe2\x86\x93",
+   "Block selection", NULL},
+  {NULL,         "Alt+drag",         "Block selection", NULL},
 
   {"EDITING",    NULL,          NULL,           "edit.newline"},
   {NULL,         NULL,          NULL,           "edit.indent"},

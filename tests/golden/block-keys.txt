@@ -1,0 +1,34 @@
+--- screen ---
+ File Edit Search View Go Window Help
+alpha
+beta
+gamma
+~
+~
+~
+~
+sample.txt - 3 lines
+Block: 3 rows, 3 columns
+--- attrs ---
+gggggggggggggggggggggggggggggggggggggggg
+.RRRg
+.RRRg
+.RRR
+g
+g
+g
+g
+RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-39 7/0
+2: 4-4 0/3
+3: 4-4 0/3
+5: 0-0 8/-
+6: 0-0 8/-
+7: 0-0 8/-
+8: 0-0 8/-
+--- modifiers ---
+1: 1-1 u  6-6 u  11-11 u  18-18 u  23-23 u  26-26 u  33-33 u
+--- cursor ---
+row 4 col 5 visible 1

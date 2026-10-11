@@ -351,6 +351,10 @@ void screen_cleanup(void) {
   grid_cleanup();
 }
 
+/* Where an Alt-press landed, for a drag that follows it. */
+static int alt_pressed = 0;
+static int alt_press_row, alt_press_rx;
+
 /* A click, drag or wheel in the text area.
  *
  * A press puts the cursor where it was clicked and drops any selection; a drag
@@ -408,14 +412,27 @@ void screen_text_mouse(const struct mouse_event *ev) {
     if (ev->mods & MOUSE_MOD_ALT) {
       cursors_add(filerow, cx);
       editor_set_status_message("%d cursors", V.ncursors);
+      /* And if it then drags, the press was the corner of a block. */
+      alt_press_row = filerow;
+      alt_press_rx = rcol;
+      alt_pressed = 1;
       return;
     }
+    alt_pressed = 0;
     /* A plain click is how you get out of a multi-cursor gesture with the
      * mouse, so it puts the one cursor where it was clicked. */
     cursors_collapse();
     selection_clear();
     CUR.cy = filerow;
     CUR.cx = cx;
+    return;
+  }
+
+  /* An Alt-press that moves is a block from where it was pressed. Decided by
+   * the press, not by the drag's own report, so that letting go of Alt half
+   * way through a drag does not turn a block into a stream selection. */
+  if (alt_pressed) {
+    block_set(alt_press_row, alt_press_rx, filerow, rcol);
     return;
   }
 

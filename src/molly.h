@@ -189,6 +189,7 @@ struct cursor {
 #define MC_DELETE_FWD  4
 #define MC_PASTE       5
 #define MC_TEXT        6   /* the text cursors_insert_text() was given */
+#define MC_EACH        7   /* a text per cursor, from cursors_insert_each() */
 
 #define UC_INSERT 0
 #define UC_DELETE 1
@@ -367,6 +368,7 @@ struct window {
 struct editorConfig {
   char *clipboard;    /* in-editor clipboard for Ctrl-C/X/V; kept across files */
   int clipsize;       /* bytes held in clipboard (not necessarily NUL-terminated) */
+  int clip_block;     /* it came from a block selection: a line per row */
   char statusmsg[128];
   time_t statusmsg_time;
   struct termios orig_termios;
@@ -1189,6 +1191,12 @@ void cursors_line_edge(int to_end);
 void cursors_move_all(int key);
 void cursors_edit(int what, int arg);
 void cursors_insert_text(const char *s, int len);
+void cursors_insert_each(const char **s, const int *len);
+int block_is_live(void);
+void block_set(int ay, int arx, int cy, int crx);
+void block_extend(int dy, int drx);
+char *block_text(int *outlen);
+int block_paste(void);
 void cursors_sort(void);
 void editor_move_cursor(int key);
 void editor_scroll(void);

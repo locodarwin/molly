@@ -12,8 +12,8 @@ ga║   Ctrl-L         Select this line     WINDOWS                            �
 ~ ║   Ctrl-Down      Cursor below           Ctrl-Shift-↑↓  Border up/down    ║
 ~ ║   Ctrl-Up        Cursor above                                            ║
 ~ ║   Esc            Back to one curso    VIEW                               ║
-~ ║                                         F5             Redraw screen     ║
-~ ║                                         Ctrl-U         Line numbers      ║
+~ ║   Alt-Shift-←↑→↓ Block selection        F5             Redraw screen     ║
+~ ║   Alt+drag       Block selection        Ctrl-U         Line numbers      ║
 ~ ║                                         Alt-M          Show the menu bar ║
 ~ ║                                         Alt-B          Show a tab per fi ║
 ~ ║                                         Alt-Y          Colour by filetyp ║

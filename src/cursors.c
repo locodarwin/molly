@@ -224,6 +224,9 @@ static void cursor_shift(struct cursor *c, int r1, int c1, int nr, int nc) {
  * one call and clears them. */
 static const char *mc_text;
 static int mc_textlen;
+/* One text per cursor, by index in document order. */
+static const char **mc_each;
+static const int *mc_eachlen;
 
 /* Run one editing operation at the current cursor. The single place that maps a
  * multi-cursor edit onto the ordinary editing functions, so that nothing here
@@ -253,6 +256,11 @@ static void edit_one(int what, int arg) {
      * nothing selected. */
     case MC_PASTE:       editor_paste(); break;
     case MC_TEXT:        editor_insert_text(mc_text, mc_textlen); break;
+    /* V.primary is the loop's index while cursors_edit() runs, which is what
+     * says whose text this is. */
+    case MC_EACH:
+      editor_insert_text(mc_each[V.primary], mc_eachlen[V.primary]);
+      break;
     default: break;
   }
 }
@@ -318,6 +326,18 @@ void cursors_insert_text(const char *s, int len) {
   cursors_edit(MC_TEXT, 0);
   mc_text = NULL;
   mc_textlen = 0;
+}
+
+/* A different run of text at each cursor, in document order, as one undo step:
+ * the lines of a block pasted onto a block. The arrays have one entry per
+ * cursor; cursors_edit() dedups first, which a block's cursors -- one per row --
+ * never need. */
+void cursors_insert_each(const char **s, const int *len) {
+  mc_each = s;
+  mc_eachlen = len;
+  cursors_edit(MC_EACH, 0);
+  mc_each = NULL;
+  mc_eachlen = NULL;
 }
 
 /* ---- drawing the cursors the terminal cannot ------------------------------ */

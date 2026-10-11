@@ -165,6 +165,7 @@ void clipboard_set(const char *s, int len) {
   free(E.clipboard);
   E.clipboard = buf;
   E.clipsize = (len > 0) ? len : 0;
+  E.clip_block = 0;  /* a block copy sets it again after this */
 }
 
 /* Delete the selected range, leaving the cursor at its start. Walks the far

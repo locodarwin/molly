@@ -981,7 +981,7 @@ static void test_chords(void) {
   check_chord("Shift-F3", (F1_KEY + 2) | KEY_SHIFT);
   check_chord("shift-right", ARROW_RIGHT | KEY_SHIFT);
   check_chord("shift-pagedown", PAGE_DOWN | KEY_SHIFT);
-  /* Alt on an arrow is a parameter too, so a navigation chord can carry it. */
+  /* Alt on an arrow is a parameter too, which is what block selection binds. */
   check_chord("alt-shift-up", ARROW_UP | KEY_ALT | KEY_SHIFT);
   check_chord("shift-alt-up", ARROW_UP | KEY_ALT | KEY_SHIFT);
   check_chord("alt-left", ARROW_LEFT | KEY_ALT);
@@ -2841,6 +2841,129 @@ static void test_cursors_more(void) {
 }
 
 /* Converting the indentation a file already has. */
+/* Block selection: the rectangle as cursors, and back off the clipboard. */
+static void block_paste_text(const char *clip) {
+  clipboard_set(clip, (int)strlen(clip));
+  E.clip_block = 1;
+  if (!block_paste()) cursors_edit(MC_PASTE, 0);
+}
+
+static void test_block(void) {
+  char *t;
+  int n;
+
+  printf("\nblock selection: a rectangle of cursors\n");
+
+  mc_load("alpha one\nbeta\ngamma three\n");
+  block_set(0, 1, 2, 4);
+  check("one cursor per row", V.ncursors, 3);
+  check("the primary is on the moving corner's row", CUR.cy, 2);
+  check("and it is live", block_is_live(), 1);
+  t = block_text(&n);
+  check_str("its text is a line per row", t, "lph\neta\namm");
+  free(t);
+  cursors_edit(MC_INSERT, 'X');
+  check_str("typing replaces every row's slice", mc_text(),
+            "aXa one\nbX\ngXa three");
+  check("and the block is over once it has been typed into", block_is_live(), 0);
+  editor_undo();
+  check_str("as one undo step", mc_text(), "alpha one\nbeta\ngamma three");
+
+  mc_load("alpha\nb\ngamma\n");
+  block_set(0, 2, 2, 4);
+  check("a row shorter than the block still has a cursor", V.ncursors, 3);
+  check("at its end", V.cursors[1].cx, 1);
+  cursors_edit(MC_DELETE_BACK, 0);
+  check_str("and Backspace there deletes nothing", mc_text(), "ala\nb\ngaa");
+
+  /* A block drawn right to left keeps the cursor on the left. */
+  mc_load("abcdef\nabcdef\n");
+  block_set(0, 4, 1, 1);
+  check("right to left, the cursor is on the left edge", CUR.cx, 1);
+  t = block_text(&n);
+  check_str("and the text is the same slice", t, "bcd\nbcd");
+  free(t);
+
+  /* Display columns, not bytes: a tab straddling an edge is taken whole, and
+   * so is a wide character. */
+  mc_load("\tx\nabcdefghij\n\xe4\xb8\xadyz\n");
+  block_set(0, 1, 2, 5);
+  t = block_text(&n);
+  check_str("a tab over the right edge and a wide character over the left, "
+            "both whole", t, "\t\nbcde\n\xe4\xb8\xadyz");
+  free(t);
+  block_set(2, 0, 2, 1);
+  t = block_text(&n);
+  check_str("and a wide character over the right edge, whole too", t,
+            "\xe4\xb8\xad");
+  free(t);
+
+  /* Growing from the keys: from the cursor, or from a Shift-selection. */
+  mc_load("abcdef\nabcdef\nabcdef\n");
+  CUR.cy = 0;
+  CUR.cx = 1;
+  block_extend(1, 0);
+  block_extend(0, 1);
+  block_extend(0, 1);
+  t = block_text(&n);
+  check_str("from the cursor, a row and two columns", t, "bc\nbc");
+  free(t);
+  block_extend(0, 100);
+  check("no further right than the longest row", CUR.cx, 6);
+  /* What a plain arrow does: every cursor moves and the selections go. */
+  CUR.cx = 0;
+  selection_clear();
+  block_extend(1, 0);
+  check("anything else ends it, and the next press starts afresh",
+        V.ncursors, 2);
+  check("from where the cursor is now", V.cursors[0].sx, 0);
+
+  mc_load("abcdef\nabcdef\n");
+  mc_select(0, 1, 3);
+  block_extend(1, 0);
+  t = block_text(&n);
+  check_str("a Shift-selection becomes the block it spans", t, "bc\nbc");
+  free(t);
+
+  /* Pasting a block. */
+  mc_load("ab\ncd\nef\n");
+  CUR.cy = 0;
+  CUR.cx = 1;
+  block_paste_text("12\n34");
+  check_str("with one cursor it goes down as a rectangle", mc_text(),
+            "a12b\nc34d\nef");
+  editor_undo();
+  check_str("as one undo step", mc_text(), "ab\ncd\nef");
+
+  mc_load("abcd\nx\n");
+  CUR.cy = 0;
+  CUR.cx = 3;
+  block_paste_text("1\n2\n3");
+  check_str("padding a short row and adding rows past the end", mc_text(),
+            "abc1d\nx  2\n   3");
+  check("the cursor ends after the last line", CUR.cy * 100 + CUR.cx, 204);
+
+  mc_load("ab\ncd\n");
+  block_set(0, 2, 1, 2);
+  block_paste_text("X\nY");
+  check_str("onto a block of the same height, a line each", mc_text(),
+            "abX\ncdY");
+
+  mc_load("ab\ncd\nef\n");
+  block_set(0, 2, 2, 2);
+  block_paste_text("X\nY");
+  check_str("onto a different number of cursors, the ordinary paste",
+            mc_text(), "abX\nY\ncdX\nY\nefX\nY");
+
+  mc_load("ab\n");
+  CUR.cy = 0;
+  CUR.cx = 1;
+  clipboard_set("X\nY", 3);
+  editor_paste();
+  check_str("and text that was not a block is never pasted as one",
+            mc_text(), "aX\nYb");
+}
+
 static void test_indent_convert(void) {
   printf("\nindentation: converting what is there\n");
 
@@ -3559,6 +3682,7 @@ int main(void) {
   test_cursors_more();
   test_indent_block();
   test_indent_convert();
+  test_block();
   test_wrap();
   test_menu_band();
   test_menu_dropdown();

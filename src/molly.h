@@ -864,6 +864,10 @@ int config_error_count(void);
 int config_load(void);
 int config_write(const char *path, const char **err);
 int setting_count(void);
+int setting_info(int i, const char **section, const char **name, int *is_bool,
+                 int *lo, int *hi, const char **comment);
+int setting_live(int i);
+void setting_set(int i, int v);
 int shell_output_max(void);
 int shell_timeout_ms(void);
 int setting_get(const char *section, const char *name);

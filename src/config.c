@@ -304,6 +304,43 @@ int setting_get(const char *section, const char *name) {
   return (s != NULL) ? s->value : -1;
 }
 
+/* The table, for the Options dialog: what row i is, what it is set to now, and
+ * a way to change it. The dialog is presentation over this table and nothing
+ * else -- it has no list of settings of its own to fall out of step with it. */
+int setting_info(int i, const char **section, const char **name, int *is_bool,
+                 int *lo, int *hi, const char **comment) {
+  const struct setting *s;
+  if (i < 0 || i >= NSETTINGS) return 0;
+  s = &settings[i];
+  *section = s->section;
+  *name = s->name;
+  *is_bool = (s->type == SET_BOOL);
+  *lo = (s->type == SET_BOOL) ? 0 : s->lo;
+  *hi = (s->type == SET_BOOL) ? 1 : s->hi;
+  *comment = s->comment;
+  return 1;
+}
+
+static int setting_current(const struct setting *s);
+
+int setting_live(int i) {
+  if (i < 0 || i >= NSETTINGS) return 0;
+  return setting_current(&settings[i]);
+}
+
+/* Set row i, clamped to its range, and put it into effect. The parsed value is
+ * updated too, so a setting with no live read-back saves what was set here. */
+void setting_set(int i, int v) {
+  struct setting *s;
+  if (i < 0 || i >= NSETTINGS) return;
+  s = &settings[i];
+  if (s->type == SET_BOOL) v = v ? 1 : 0;
+  else if (v < s->lo) v = s->lo;
+  else if (v > s->hi) v = s->hi;
+  s->value = v;
+  if (s->apply != NULL) s->apply(v);
+}
+
 void config_defaults(void) {
   int i;
   for (i = 0; i < NSETTINGS; i++) settings[i].value = settings[i].dflt;

@@ -1170,6 +1170,44 @@ static void test_config_keys(void) {
   keymap_init();
 }
 
+/* The table as the Options dialog sees it. */
+static void test_setting_access(void) {
+  const char *sec, *name, *comment;
+  int is_bool, lo, hi, i, tabw = -1, spaces = -1;
+
+  printf("\nsettings: the table, row by row\n");
+  check("there is a row for every setting", setting_count() > 10, 1);
+  check("and none past the end",
+        setting_info(setting_count(), &sec, &name, &is_bool, &lo, &hi, &comment), 0);
+  for (i = 0; i < setting_count(); i++) {
+    setting_info(i, &sec, &name, &is_bool, &lo, &hi, &comment);
+    if (strcmp(name, "tab width") == 0) tabw = i;
+    if (strcmp(name, "insert spaces") == 0) spaces = i;
+  }
+  check("tab width is one of them", tabw >= 0, 1);
+  setting_info(tabw, &sec, &name, &is_bool, &lo, &hi, &comment);
+  check_str("in [editor]", sec, "editor");
+  check("a number", is_bool, 0);
+  check("from 1", lo, 1);
+  check("to 16", hi, 16);
+  check("with a comment to show", comment != NULL && comment[0] != '\0', 1);
+  setting_info(spaces, &sec, &name, &is_bool, &lo, &hi, &comment);
+  check("insert spaces is on or off", is_bool * 100 + lo * 10 + hi, 101);
+
+  setting_set(tabw, 4);
+  check("setting it puts it into effect", tab_width_default(), 4);
+  check("and reads back live", setting_live(tabw), 4);
+  setting_set(tabw, 99);
+  check("past its range is clamped to the top", setting_live(tabw), 16);
+  setting_set(tabw, 0);
+  check("and below it to the bottom", setting_live(tabw), 1);
+  setting_set(tabw, KILO_TAB_STOP);
+  setting_set(spaces, 7);
+  check("on is any non-zero, and stored as 1", setting_live(spaces), 1);
+  setting_set(spaces, 0);
+  check("and off is off", indent_insert_spaces_default(), 0);
+}
+
 static void test_config_write(void) {
   char path[256];
   printf("\nconfig: writing it back\n");
@@ -3424,6 +3462,7 @@ int main(void) {
   test_config_parse();
   test_config_keys();
   test_config_write();
+  test_setting_access();
   test_mkdir_p();
 
   printf("\n%s\n", failures ? "FAILED" : "ok");

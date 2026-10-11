@@ -1827,6 +1827,89 @@ static void test_windows_resize(void) {
   buflist_cleanup();
 }
 
+/* Find in files: the row parser, and the command line run for real.
+ *
+ * The command is what can go wrong quietly -- a quote that ends the pattern
+ * early runs a different search, not a failing one -- so it is checked by
+ * running it in a directory made for the purpose and reading what grep says,
+ * rather than by comparing it with a string. */
+static void grep_run(const char *pat, int icase, int regex, char *got, size_t n) {
+  struct filter_io io;
+  char *cmd = grep_command(pat, icase, regex);
+  memset(&io, 0, sizeof(io));
+  io.cmd = cmd;
+  io.in = "";
+  io.timeout_ms = 10000;
+  filter_run(&io, NULL);
+  snprintf(got, n, "%.*s", io.outlen, io.out != NULL ? io.out : "");
+  filter_free(&io);
+  free(cmd);
+}
+
+static void test_grep(void) {
+  char tmpl[] = "/tmp/molly-grep-XXXXXX";
+  char here[4096], got[1024];
+  int p0, pl, ln;
+  FILE *fp;
+
+  printf("\nfind in files: reading a row of results\n");
+  check("path:line:text parses", grep_parse_line("src/a.c:12:int x;", 17, &p0, &pl, &ln), 1);
+  check("the path starts at the start", p0, 0);
+  check("and ends at the colon", pl, 7);
+  check("the line is the number", ln, 12);
+  check("grep -r's ./ is not part of the path",
+        (grep_parse_line("./a.c:3:x", 9, &p0, &pl, &ln), p0 * 100 + pl), 203);
+  check("a colon in the text is the text's",
+        (grep_parse_line("a.c:3:b:4:c", 11, &p0, &pl, &ln), pl * 100 + ln), 303);
+  check("a colon in the path without digits after it is the path's",
+        (grep_parse_line("c:x/a.c:7:y", 11, &p0, &pl, &ln), pl * 100 + ln), 707);
+  check("a row with no line number is not a match",
+        grep_parse_line("Binary file a matches", 21, &p0, &pl, &ln), 0);
+  check("nor is line zero", grep_parse_line("a:0:x", 5, &p0, &pl, &ln), 0);
+  check("nor a row that is only a path and a number",
+        grep_parse_line("a:12", 4, &p0, &pl, &ln), 0);
+
+  printf("\nfind in files: the command, run\n");
+  if (getcwd(here, sizeof(here)) == NULL || mkdtemp(tmpl) == NULL ||
+      chdir(tmpl) != 0) {
+    check("a scratch directory to search", 0, 1);
+    return;
+  }
+  fp = fopen("a.txt", "w");
+  fputs("it's here\nabc\nA.C\n", fp);
+  fclose(fp);
+
+  grep_run("it's", 1, 0, got, sizeof(got));
+  check_str("a quote in the pattern is searched for, not obeyed", got,
+            "./a.txt:1:it's here\n");
+  grep_run("a.c", 1, 0, got, sizeof(got));
+  check_str("plain text: a dot is a dot, and case is folded", got,
+            "./a.txt:3:A.C\n");
+  grep_run("a.c", 0, 0, got, sizeof(got));
+  check_str("with Match case it is not", got, "");
+  grep_run("a.c", 0, 1, got, sizeof(got));
+  check_str("pattern search: a dot is any character", got, "./a.txt:2:abc\n");
+  grep_run("'; echo pwned; '", 1, 0, got, sizeof(got));
+  check_str("a pattern cannot end the quoting and run something", got, "");
+
+  /* The work-tree branch, where paths come back without the ./ and only
+   * tracked files are searched. Skipped, and said so, without git. */
+  if (system("git init -q . >/dev/null 2>&1 && git add a.txt >/dev/null 2>&1") == 0) {
+    fp = fopen("untracked.txt", "w");
+    fputs("it's not tracked\n", fp);
+    fclose(fp);
+    grep_run("it's", 1, 0, got, sizeof(got));
+    check_str("in a work tree it is git grep, over tracked files", got,
+              "a.txt:1:it's here\n");
+  } else {
+    printf("  skip  no git here, so the work-tree branch is not run\n");
+  }
+
+  if (chdir(here) != 0) check("back to where the tests started", 0, 1);
+  snprintf(got, sizeof(got), "rm -rf %s", tmpl);
+  if (system(got) != 0) printf("  note  could not remove %s\n", tmpl);
+}
+
 /* Closing a buffer that another window is showing.
  *
  * This is the one thing splits add to the buffer list, and it is the kind of
@@ -3281,6 +3364,7 @@ int main(void) {
   test_windows();
   test_windows_too_small();
   test_windows_resize();
+  test_grep();
   test_windows_buffer_closed();
   test_chords();
   test_config_parse();

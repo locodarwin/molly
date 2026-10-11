@@ -51,6 +51,13 @@ int buf_index_of(const struct buffer *b) {
  * disagree the first time a buffer was closed from under the index. */
 int buf_current(void) { return buf_index_of(V.buf); }
 
+/* What to call a buffer: its file, or what made it, or nothing at all. */
+const char *buf_name(const struct buffer *b) {
+  if (b->filename != NULL) return b->filename;
+  if (b->title != NULL) return b->title;
+  return "[No Name]";
+}
+
 int buf_dirty_count(void) {
   int i, n = 0;
   for (i = 0; i < E.nbufs; i++)
@@ -129,6 +136,8 @@ static void buf_free(struct buffer *b) {
   editor_free_undo_redo();
   free(b->filename);
   b->filename = NULL;
+  free(b->title);
+  b->title = NULL;
   V.buf = (was == b) ? NULL : was;
   free(b);
 }

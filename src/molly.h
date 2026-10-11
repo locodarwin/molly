@@ -286,6 +286,14 @@ struct buffer {
    * path that can change how many display rows this buffer has. wrap.c keeps
    * one step of a walk and this is how it knows the walk is still valid. */
   unsigned wrapgen;
+
+  /* What the buffer is called where a file name would go, when it has none.
+   * Only the find-in-files results set it: a list of matches is not a file, and
+   * "[No Name]" on its status bar and tab would say nothing about what it is. */
+  char *title;
+
+  /* This is the find-in-files results buffer. See grep.c. */
+  int grep_results;
 };
 
 /* One window onto a buffer. */
@@ -798,6 +806,7 @@ int buf_count(void);
 int buf_current(void);
 int buf_dirty_count(void);
 int buf_index_of(const struct buffer *b);
+const char *buf_name(const struct buffer *b);
 int buf_find_path(const char *path);
 struct buffer *buf_at(int i);
 struct buffer *buf_new(void);
@@ -972,6 +981,14 @@ void editor_draw_text_row(int y, erow *row, const struct drow *d, int sel0, int 
 void editor_refresh_screen(void);
 void editor_filter(void);
 void editor_insert_output(void);
+
+/* grep.c */
+char *grep_command(const char *pat, int icase, int regex);
+int grep_parse_line(const char *s, int len, int *path0, int *pathlen, int *line);
+int grep_result_count(void);
+int grep_jump(int delta);
+void editor_grep(void);
+void grep_cleanup(void);
 void editor_set_status_message(const char *fmt, ...);
 void screen_cleanup(void);
 void screen_force_repaint(void);
@@ -993,6 +1010,7 @@ void editor_replace(void);
 void editor_toggle_case_sensitive(void);
 void editor_toggle_regex(void);
 void search_cleanup(void);
+int search_find_in_row(int cy, const char *query);
 
 /* select.c */
 char *selection_dup(int *outlen);

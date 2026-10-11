@@ -242,7 +242,7 @@ void screen_draw_status_bar(int focused) {
   if (V.syntax && B.syn != NULL)
     snprintf(lang, sizeof(lang), " [%s]", syntax_name(B.syn));
   int len = snprintf(status, sizeof(status), "%s%.20s - %d lines%s %s",
-      which, B.filename ? B.filename : "[No Name]", row_count(), lang,
+      which, buf_name(V.buf), row_count(), lang,
       B.dirty ? "(modified)" : "");
   /* The character column: the Nth character in the line, not CUR.rx's
    * tab-stop- and glyph-width-aware display column, which jumps around

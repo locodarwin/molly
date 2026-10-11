@@ -690,3 +690,36 @@ void editor_replace(void) {
     editor_set_status_message("Replaced %d occurrence%s", count,
         count == 1 ? "" : "s");
 }
+
+/* The column of the first match of `query` in row `cy`, or -1, read the way
+ * Find would read it -- plain or pattern, folded or not, by the toggles. The
+ * query becomes the remembered one, so F3 goes on to the next match from
+ * wherever the caller puts the cursor.
+ *
+ * For find in files, which knows the row a match is on from `grep` and wants
+ * the column. grep's -E is not molly's dialect, so the two can disagree about a
+ * pattern; this is molly's answer, and -1 means the caller keeps column 0. */
+int search_find_in_row(int cy, const char *query) {
+  erow *row;
+  int qlen, i;
+
+  editor_set_last_query(query);
+  if (query == NULL || query[0] == '\0' || cy < 0 || cy >= row_count())
+    return -1;
+  row = row_at(cy);
+  if (search_use_regex) {
+    struct regex_match m;
+    struct regex *re = search_compile(query);
+    int r;
+    if (re == NULL) return -1;
+    r = regex_row_first(re, row, 0, &m);
+    regex_free(re);
+    return r == 1 ? m.so[0] : -1;
+  }
+  qlen = (int)strlen(query);
+  for (i = 0; i + qlen <= row->size; i++)
+    if (bytes_match(row->chars + i, query, qlen) &&
+        match_is_char_aligned(row->chars + i, qlen))
+      return i;
+  return -1;
+}

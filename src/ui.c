@@ -638,7 +638,8 @@ void editor_open_in_new_buffer(char *path) {
     return;
   }
 
-  if (!(cur->filename == NULL && cur->numrows == 0 && !cur->dirty))
+  if (!(cur->filename == NULL && cur->numrows == 0 && !cur->dirty &&
+        !cur->grep_results))
     buf_show(buf_index_of(buf_new()));
 
   editor_open(path);
@@ -648,7 +649,7 @@ void editor_open_in_new_buffer(char *path) {
   V.coloff = 0;
   screen_force_repaint();
   editor_set_status_message("Opened %s - %d lines (%d of %d)",
-      B.filename ? B.filename : "(unnamed)", row_count(),
+      buf_name(V.buf), row_count(),
       buf_current() + 1, buf_count());
   free(path);
 }

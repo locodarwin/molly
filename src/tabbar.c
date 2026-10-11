@@ -42,7 +42,7 @@ static int tab_last;    /* last buffer drawn, inclusive */
  * unsaved buffer takes a trailing asterisk, which is the one marker every editor
  * agrees on. */
 static void tab_label(const struct buffer *b, char *dst, size_t dsz) {
-  const char *name = "[No Name]";
+  const char *name = buf_name(b);
   if (b->filename != NULL) {
     const char *slash = strrchr(b->filename, '/');
     name = (slash != NULL && slash[1] != '\0') ? slash + 1 : b->filename;

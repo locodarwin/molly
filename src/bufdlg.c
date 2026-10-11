@@ -13,7 +13,7 @@
 #include "molly.h"
 
 static const char *buf_label(const struct buffer *b) {
-  return b->filename != NULL ? b->filename : "[No Name]";
+  return buf_name(b);
 }
 
 /* Rows of the buffer list: a marker column, so a modified buffer reads the way

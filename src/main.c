@@ -10,6 +10,7 @@ void editor_cleanup(void) {
   E.clipsize = 0;
   screen_cleanup();
   search_cleanup();
+  grep_cleanup();
   keymap_cleanup();
   config_cleanup();
   syntax_cleanup();

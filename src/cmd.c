@@ -164,7 +164,7 @@ static int cmd_close(void) {
   if (B.dirty && close_warned_id != B.id) {
     editor_set_status_message(
         "%s has unsaved changes. Press again to close it anyway.",
-        B.filename ? B.filename : "[No Name]");
+        buf_name(V.buf));
     close_warned_id = B.id;
     return CMD_KEEP_SELECTION | CMD_KEEP_QUIT_COUNT;
   }
@@ -177,7 +177,7 @@ static int cmd_close(void) {
     buf_close(buf_current());
     if (n == 1) editor_set_status_message("Closed - empty buffer");
     else editor_set_status_message("Closed - now %s (%d of %d)",
-        B.filename ? B.filename : "[No Name]", buf_current() + 1, buf_count());
+        buf_name(V.buf), buf_current() + 1, buf_count());
   }
   return 0;
 }

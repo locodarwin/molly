@@ -993,13 +993,17 @@ molly runs under `ulimit -v` and has to reach a clean quit.
   people use it for, and a rectangular *selection* is a different model again:
   every selection in molly is a pair of positions, and a rectangle is not.
 
-### Search in files / grep — **LATER**
+### Search in files / grep — **done**
 
 - **For:** big win; can shell out to `grep` or `git grep` for zero dependency.
 - **Against:** needs a results panel, so it was gated on splits and buffers —
   both of which now exist, and a results panel is a window showing a buffer of
   matches. Shelling out means depending on the host's tools; implementing it
   internally means a recursive walk plus ignore-file handling.
+- **Landed:** `Ctrl-E` shells out — `git grep` in a work tree, `grep -r`
+  elsewhere — through the shell filter's runner, into a results buffer;
+  `Enter` opens a match and `F4`/`Shift-F4` step through them. The host's tools
+  were the right dependency: both are on every machine molly builds on.
 
 ### Keyboard macros — **LATER, cheap**
 

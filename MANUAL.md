@@ -41,6 +41,7 @@ and a searchable label, so nothing is reachable only by knowing a secret key.
 - [Opening Another File](#opening-another-file)
 - [Several Files at Once](#several-files-at-once)
 - [Filtering Through a Command](#filtering-through-a-command)
+- [Finding in Files](#finding-in-files)
 - [Window Splits](#window-splits)
 - [Saving and Quitting](#saving-and-quitting)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
@@ -1147,7 +1148,53 @@ and a command that exits non-zero inserts nothing — `git rev-parse HEAD`
 outside a repository puts `fatal: not a git repository` on the status bar, not
 in your file.
 
-## Window Splits
+## Finding in Files
+
+`Ctrl-E` (or `Search ▸ Find in files…`) searches every file under the directory
+molly was started in, and lists what it found in a window of its own:
+
+    Find in files: parse_config
+
+    src/config.c:212:int parse_config(const char *path) {
+    src/main.c:48:  if (parse_config(rc) != 0)
+    tests/test_units.c:3102:  check("empty file", parse_config(empty), 0);
+
+Each row is a file, a line number and the line. **`Enter` on a row opens that
+file at that line**, with the cursor on the match, in the window you searched
+from — the list stays where it is, so you can go back to it and pick another.
+`F4` goes to the next match and `Shift-F4` to the previous one, from any window,
+without going back to the list at all; the list's cursor follows along so you
+can see where you are.
+
+The pattern is read the way [Find](#searching) reads one: plain text, ignoring
+case, unless you have turned on **Match case** or
+[pattern search](#regular-expressions) (`Alt-R`). Pattern search is handed to
+`grep -E`, which agrees with molly's own patterns on everything common but is
+not the same engine, so a pattern that leans on something only one of them has
+can list a file the cursor then cannot find a match in; it lands at the start of
+the line instead.
+
+`Enter` on an empty prompt runs the last search again.
+
+### What is searched
+
+Inside a git work tree, molly runs `git grep`, so it searches the files git
+tracks and nothing your `.gitignore` leaves out. Anywhere else it runs
+`grep -r`, which searches everything below the current directory except `.git`.
+Binary files are skipped by both. Either way it goes through the same machinery
+as [filtering](#filtering-through-a-command), so `Esc` stops a search that is
+taking too long, and the `[shell] timeout` and `output limit` settings apply.
+
+### The results are a buffer
+
+The list is an ordinary buffer named `grep: <pattern>`, so it has a tab, it can
+be scrolled and searched with `Ctrl-F`, split, and saved with `Ctrl-S` if you
+want to keep it. A new search replaces it rather than opening another. It is
+not unsaved work: quitting or closing it does not ask — unless you edit it,
+when it is a modified buffer like any other. Lines longer than 400 characters
+are cut short in the list, which only matters for minified files.
+
+
 
 A **buffer** is a file; a **window** is a view onto one. Until you split, there
 is one window and the distinction does not come up. Split, and you have two
@@ -1343,6 +1390,8 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     Ctrl-N/P The same two, for fingers that already know them
     Alt-R    Toggle regular-expression search
     Ctrl-R   Search and replace (next or all)
+    Ctrl-E   Find in files
+    F4 / Shift-F4  Next / previous find-in-files match
     Ctrl-G   Go to line
     Ctrl-A   Select everything
     Ctrl-L   Select the current line

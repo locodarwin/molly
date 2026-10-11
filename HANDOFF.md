@@ -15,7 +15,21 @@ This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
 
-**Latest:** resizing a split, picked by Shawn on 2026-10-11 as "#2" from the
+**Latest:** find in files (`Ctrl-E`, Search → Find in files…), the first of
+three items Shawn asked for together on 2026-10-11 ("all the medium items":
+this, converting indentation, and an Options dialog). `src/grep.c` builds one
+`sh` line — `git grep` in a work tree, `grep -r` outside — and runs it through
+`filter_run()`; the matches go into a buffer marked `grep_results`, loaded like
+a file so it is never "modified" unless edited. Enter on a row opens the file
+in the window the search ran from; `F4`/`Shift-F4` step through from anywhere
+(VS Code's pair). A buffer may now have a `title` where it has no file name, and
+`buf_name()` is the one place that decides what a buffer is called. Chosen
+without asking: `Ctrl-E` (Ctrl-Shift-F reaches a terminal program as Ctrl-F),
+results in a split below rather than replacing the current window, and no
+wrap-around for F4. Unit tests run the real command in a scratch directory;
+pty checks are `test_grep`; goldens `grep-results` at both depths and narrow.
+
+**Before that:** resizing a split, picked by Shawn on 2026-10-11 as "#2" from the
 same menu. `window_move_border()` in `src/window.c` moves the innermost split
 along the arrow's axis one cell, tmux's rule: the arrow says which way the
 *border* goes, so one chord means the same line from either window. A border
@@ -385,13 +399,6 @@ buffer rewrite (which soft wrap just gave a second reason — see §5's big-file
 section), the integrated terminal and the language server. Each is a phase of
 its own, not an afternoon.
 
-One thing the shell filter now makes cheap, not asked for yet (its sibling,
-inserting a command's output, is done — see "Latest"):
-
-- **A results panel.** `ROADMAP.md` gates grep-in-files on splits and buffers,
-  both of which exist, and the filter is how the search would be run. A window
-  showing a buffer of matches is the whole of what is left.
-
 Smaller things the last six features left behind, each a self-contained
 commit:
 
@@ -417,13 +424,11 @@ scroll.
   a file of tabs. Converting one — retab, or "indent with spaces" over a
   selection — is a separate editing command nobody has asked for yet, and the
   manual says plainly that molly does not do it.
-- **The quit warning is a message, not a list.** `ROADMAP.md` §5 asks for a list
-  of the unsaved files; what is there counts them and names one. See the dialog
-  note above.
-- **The help screen's columns truncate on bytes, not columns.** `ui.c` cuts with
-  `%.*s`, so a description with a multibyte character in it can be cut mid
-  character. No shipped `.help` string has one, so nothing shows it today;
-  `utf8_fit_cols()` is what it wants when one does.
+- ~~**The quit warning is a message, not a list.**~~ **Fixed** by the quit
+  dialog (`c3dd3b4`), which lists every unsaved buffer.
+- ~~**The help screen's columns truncate on bytes, not columns.**~~ **Fixed**
+  with split resizing (`0f79f3d`), when the border chords put the first arrow
+  glyph in a key: both columns are now cut and padded with `utf8_fit_cols()`.
 - ~~**A drop-down taller than the screen loses its tail.**~~ **Fixed**
   (`803c5fe`), and it was the twenty-five lines the estimate said, plus the
   arrows and the mouse. The box is measured against the text area with the

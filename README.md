@@ -36,6 +36,9 @@ Everything olly does, molly does. These all work today:
     case-insensitive (the default) and case-sensitive matching.
 - **Search and replace**: `Ctrl-R` replaces the next match or every match,
   and a whole replace-all undoes or redoes as one step.
+- **Find in files**: `Ctrl-E` runs `git grep` (or `grep -r` outside a
+  repository) and lists the matches in a window; `Enter` opens one, `F4` and
+  `Shift-F4` step through them from anywhere.
 - **Go to line**: `Ctrl-G` jumps straight to a line number.
 - **Grouped undo/redo**: a run of typed (or deleted) characters, or a
   replace-all, undoes as one step. `Ctrl-Z` undo, `Ctrl-Y` redo.
@@ -155,6 +158,8 @@ resize the terminal window.
 | `Ctrl-F` | Search forward |
 | `F3` / `Shift-F3` | Find next / previous match (`Ctrl-N` / `Ctrl-P` too) |
 | `Ctrl-R` | Search and replace (next or all) |
+| `Ctrl-E` | Find in files |
+| `F4` / `Shift-F4` | Next / previous find-in-files match |
 | `Ctrl-G` | Go to line |
 | `Ctrl-A` | Select everything |
 | `Ctrl-L` | Select the current line |

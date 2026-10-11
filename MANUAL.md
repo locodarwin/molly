@@ -34,6 +34,7 @@ and a searchable label, so nothing is reachable only by knowing a secret key.
 - [Soft Wrap](#soft-wrap)
 - [Selecting Text](#selecting-text)
 - [Several Cursors](#several-cursors)
+- [Block Selection](#block-selection)
 - [Searching](#searching)
 - [Regular Expressions](#regular-expressions)
 - [Search and Replace](#search-and-replace)
@@ -225,6 +226,8 @@ Choosing one says why it cannot run and leaves the palette open.
 | --- | --- |
 | Click in the text | Put the cursor there |
 | Drag in the text | Select |
+| `Alt` + click in the text | Add a cursor there |
+| `Alt` + drag in the text | Select a block — see [Block Selection](#block-selection) |
 | Click a line number | Go to the start of that line |
 | Wheel | Scroll the view without moving the cursor |
 | Click a menu title | Open that menu |
@@ -681,7 +684,8 @@ while a selection is active.
 | `Ctrl-X` | Cut the selection (copy, then delete it) |
 | `Ctrl-V` | Paste the clipboard at the cursor |
 
-A selection is a rectangular-free, character-wise range: it always grows and
+A selection is a character-wise range (for a rectangle, see
+[Block Selection](#block-selection)): it always grows and
 shrinks on whole character boundaries, so it never splits a multi-byte (UTF-8)
 character. Pressing any movement key **without** `Shift`, or clicking/editing
 elsewhere, clears the selection first.
@@ -794,13 +798,11 @@ cursors in one spot would type every character twice.
 
 `Ctrl-V` puts the whole clipboard in at every cursor. It does not deal out one
 copied line per cursor the way some editors do when the counts happen to
-match.
+match — with one exception, a copied *block*, which is described under
+[Block Selection](#block-selection).
 
 ### What it deliberately does not do
 
-- **There is no column or block selection.** Cursors can be put in a column,
-  and that covers most of what block selection is used for, but a rectangular
-  *selection* is a separate thing molly does not have.
 - **`Alt-U` takes cursors back in the order they were added**, not in the order
   you might prefer. There is no way to pick one cursor out of the middle of the
   set and drop only it.
@@ -810,6 +812,58 @@ match.
   operations — the same reason Transpose is not. They are in the command
   palette (`Ctrl-Space`) and on the [help screen](#help-screen) with their
   keys.
+
+## Block Selection
+
+A block is a rectangle of text: the same columns on each of a run of rows.
+
+| Key | Action |
+| --- | --- |
+| `Alt-Shift` + `↑` `↓` `←` `→` | Start a block at the cursor, or grow it |
+| `Alt` + drag | Select the block between where you pressed and where you are |
+| `Ctrl-C` / `Ctrl-X` | Copy / cut the block, a line per row |
+| `Ctrl-V` | Paste a copied block as a block |
+| `Esc` | Back to one cursor |
+
+The status bar says how big the block is: `Block: 3 rows, 5 columns`. If you
+had a selection when you pressed the first `Alt-Shift`-arrow, the block starts
+from that selection's other end, so you can select with `Shift` and then turn
+it into a rectangle.
+
+**A block is several cursors, one per row, each selecting its row's slice.**
+That means everything in [Several Cursors](#several-cursors) applies to it:
+typing replaces every row's slice at once, `Backspace` and `Delete` remove
+them, and `Ctrl-Z` undoes the lot in one step. A row shorter than the block
+still gets a cursor, at the end of the row, so typing into a block writes on
+every row of it. Pressing anything other than `Alt-Shift`-arrow ends the
+block and leaves the cursors; the next `Alt-Shift`-arrow starts a new block
+from where the cursor is.
+
+The columns are the columns **you see**, not bytes or characters, so a block
+over lines indented with tabs, or with wide characters in them, is the
+rectangle on the screen. A tab or a wide character that straddles the block's
+edge is taken whole — half a tab is not something that can be cut.
+
+**Pasting a block.** `Ctrl-C` and `Ctrl-X` put the block on the clipboard as
+one line per row, which is what any other program gets too. Molly remembers
+that it was a block, and `Ctrl-V` then puts it back as one:
+
+- **With one cursor,** the lines go down as a rectangle: each on its own row,
+  starting at the cursor's column, rows too short for that column padded with
+  spaces, and new rows added at the end of the file if it runs out.
+- **With a block (or any cursors) of the same height,** one line goes to each
+  cursor.
+- **With a different number of cursors,** it is the ordinary paste: the whole
+  clipboard at every cursor.
+
+Text copied any other way is never pasted as a block.
+
+Not every terminal passes `Alt-Shift`-arrows or `Alt`-drag through: macOS's
+Terminal and some window managers keep them for themselves. The commands are
+in the [command palette](#the-command-palette) as **Extend block up**,
+**down**, **left** and **right**, and can be bound to other keys in your
+[configuration](#configuration) file as `block.up`, `block.down`, `block.left`
+and `block.right`.
 
 ## Searching
 
@@ -1444,6 +1498,7 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     Alt-U    Take the last cursor back
     Alt-A    A cursor on every match at once
     Ctrl-Down / Ctrl-Up  Add a cursor on the row below / above
+    Alt-Shift-arrows  Start or grow a block selection
     Tab      Indent the selected rows (or insert one indent step)
     Shift-Tab  Dedent the selected rows, or the cursor's row
     Alt-|    Filter the selection (or the file) through a command

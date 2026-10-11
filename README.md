@@ -85,6 +85,9 @@ Everything olly does, molly does. These all work today:
   each next occurrence, `Ctrl-Up`/`Ctrl-Down` build a column, `Alt`-click puts
   one anywhere, `Esc` goes back to one. Typing, deleting, `Enter`, `Tab` and
   paste all reach every cursor, as a single undo step.
+- **Block selection**: `Alt-Shift` and the arrows, or `Alt`-drag, select a
+  rectangle in screen columns. It is a cursor per row, so typing writes on
+  every row; a copied block pastes back as a block.
 - **Soft wrap**: `Alt-Z` lays a line too long for the window out over as many
   screen rows as it needs, breaking it after the last space that fits. The
   arrows walk the rows of a long line, the gutter numbers it once, and nothing

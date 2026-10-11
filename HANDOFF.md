@@ -15,7 +15,30 @@ This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
 
-**Latest:** the narrow menu band, which Shawn decided on 2026-10-11 from three
+**Latest:** block selection, which Shawn picked on 2026-10-11. A block is a
+cursor per row, each with a selection over the same display columns, so no
+edit path changed: `src/block.c` keeps two corners (row, display column),
+lays the cursors out from them, and calls the block live only while the
+cursors are exactly what it laid out — any other command ends it by changing
+them. Rows shorter than the block get a cursor at their end with an *empty*
+selection, which is what stops Backspace deleting there. A tab or wide
+character straddling either edge is taken whole. Copy/Cut of a live block
+put its rows on the clipboard a line each and set `E.clip_block`
+(`clipboard_set()` clears it); `block_paste()` then lays it down as a
+rectangle with one cursor (padding short rows, appending rows past the end),
+a line per cursor when the counts match, and otherwise defers to the ordinary
+whole-at-every-cursor paste. Keys: `Alt-Shift`-arrows — which needed
+`KEY_ALT`, a third modifier bit for navigation keys, decoded from the CSI
+parameter and named in chords (`alt-shift-up`) — and `Alt`-drag, decided by
+the press so letting go of Alt mid-drag does not switch modes. Chosen without
+asking: those chords (Sublime/Notepad++/JetBrains; VS Code's adds Ctrl, which
+a terminal cannot carry with Alt), short rows included rather than skipped,
+the moving corner capped at the longest covered row, and palette labels
+"Extend block …" (the first wording, "Block selection up", fuzzy-matched the
+palette test's "clip"). Unit checks `test_block`; pty checks `test_block`;
+goldens `block-keys` (both depths) and `block-wide`.
+
+**Before that:** the narrow menu band, which Shawn decided on 2026-10-11 from three
 options ("squeeze, then letters", over an overflow marker or leaving it
 clipped). `menu_band_layout()` in `src/menu.c` picks one of four layouts by
 width: two-space gaps (43 columns and up), one-space gaps (down to 37), letters
@@ -450,10 +473,8 @@ its own, not an afternoon.
 Smaller things the last six features left behind, each a self-contained
 commit:
 
-- **Block selection**, which `ROADMAP.md` §5 moved from "follows multi-cursor"
-  to LATER rather than doing here. A column of cursors covers most of what
-  people reach for it for, and a rectangular selection is a different model:
-  every selection in molly is a pair of positions and a rectangle is not.
+- ~~**Block selection**~~ **Done** on 2026-10-11: a cursor per row, in
+  `src/block.c`. See "Latest" above.
 
 ### Found along the way, not fixed
 

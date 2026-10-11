@@ -948,7 +948,7 @@ molly runs under `ulimit -v` and has to reach a clean quit.
   row — without that last part the same frame was 2.9 ms. The remaining walk is
   the flat `erow[]` array's to lose: see big-file handling below.
 
-### Multi-cursor — **done.** Block selection — **LATER**
+### Multi-cursor — **done.** Block selection — **done**
 
 - **For:** the headline feature of modern editors, and Fresh has it (Ctrl-D).
   Once you have it you use it constantly.
@@ -991,9 +991,17 @@ molly runs under `ulimit -v` and has to reach a clean quit.
   the order it was added in. That fixed Ctrl-D as well: it had searched from the
   last cursor in document order, which after a wrap is not the one the user is
   looking at, so the next press walked down from a match already taken.
-- **Block selection is still later.** A column of cursors covers most of what
-  people use it for, and a rectangular *selection* is a different model again:
-  every selection in molly is a pair of positions, and a rectangle is not.
+- **Block selection — done, without a second selection model.** The worry
+  was that a rectangle is not a pair of positions. It does not have to be one:
+  a block is a cursor per row, each with its own selection over the same
+  display columns, and typing, deleting, undo and paste were already right for
+  a column of cursors with selections. `src/block.c` holds the two corners,
+  lays the cursors out from them, and is live only while the cursors are still
+  the ones it laid out -- so nothing has to end a block. What it added beyond
+  that is the clipboard: a copied block is remembered as one, and pastes back
+  as a rectangle with one cursor or a line per cursor onto the same height.
+  `Alt-Shift`-arrows (Alt became a modifier a navigation chord can carry) and
+  `Alt`-drag.
 
 ### Search in files / grep — **done**
 

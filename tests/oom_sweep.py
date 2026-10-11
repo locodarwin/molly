@@ -32,12 +32,20 @@ SH_RIGHT = "\x1b[1;2C"
 # allocations), go to a line, replace every match, undo the whole replace-all,
 # save: rows, undo history, the undo-group array, the clipboard, the
 # search/replace prompts, repaints and the save path all allocate along the way.
+# Then the two buffer dialogs, before the save so that neither changes what is
+# written: the buffer list (Ctrl-B, a row down, Enter on the only buffer) and,
+# with the edits still unsaved, the quit dialog (Ctrl-Q, then Ctrl-C to cancel
+# -- Ctrl-C rather than Esc, because an Esc straight before Ctrl-S is a
+# sequence the input layer has to wait out).
 KEYS = ["X", "\t", "\r", "y", "\x1a", DOWN, "z",
         SH_RIGHT, SH_RIGHT, "\x03", "\x16",
         SH_RIGHT, SH_RIGHT, "\x18", "\x16",
         "\x07", "2", "\r",
         "\x12", "a", "\r", "b", "\r", "a", "\r",
-        "\x1a", "\x13"]
+        "\x1a",
+        "\x02", DOWN, "\r",
+        "\x11", "\x03",
+        "\x13"]
 
 
 def session(args):

@@ -53,8 +53,10 @@ warning still uses it. Save All walks the dirty buffers through `editor_save()`
 and refuses to quit if any is still dirty afterwards. The full `make test`
 passes on it: the pty stage includes the fixed quit test, and six goldens (the Go
 menu and the palette, which gained `Buffers…`) were regenerated after the feature
-commit, which had left them stale. The counts in the table below predate this feature. Not done: the dialog's
-mouse path has no test, and neither is in `make test-oom`.
+commit, which had left them stale. The counts in the table below predate this feature. Both dialogs' mouse paths
+were tested and both added to `make test-oom` on 2026-10-11;
+a click in the buffer list only selects, as in the Open
+dialog, where in the palette it chooses -- the two lists still disagree.
 
 **Nothing else is in flight.** The drop-down's height is done end to end, in the arc
 this repo keeps: `803c5fe` the geometry and the scroll with no menu changed,
@@ -99,7 +101,7 @@ clean build on 2026-10-10; re-measure before quoting them anywhere):
 | Checks | 1,642 — 750 pty, 105 golden screens, 787 unit |
 | Fuzz | 4,040 cases per `make test` (40 replace, 4,000 regex, seed 42) |
 | Warnings | clean under `-Wall -Wextra -Wpedantic -Wshadow` from a **clean** build; `regex.c` also under `-Wconversion` |
-| OOM sweep | `make test-oom` green: 142 allocations failed in turn, 130 through `die()`, 12 kept running |
+| OOM sweep | `make test-oom` green: 147 allocations failed in turn, 135 through `die()`, 12 kept running |
 | Version | still `0.1.0-dev` |
 
 The gate is `make test`: the pty suite, the golden screens, both fuzzers and

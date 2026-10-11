@@ -2733,6 +2733,49 @@ def test_buffers(tmpdir):
               (os.WIFEXITED(st), "Unsaved changes" in "\n".join(scr.text()),
                read(a)), (False, False, "aaa\n"))
 
+    # The buttons by mouse. Found on a rendered screen, like the list rows
+    # below; dialog_mouse() presses a button on the click that lands on it.
+    def button_at(label):
+        scr = Screen(24, 80)
+        scr.feed(run([MOLLY, a, b], ["X", "\x11"]))
+        for y, row in enumerate(scr.text()):
+            if label in row:
+                return row.index(label) + 1, y
+        return None
+
+    def press(xy):
+        return ["\x1b[<0;%d;%dM" % (xy[0] + 1, xy[1] + 1),
+                "\x1b[<0;%d;%dm" % (xy[0] + 1, xy[1] + 1)]
+
+    rewrite()
+    out, st = run([MOLLY, a, b], ["X", "\x11"] + press(button_at("Save All")),
+                  status=True)
+    check("clicking Save All saves and quits",
+          (read(a), os.WIFEXITED(st)), ("Xaaa\n", True))
+    rewrite()
+    out, st = run([MOLLY, a, b], ["X", "\x11"] + press(button_at("Discard")),
+                  status=True)
+    check("clicking Discard quits and saves nothing",
+          (read(a), os.WIFEXITED(st)), ("aaa\n", True))
+    rewrite()
+    out, st = run([MOLLY, a, b], ["X", "\x11"] + press(button_at("Cancel")),
+                  status=True)
+    scr = Screen(24, 80)
+    scr.feed(out)
+    check("clicking Cancel keeps the editor running, dialog gone",
+          (os.WIFEXITED(st), "Unsaved changes" in "\n".join(scr.text())),
+          (False, False))
+    # The list of unsaved files is not a button: a click on it answers nothing.
+    # Found by full path, because the tab bar has "a.txt" too, outside the box.
+    rewrite()
+    out, st = run([MOLLY, a, b], ["X", "\x11"] + press(button_at(a)),
+                  status=True)
+    scr = Screen(24, 80)
+    scr.feed(out)
+    check("a click on the list of files answers nothing",
+          (os.WIFEXITED(st), "Unsaved changes" in "\n".join(scr.text())),
+          (False, True))
+
     print("\nbuffers: the buffer list")
     out = go([a, b], ["\x02"])
     check("Ctrl-B opens the list with every buffer in it",
@@ -2746,6 +2789,44 @@ def test_buffers(tmpdir):
     out = go([a, b], ["\x02", DOWN, "\x1b"])
     check("Esc leaves the current buffer where it was",
           "[1/2]" in status_row(out), True)
+
+    # The mouse. Where a row is drawn depends on the dialog's centring, so the
+    # checks find it on a rendered screen rather than repeating the arithmetic:
+    # a test that recomputed it would agree with any bug in it.
+    def find(argv, keys, text):
+        for y, row in enumerate(screen_of(go(argv, keys))):
+            x = row.find(text)
+            if x >= 0:
+                return x, y
+        return None
+
+    def click(xy, button=0):
+        x, y = xy
+        return ["\x1b[<%d;%d;%dM" % (button, x + 1, y + 1),
+                "\x1b[<%d;%d;%dm" % (button, x + 1, y + 1)]
+
+    def wheel_down(xy):
+        return "\x1b[<65;%d;%dM" % (xy[0] + 1, xy[1] + 1)
+
+    # By its full path: the tab bar has "b.txt" too, above the dialog, and a
+    # click there is a click outside it.
+    b_row = find([a, b], ["\x02"], b)
+    check("the buffer list draws the second buffer", b_row is not None, True)
+    out = go([a, b], ["\x02"] + click(b_row) + ["\r"])
+    check("a click selects a row, and Enter shows it",
+          "[2/2]" in status_row(out), True)
+    # A click only selects, as it does in the Open dialog: the list stays up
+    # until Enter. Esc after the click proves nothing was chosen by it.
+    out = go([a, b], ["\x02"] + click(b_row) + ["\x1b"])
+    check("the click alone chooses nothing",
+          "[1/2]" in status_row(out), True)
+    title = find([a, b], ["\x02"], "Buffers")
+    out = go([a, b], ["\x02"] + click(title) + ["\r"])
+    check("a click on the frame moves no selection",
+          "[1/2]" in status_row(out), True)
+    out = go([a, b], ["\x02", wheel_down(b_row), "\r"])
+    check("the wheel moves the selection",
+          "[2/2]" in status_row(out), True)
 
     print("\nbuffers: crash recovery covers all of them")
 

@@ -883,6 +883,7 @@ int indent_insert_spaces_default(void);
 void editor_newline_and_indent(void);
 void indent_shift(int dir);
 int indent_backspace(void);
+int indent_convert(int to_spaces);
 void indent_insert_step(void);
 void indent_set_auto(int v);
 void indent_set_insert_spaces(int v);

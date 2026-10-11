@@ -2732,6 +2732,59 @@ static void test_cursors_more(void) {
   check("leaves one cursor", V.ncursors, 1);
 }
 
+/* Converting the indentation a file already has. */
+static void test_indent_convert(void) {
+  printf("\nindentation: converting what is there\n");
+
+  mc_load("\talpha\n  \tbeta\ngamma\n");
+  check("to spaces changes the two indented rows", indent_convert(1), 2);
+  check_str("a tab is the spaces it showed as, and a tab after spaces is "
+            "the rest of the stop", mc_text(),
+            "        alpha\n        beta\ngamma");
+  check("converting again changes nothing", indent_convert(1), 0);
+  editor_undo();
+  check_str("and one undo puts both rows back", mc_text(),
+            "\talpha\n  \tbeta\ngamma");
+
+  mc_load("        x\n          y\n    z\n");
+  check("to tabs changes the rows a tab stop fits in", indent_convert(0), 2);
+  check_str("whole stops become tabs and the rest stay spaces", mc_text(),
+            "\tx\n\t  y\n    z");
+
+  mc_load("\ta\tb\n");
+  indent_convert(1);
+  check_str("a tab after the text is the text's, and stays", mc_text(),
+            "        a\tb");
+
+  mc_load("\t\n  \t  \nx\n");
+  check("a row of nothing but whitespace is not indentation",
+        indent_convert(1), 0);
+
+  mc_load("\ta\n\tb\n\tc\n");
+  mc_select(1, 0, 1);
+  CUR.cy = 2;
+  CUR.cx = 0;
+  indent_convert(1);
+  check_str("with a selection, only its rows", mc_text(),
+            "\ta\n        b\n\tc");
+
+  /* The cursor keeps its character when it is in the text. */
+  mc_load("\tabc\n");
+  CUR.cy = 0;
+  CUR.cx = 2;
+  indent_convert(1);
+  check("a cursor in the text keeps its character", CUR.cx, 9);
+
+  tab_width_set(4);
+  mc_load("\t\tx\n      y\n");
+  indent_convert(1);
+  check_str("at the width in force for the file", mc_text(),
+            "        x\n      y");
+  indent_convert(0);
+  check_str("and back at the same width", mc_text(), "\t\tx\n\t  y");
+  tab_width_set(8);
+}
+
 static void test_indent_block(void) {
   printf("\nindentation: a block, and one level at a time\n");
 
@@ -3357,6 +3410,7 @@ int main(void) {
   test_cursors_edit();
   test_cursors_more();
   test_indent_block();
+  test_indent_convert();
   test_wrap();
   test_menu_dropdown();
   test_buflist();

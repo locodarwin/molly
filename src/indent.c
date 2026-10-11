@@ -302,3 +302,78 @@ int indent_backspace(void) {
   CUR.cx = keep;
   return 1;
 }
+
+/* ---- converting what is already there ------------------------------------- */
+
+/* Rewrite the leading whitespace of the rows a selection touches -- or of every
+ * row, with nothing selected -- as spaces (`to_spaces`) or as tabs. Returns the
+ * number of rows that changed; one undo step for all of them.
+ *
+ * `insert spaces` only decides what the next Tab writes, so a file of tabs stays
+ * one until something converts it, and this is that something. Only the
+ * indentation: a tab after the first non-blank character may be data -- a TSV
+ * column, a Makefile's recipe after a target -- and an editor that rewrote it
+ * as spaces would be changing what the file means rather than how it looks.
+ *
+ * Measured at the tab width in force for this file, so the indentation looks
+ * exactly as it did before. To tabs, a width that is not a whole number of tab
+ * stops keeps the remainder as spaces: four tabs and two spaces is still the
+ * same column, where rounding either way would move the text. */
+int indent_convert(int to_spaces) {
+  int pre_cx = CUR.cx, pre_cy = CUR.cy;
+  int w = tab_width(), y0 = 0, y1, y, changed = 0;
+  char *buf = NULL;
+  int bufcap = 0;
+
+  if (V.buf == NULL || row_count() == 0) return 0;
+  y1 = row_count() - 1;
+  if (CUR.sel_active) {
+    int ax, ay, bx, by;
+    if (!selection_span(&ax, &ay, &bx, &by)) return 0;
+    y0 = ay;
+    y1 = (bx == 0 && by > ay) ? by - 1 : by;
+    if (y1 >= row_count()) y1 = row_count() - 1;
+  }
+
+  undo_group_begin();
+  for (y = y0; y <= y1; y++) {
+    erow *row = row_at(y);
+    int n = lead_bytes(row), width, len, k, post;
+
+    /* A row that is nothing but whitespace is left as it is: converting it
+     * would be an edit to trailing whitespace nobody asked about. */
+    if (n == 0 || n == row->size) continue;
+    width = editor_row_cx_to_rx(row, n);
+    len = to_spaces ? width : width / w + width % w;
+    if (len > bufcap) {
+      bufcap = len + 16;
+      buf = xrealloc(buf, (size_t)bufcap);
+    }
+    if (to_spaces) {
+      memset(buf, ' ', (size_t)len);
+    } else {
+      memset(buf, '\t', (size_t)(width / w));
+      memset(buf + width / w, ' ', (size_t)(width % w));
+    }
+    if (len == n && memcmp(buf, row->chars, (size_t)n) == 0) continue;
+
+    post = (pre_cx >= n) ? pre_cx + len - n : (pre_cx > 0 ? len : 0);
+    record(UC_DELETE, y, 0, row->chars, n, pre_cx, pre_cy, post);
+    editor_row_delete_n(row, 0, n);
+    record(UC_INSERT, y, 0, buf, len, pre_cx, pre_cy, post);
+    editor_row_insert_n(row, 0, buf, (size_t)len);
+
+    /* A cursor in the text keeps its character; one in the indentation goes to
+     * the end of it, since the column it was on may no longer be a boundary. */
+    for (k = 0; k < V.ncursors; k++) {
+      struct cursor *c = &V.cursors[k];
+      if (c->cy == y && c->cx > 0) c->cx = (c->cx >= n) ? c->cx + len - n : len;
+      if (c->sel_active && c->sy == y && c->sx > 0)
+        c->sx = (c->sx >= n) ? c->sx + len - n : len;
+    }
+    changed++;
+  }
+  undo_group_end();
+  free(buf);
+  return changed;
+}

@@ -1,12 +1,12 @@
 --- screen ---
  File  Edit  Search  View  G
 ┌─────────────────────────▴┐
-│  Paste            Ctrl-V │
-├──────────────────────────┤
-│  Select all       Ctrl-A │
 │  Select line      Ctrl-L │
 ├──────────────────────────┤
-│  Filter through    Alt-| │
+│  Indent              Tab │
+│  Dedent        Shift-Tab │
+├──────────────────────────┤
+│  Filter thro       Alt-| │
 └──────────────────────────┘
 ~
 sample.txt - 3 lines
@@ -27,7 +27,7 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRR
 --- colors ---
 1: 0-5 252/235  6-11 234/110  12-27 252/235
 2: 0-27 245/238
-3: 0-0 245/238  1-26 243/238  27-27 245/238
+3: 0-0 245/238  1-26 252/238  27-27 245/238
 4: 0-27 245/238
 5: 0-0 245/238  1-26 252/238  27-27 245/238
 6: 0-0 245/238  1-26 252/238  27-27 245/238
@@ -37,8 +37,9 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRR
 10: 0-0 8/-  2-27 240/234
 --- modifiers ---
 1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u
+3: 10-10 u
 5: 3-3 u
-6: 10-10 u
+6: 3-3 u
 8: 3-3 u
 --- cursor ---
 row 2 col 1 visible 0

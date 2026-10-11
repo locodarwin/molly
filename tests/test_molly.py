@@ -1866,8 +1866,10 @@ def test_menu(tmpdir):
     check("an arrow says there is more below", "\u25be" in short.text()[8], True)
     check("the tail is not drawn", "Filter" in "\n".join(short.text()), False)
     tail = screen(["\x1be", END], rows=12, cols=28)
+    # "Filter" rather than its whole label: Shift-Tab is the widest shortcut in
+    # this menu, so at 28 columns the label column is squeezed to "Filter thro".
     check("End scrolls the last item into the box",
-          "Filter through" in tail.text()[7], True)
+          "Filter" in tail.text()[7], True)
     check("the arrow moves to the top border", "\u25b4" in tail.text()[1], True)
     check("and goes from the bottom one, which has nothing behind it",
           "\u25be" in tail.text()[8], False)
@@ -1881,7 +1883,19 @@ def test_menu(tmpdir):
     clicked = screen(["\x1be", 0.2, "\x1b[<0;27;9M", "\x1b[<0;27;9m"],
                      rows=12, cols=28)
     check("clicking the arrow scrolls the list",
-          "Filter through" in clicked.text()[7], True)
+          "Indent" in clicked.text()[7], True)
+
+    # The three commands the drop-down's height used to keep out of their menus.
+    # Soft wrap is the View menu's twelfth item, and Indent and Dedent are a
+    # group of their own in the Edit menu.
+    check("Soft wrap is in the View menu", msg(["\x1bv", "w"]), "Soft wrap: on")
+    # At sixteen rows the Edit menu can draw ten of its fourteen items, so
+    # neither of these is on the screen when its letter is pressed: an item's
+    # mnemonic belongs to the command, not to a row that was drawn.
+    check("Indent is in the Edit menu, drawn or not",
+          screen(["\x1be", "i"]).text()[1], "        alpha")
+    check("and Dedent is under it",
+          screen(["\x1be", "i", 0.2, "\x1be", "d"]).text()[1], "alpha")
 
     # Hiding the band gives its row back to the text; opening a menu while it is
     # hidden draws the band over the first line instead of reflowing the screen.
@@ -2334,8 +2348,9 @@ def test_save_settings(tmpdir):
         return scr.text()
 
     # Turn the gutter on with Ctrl-U, then save settings from the View menu:
-    # Alt-V, then the last item.
-    out = run([MOLLY, path], ["\x15", "\x1bv", "\x1b[B" * 6, "\r"],
+    # Alt-V, then End for the last item -- which is what this means, and does
+    # not have to be recounted every time that menu gains one.
+    out = run([MOLLY, path], ["\x15", "\x1bv", "\x1b[F", "\r"],
               env={"MOLLY_CONFIG": rc})
     check("saving settings reports where it wrote",
           any("Settings saved" in m for m in status_lines(out)), True)
@@ -2359,7 +2374,7 @@ def test_save_settings(tmpdir):
 
     # Written twice is still valid: the second write must not double anything or
     # trip over the file it is replacing.
-    out = run([MOLLY, path], ["\x15", "\x1bv", "\x1b[B" * 6, "\r"],
+    out = run([MOLLY, path], ["\x15", "\x1bv", "\x1b[F", "\r"],
               env={"MOLLY_CONFIG": rc})
     check("saving over an existing file works",
           any("Settings saved" in m for m in status_lines(out)), True)
@@ -2370,7 +2385,7 @@ def test_save_settings(tmpdir):
           any("problem" in m for m in status_lines(out)), False)
 
     # A path that cannot be written is reported rather than lost.
-    out = run([MOLLY, path], ["\x1bv", "\x1b[B" * 6, "\r"],
+    out = run([MOLLY, path], ["\x1bv", "\x1b[F", "\r"],
               env={"MOLLY_CONFIG": "/proc/version"})
     check("a write that cannot happen says so",
           any("Could not save settings" in m for m in status_lines(out)), True)

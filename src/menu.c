@@ -52,15 +52,14 @@ static const struct menu_item edit_items[] = {
    * has U, Redo R, Cut its 't', Copy C and Paste P. Transpose is not here on
    * purpose -- it is a keyboard operation, and it is in the palette. */
   {"edit.select-all", 0}, {"edit.select-line", 7}, SEP,
+  /* I and D, both free, in a group of their own between the commands that work
+   * on a selection and the one that needs a prompt. This menu is the tallest
+   * molly has -- sixteen rows with these two and their separator -- and that is
+   * now a question of how much of it a short terminal can show at once rather
+   * than of what may be in it: see menu_dropdown_height(). */
+  {"edit.indent", 0}, {"edit.dedent", 0}, SEP,
   /* F, which is the only letter in "Filter" this menu has not spent. */
   {"edit.filter", 0},
-  /* Indent and Dedent are not here, and the reason is arithmetic rather than
-   * editorial: this menu already needs thirteen rows, a drop-down paints over
-   * the status bar once it is taller than the text area, and two more items
-   * plus a separator make that reachable on a sixteen-row screen instead of a
-   * twelve-row one. They are in the palette, the help screen and the keymap --
-   * three of the four ways the command table reads -- and they belong here as
-   * soon as a drop-down can handle its own height. See HANDOFF.md. */
 };
 static const struct menu_item search_items[] = {
   {"search.find", 0}, {"search.next", 5}, {"search.prev", 5},
@@ -71,18 +70,12 @@ static const struct menu_item view_items[] = {
   {"view.line-numbers", 0}, {"view.menu-bar", 0}, {"view.tab-bar", 0},
   /* Y of "Syntax", since S is Save settings further down this menu. */
   {"view.syntax", 1},
+  /* W of "Soft wrap", for the same reason, and beside the other three toggles
+   * that change how the text is drawn rather than what is in it. */
+  {"view.soft-wrap", 5},
   SEP, {"view.repaint", 0},
   SEP, {"app.save-settings", 0},
 };
-/* Soft wrap is not here, for the arithmetic reason Indent and Dedent are not in
- * the Edit menu. This menu needs twelve rows and the item would make it
- * thirteen, which is exactly the text area of a sixteen-row screen: the box
- * then fits and its drop shadow does not, so it lands on the status bar and
- * dims the half of it that says which line the cursor is on. No menu's shadow
- * reaches the chrome today, and this would be the first. `Alt-Z`, the palette
- * and the help screen have the command; it joins this menu as soon as a
- * drop-down can handle its own height -- which is now three commands' worth of
- * reason to fix that, counting indent and dedent. See HANDOFF.md. */
 static const struct menu_item go_items[] = {
   {"goto.line", 0}, SEP,
   /* N and P, since Go has nothing else competing for either. */

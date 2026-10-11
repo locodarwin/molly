@@ -433,10 +433,14 @@ def main():
     # until Save Settings was added to it, which is exactly the gap a new item in
     # an uncaptured menu leaves -- a lost tick or a separator in the wrong place
     # would have gone unnoticed.
-    check("menu-view", ["\x1bv"], rows=16, cols=64,
+    # Eighteen rows, which is what the menu needs now that Soft wrap is in it:
+    # thirteen for the box and one for the shadow, above the status row and the
+    # message bar. At sixteen the last item scrolls out, and this snapshot is
+    # the one that proves Save Settings is there.
+    check("menu-view", ["\x1bv"], rows=18, cols=64,
           files={"sample.txt": THREE_LINES})
     # With both of its ticks on, so the tick column is proved rather than assumed.
-    check("menu-view-checked", ["\x15", "\x1bv"], rows=16, cols=64,
+    check("menu-view-checked", ["\x15", "\x1bv"], rows=18, cols=64,
           files={"sample.txt": THREE_LINES})
     # Narrow, which is where a drop-down wider than the terminal shows. There are
     # two of these because there are two ways the box can be squeezed, and they
@@ -463,7 +467,7 @@ def main():
     check("menu-search-narrow", ["\x1bs"], rows=14, cols=30,
           files={"sample.txt": THREE_LINES})
     # And at 256 colours, where the band is a shade darker than a drop-down.
-    check("menu-view-256", ["\x1bv"], rows=16, cols=64,
+    check("menu-view-256", ["\x1bv"], rows=18, cols=64,
           files={"sample.txt": THREE_LINES},
           env={"TERM": "xterm-256color"})
     check("menu-search-256", ["\x1bs"], rows=16, cols=64,

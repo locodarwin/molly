@@ -7,11 +7,13 @@
   │ ~               │✓ Menu bar                   Alt-M │
   │ ~               │✓ Tab bar                    Alt-B │
   │ ~               │✓ Syntax highlighting        Alt-Y │
+  │ ~               │  Soft wrap                  Alt-Z │
   │ ~               ├───────────────────────────────────┤
   │ ~               │  Redraw                        F5 │
   │ ~               ├───────────────────────────────────┤
   │ ~               │  Save settings                    │
   │ ~               └───────────────────────────────────┘
+  │ ~
   │ ~
 sample.txt - 3 lines                                 Ln 1, Col 1
 Line numbers: on
@@ -29,7 +31,9 @@ ggggg...............ggggggggggggggggggggggggggggggggggggggg
 ggggg...............ggggggggggggggggggggggggggggggggggggggg
 ggggg...............ggggggggggggggggggggggggggggggggggggggg
 ggggg...............ggggggggggggggggggggggggggggggggggggggg
+ggggg...............ggggggggggggggggggggggggggggggggggggggg
 ggggg.................ggggggggggggggggggggggggggggggggggggg
+ggggg
 RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 
 --- colors ---
@@ -41,12 +45,14 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 6: 0-4 8/-  20-20 7/8  21-55 15/8  56-56 7/8  57-58 8/0
 7: 0-4 8/-  20-20 7/8  21-55 15/8  56-56 7/8  57-58 8/0
 8: 0-4 8/-  20-20 7/8  21-55 15/8  56-56 7/8  57-58 8/0
-9: 0-4 8/-  20-56 7/8  57-58 8/0
-10: 0-4 8/-  20-20 7/8  21-55 15/8  56-56 7/8  57-58 8/0
-11: 0-4 8/-  20-56 7/8  57-58 8/0
-12: 0-4 8/-  20-20 7/8  21-55 15/8  56-56 7/8  57-58 8/0
-13: 0-4 8/-  20-56 7/8  57-58 8/0
-14: 0-4 8/-  22-58 8/0
+9: 0-4 8/-  20-20 7/8  21-55 15/8  56-56 7/8  57-58 8/0
+10: 0-4 8/-  20-56 7/8  57-58 8/0
+11: 0-4 8/-  20-20 7/8  21-55 15/8  56-56 7/8  57-58 8/0
+12: 0-4 8/-  20-56 7/8  57-58 8/0
+13: 0-4 8/-  20-20 7/8  21-55 15/8  56-56 7/8  57-58 8/0
+14: 0-4 8/-  20-56 7/8  57-58 8/0
+15: 0-4 8/-  22-58 8/0
+16: 0-4 8/-
 --- modifiers ---
 1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u  39-39 u
 3: 23-23 u
@@ -54,7 +60,8 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 6: 23-23 u
 7: 23-23 u
 8: 24-24 u
-10: 23-23 u
-12: 23-23 u
+9: 28-28 u
+11: 23-23 u
+13: 23-23 u
 --- cursor ---
 row 2 col 5 visible 0

@@ -643,9 +643,9 @@ static const struct command commands[] = {
 
   /* Not in the Edit menu, for the reason transpose is not: these are keyboard
    * operations, and the palette and the help screen are generated from this
-   * table so both find them without the menu growing four rows -- which it can
-   * least afford, being the one drop-down that already outgrows a short
-   * terminal. */
+   * table so both find them without the menu growing four rows -- which that
+   * menu can least afford, being the tallest one and so the first to scroll on
+   * a short terminal. */
   {.name = "cursor.add-next", .label = "Add cursor at next match",
    .help = "Cursor: next match", .group = "CURSORS",
    .run = cmd_cursor_add_next, .enabled = have_rows},

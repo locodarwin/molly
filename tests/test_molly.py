@@ -3008,11 +3008,12 @@ def test_tabbar(tmpdir):
 # --------------------------------------------------- syntax highlighting ----
 
 def test_italic(tmpdir):
-    """Comments in italic, and the terminals that do not get it.
+    """Comments in italic, and the three ways they are not.
 
     theme.c's tests cover which role is italic and which TERM names get it;
     what a pty shows is that it reaches the screen on a comment and nowhere
-    else, and that a terminal known to draw it badly is spared it.
+    else, that a terminal known to draw it badly is spared it, and that the
+    setting turns it off from mollyrc.
     """
     print("\nitalic: comments lean, code does not")
 
@@ -3054,6 +3055,9 @@ def test_italic(tmpdir):
     scr = paint({"TERM": "linux"})
     check("nor on the Linux console", leaning(scr, TEXT + 1), "." * 14)
 
+    scr = paint({"TERM": "xterm-256color"}, "[view]\nitalic = off\n")
+    check("mollyrc turns it off", leaning(scr, TEXT), "." * 14)
+    check("and the colour stays", scr.colors[TEXT][8][0], 244)
 
 
 def test_syntax(tmpdir):

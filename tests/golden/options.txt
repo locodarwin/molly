@@ -1,9 +1,8 @@
 --- screen ---
  File  Edit  Search  View  Go  Window  Help
 alpha
-beta
-gamma   ╔══════════════════════════ Options ═══════════════════════════╗
-~       ║  editor  tab width                                         8 ║
+beta    ╔══════════════════════════ Options ═══════════════════════════╗
+gamma   ║  editor  tab width                                         8 ║
 ~       ║  editor  insert spaces                                   off ║
 ~       ║  editor  auto indent                                      on ║
 ~       ║  editor  undo steps                                    32768 ║
@@ -11,6 +10,7 @@ gamma   ╔═══════════════════════
 ~       ║  view    menu bar                                         on ║
 ~       ║  view    tab bar                                          on ║
 ~       ║  view    syntax                                           on ║
+~       ║  view    italic                                           on ║
 ~       ║  view    soft wrap                                       off ║
 ~       ║  input   mouse                                            on ║
 ~       ║  shell   timeout                                          10 ║
@@ -26,8 +26,8 @@ HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | F3 = next | F1 = help
 --- attrs ---
 gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 
-
 ........gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+........gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 g.......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 g.......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 g.......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
@@ -50,8 +50,9 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 
 --- colors ---
 1: 0-79 7/0
-4: 8-35 7/8  36-42 15/8  43-71 7/8
-5: 0-0 8/-  8-8 7/8  9-9 15/8  10-69 15/4  70-70 15/8  71-71 7/8  72-73 8/0
+3: 8-35 7/8  36-42 15/8  43-71 7/8
+4: 8-8 7/8  9-9 15/8  10-69 15/4  70-70 15/8  71-71 7/8  72-73 8/0
+5: 0-0 8/-  8-8 7/8  9-70 15/8  71-71 7/8  72-73 8/0
 6: 0-0 8/-  8-8 7/8  9-70 15/8  71-71 7/8  72-73 8/0
 7: 0-0 8/-  8-8 7/8  9-70 15/8  71-71 7/8  72-73 8/0
 8: 0-0 8/-  8-8 7/8  9-70 15/8  71-71 7/8  72-73 8/0
@@ -71,6 +72,6 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 22: 0-0 8/-  10-73 8/0
 --- modifiers ---
 1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u  39-39 u
-4: 36-42 b
+3: 36-42 b
 --- cursor ---
 row 2 col 1 visible 0

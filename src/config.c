@@ -182,6 +182,9 @@ static void apply_syntax(int v) {
 }
 static int live_syntax(void) { return V.syntax; }
 
+static void apply_italic(int v) { theme_set_italic(v); }
+static int live_italic(void) { return theme_italic(); }
+
 static void apply_wrap(int v) {
   V.wrap = v;
   screen_force_repaint();
@@ -254,6 +257,11 @@ static struct setting settings[] = {
   {"view", "syntax", SET_BOOL, 0, 0, 1, 0,
    "colour the text by filetype",
    apply_syntax, live_syntax},
+  /* On, and asking only for what the terminal can do: theme.c leaves it off
+   * where TERM names one that draws italic as something worse. */
+  {"view", "italic", SET_BOOL, 0, 0, 1, 0,
+   "draw comments in italic, where the terminal can",
+   apply_italic, live_italic},
   /* Off, because molly's own answer for a long line is the horizontal scroll
    * and the file it is most often editing is code. It is a setting rather than
    * a filetype default for the same reason: what a line is too long for is the

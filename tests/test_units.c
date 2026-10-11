@@ -981,6 +981,11 @@ static void test_chords(void) {
   check_chord("Shift-F3", (F1_KEY + 2) | KEY_SHIFT);
   check_chord("shift-right", ARROW_RIGHT | KEY_SHIFT);
   check_chord("shift-pagedown", PAGE_DOWN | KEY_SHIFT);
+  /* Alt on an arrow is a parameter too, so a navigation chord can carry it. */
+  check_chord("alt-shift-up", ARROW_UP | KEY_ALT | KEY_SHIFT);
+  check_chord("shift-alt-up", ARROW_UP | KEY_ALT | KEY_SHIFT);
+  check_chord("alt-left", ARROW_LEFT | KEY_ALT);
+  check_chord("ctrl-alt-up", -1);
   /* Modifiers in either order, since a hand-written file may use either. */
   check_chord("shift-f5", (F1_KEY + 4) | KEY_SHIFT);
 
@@ -1006,6 +1011,7 @@ static void test_chords(void) {
   check_chord_name(CTRL_KEY('?'), "Ctrl-?");
   check_chord_name(CTRL_KEY(' '), "Ctrl-Space");
   check_chord_name(ALT_KEY('x'), "Alt-X");
+  check_chord_name(ARROW_UP | KEY_ALT | KEY_SHIFT, "Alt-Shift-Up");
   check_chord_name(F1_KEY + 9, "F10");
   check_chord_name(PAGE_UP, "PgUp");
   check_chord_name(BACKTAB_KEY, "Shift-Tab");

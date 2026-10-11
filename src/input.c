@@ -19,6 +19,11 @@ static int last_key_shift = 0;
  * without reading it Ctrl-PgUp arrived as a plain PgUp and scrolled a page. */
 static int last_key_ctrl = 0;
 
+/* And with Alt, for the one family of chords that needs it on a navigation key:
+ * Alt-Shift and an arrow, which draws a block selection. Alt on a letter is a
+ * different key code altogether (ALT_KEY), as it always was. */
+static int last_key_alt = 0;
+
 /* Whether the key just returned arrived with Shift held. Read once, right after
  * editor_read_key, by the code that decides whether to extend a selection. */
 int input_last_key_had_shift(void) {
@@ -27,6 +32,10 @@ int input_last_key_had_shift(void) {
 
 int input_last_key_had_ctrl(void) {
   return last_key_ctrl;
+}
+
+int input_last_key_had_alt(void) {
+  return last_key_alt;
 }
 
 /* The mouse report that came with the last MOUSE_KEY. Out of band for the same
@@ -106,6 +115,7 @@ static int editor_read_key(void) {
   unsigned char c;
   last_key_shift = 0;
   last_key_ctrl = 0;
+  last_key_alt = 0;
   while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
     if (nread == -1 && errno != EAGAIN) die("read");
     /* VMIN=0/VTIME=1 already wakes this loop roughly every 100ms even with
@@ -162,6 +172,7 @@ static int editor_read_key(void) {
       if (mod >= 2) {
         last_key_shift = ((mod - 1) & 0x01) ? 1 : 0;
         last_key_ctrl = ((mod - 1) & 0x04) ? 1 : 0;
+        last_key_alt = ((mod - 1) & 0x02) ? 1 : 0;
       }
     }
 

@@ -1005,9 +1005,16 @@ int chord_parse(const char *s) {
     }
   }
   if (alt) {
-    if (s[1] != '\0' || (unsigned char)s[0] < 0x20 || (unsigned char)s[0] > 0x7e)
-      return -1;
-    key = ALT_KEY(s[0]);
+    if (mods_are_reported(key)) {
+      /* An arrow or the like, where Alt is a parameter like the other two --
+       * which is what lets "alt-shift-up" draw a block selection. */
+      mods |= KEY_ALT;
+    } else {
+      if (s[1] != '\0' || (unsigned char)s[0] < 0x20 ||
+          (unsigned char)s[0] > 0x7e)
+        return -1;
+      key = ALT_KEY(s[0]);
+    }
   }
   if (shift) {
     if (!mods_are_reported(key)) return -1;
@@ -1024,11 +1031,17 @@ void chord_name(int key, char *dst, size_t n) {
   /* The modifier flags are prefixes on whatever the rest of the key is called,
    * so they are peeled off one at a time and the bare key named by the code
    * below -- which is what keeps "Ctrl-" and "Shift-" out of every branch of it.
-   * Ctrl outside Shift, which is the order every editor prints them in. */
+   * Ctrl, then Alt, then Shift, which is the order every editor prints them in. */
   if (key & KEY_CTRL) {
     char base[32];
     chord_name(key & ~KEY_CTRL, base, sizeof(base));
     snprintf(dst, n, "Ctrl-%s", base);
+    return;
+  }
+  if (key & KEY_ALT) {
+    char base[32];
+    chord_name(key & ~KEY_ALT, base, sizeof(base));
+    snprintf(dst, n, "Alt-%s", base);
     return;
   }
   if (key & KEY_SHIFT) {
@@ -1480,7 +1493,8 @@ void editor_process_key(int c) {
    * selection below; "shift-f3" and "ctrl-pagedown" are bound, so neither
    * reaches the unmodified key's command. */
   int mods = (shift ? KEY_SHIFT : 0) |
-             (input_last_key_had_ctrl() ? KEY_CTRL : 0);
+             (input_last_key_had_ctrl() ? KEY_CTRL : 0) |
+             (input_last_key_had_alt() ? KEY_ALT : 0);
   const struct command *cmd = NULL;
   if (mods) cmd = keymap_lookup(c | mods);
   if (cmd == NULL) cmd = keymap_lookup(c);

@@ -118,9 +118,10 @@ struct mouse_event {
  * it tries the key with its modifiers first and the bare key second, which is
  * what keeps Shift-Right extending a selection while Shift-F3 is its own
  * binding. */
+#define KEY_ALT          0x2000  /* on a navigation key only; see chord_parse */
 #define KEY_SHIFT        0x4000
 #define KEY_CTRL         0x8000
-#define KEY_MODS         (KEY_SHIFT | KEY_CTRL)
+#define KEY_MODS         (KEY_ALT | KEY_SHIFT | KEY_CTRL)
 #define KEY_BASE(k)      ((k) & ~KEY_MODS)
 
 typedef struct erow {
@@ -923,6 +924,7 @@ void grid_shade(int x, int y, int w, int h, unsigned char role);
 
 /* input.c */
 int input_escape_pressed(void);
+int input_last_key_had_alt(void);
 int input_last_key_had_ctrl(void);
 int input_last_key_had_shift(void);
 int ui_wait_key(void);

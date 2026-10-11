@@ -370,6 +370,22 @@ static int cmd_dedent(void) {
   return CMD_KEEP_SELECTION;
 }
 
+/* Convert the indentation that is already there. The selection is kept, as
+ * Indent keeps it, so converting a block and then converting it back is two
+ * presses rather than a reselection. */
+static int convert_indent(int to_spaces) {
+  int n = indent_convert(to_spaces);
+  if (n == 0)
+    editor_set_status_message("No indentation to convert %s",
+                              CUR.sel_active ? "in the selection" : "in this file");
+  else
+    editor_set_status_message("%d line%s now indented with %s", n,
+                              n == 1 ? "" : "s", to_spaces ? "spaces" : "tabs");
+  return CMD_KEEP_SELECTION;
+}
+static int cmd_to_spaces(void) { return convert_indent(1); }
+static int cmd_to_tabs(void) { return convert_indent(0); }
+
 static int cmd_delete_back(void) {
   cursors_edit(MC_DELETE_BACK, 0);
   return 0;
@@ -651,6 +667,17 @@ static const struct command commands[] = {
    .help = "Indent the lines", .group = "EDITING", .run = cmd_indent},
   {.name = "edit.dedent", .label = "Dedent",
    .help = "Dedent the lines", .group = "EDITING", .run = cmd_dedent,
+   .enabled = have_rows},
+  /* Unbound, like Save settings: converting a file is something done once, from
+   * the menu or the palette, not a chord the hand needs to know. The labels
+   * say tabs and spaces rather than "indentation" because that is the word
+   * people search the palette for, and the help line says it is only the
+   * indentation. */
+  {.name = "edit.to-spaces", .label = "Tabs to spaces",
+   .help = "Indent to spaces", .group = "EDITING", .run = cmd_to_spaces,
+   .enabled = have_rows},
+  {.name = "edit.to-tabs", .label = "Spaces to tabs",
+   .help = "Indent to tabs", .group = "EDITING", .run = cmd_to_tabs,
    .enabled = have_rows},
   {.name = "edit.transpose", .label = "Transpose characters",
    /* The help column is 17 columns and truncates in silence, so this is written

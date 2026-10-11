@@ -57,7 +57,11 @@ static const struct menu_item edit_items[] = {
    * molly has -- sixteen rows with these two and their separator -- and that is
    * now a question of how much of it a short terminal can show at once rather
    * than of what may be in it: see menu_dropdown_height(). */
-  {"edit.indent", 0}, {"edit.dedent", 0}, SEP,
+  {"edit.indent", 0}, {"edit.dedent", 0},
+  /* A of "Tabs" and E of "Spaces", the first letters of each that this menu
+   * has not spent. Here rather than in a group of their own because they are
+   * the same subject as the two above, and a separator would be a row. */
+  {"edit.to-spaces", 1}, {"edit.to-tabs", 4}, SEP,
   /* F, which is the only letter in "Filter" this menu has not spent, and the O
    * of "output" for the same reason: I is Indent's. */
   {"edit.filter", 0}, {"edit.insert-output", 7},

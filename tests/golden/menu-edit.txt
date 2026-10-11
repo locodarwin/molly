@@ -13,8 +13,8 @@ gamma │  Redo                 Ctrl-Y │
 ~     ├──────────────────────────────┤
 ~     │  Indent                  Tab │
 ~     │  Dedent            Shift-Tab │
-~     ├──────────────────────────────┤
-~     │  Filter through…       Alt-| │
+~     │  Tabs to spaces              │
+~     │  Spaces to tabs              │
 ~     └─────────────────────────────▾┘
 ~
 sample.txt - 3 lines                                 Ln 1, Col 1
@@ -55,7 +55,7 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 12: 0-0 8/-  6-37 7/8  38-39 8/0
 13: 0-0 8/-  6-6 7/8  7-36 15/8  37-37 7/8  38-39 8/0
 14: 0-0 8/-  6-6 7/8  7-36 15/8  37-37 7/8  38-39 8/0
-15: 0-0 8/-  6-37 7/8  38-39 8/0
+15: 0-0 8/-  6-6 7/8  7-36 15/8  37-37 7/8  38-39 8/0
 16: 0-0 8/-  6-6 7/8  7-36 15/8  37-37 7/8  38-39 8/0
 17: 0-0 8/-  6-37 7/8  38-39 8/0
 18: 0-0 8/-  8-39 8/0
@@ -65,6 +65,7 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 11: 16-16 u
 13: 9-9 u
 14: 9-9 u
-16: 9-9 u
+15: 10-10 u
+16: 13-13 u
 --- cursor ---
 row 2 col 1 visible 0

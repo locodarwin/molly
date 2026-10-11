@@ -4193,6 +4193,37 @@ def test_grep(tmpdir):
     finally:
         os.chdir(here)
 
+
+def test_indent_convert(tmpdir):
+    """Edit > Tabs to spaces and Spaces to tabs, from the menu.
+
+    The rewriting is unit-tested -- remainders, tabs inside the text, rows of
+    whitespace, the selection, undo. What is here is that the menu reaches
+    both and that the message says what happened.
+    """
+    print("\nconverting indentation: from the Edit menu")
+
+    TO_SPACES = ["\x1be", "a"]     # Edit, then A of "Tabs"
+    TO_TABS = ["\x1be", "e"]       # Edit, then E of "Spaces"
+
+    check("Edit > Tabs to spaces converts the whole file",
+          edit(tmpdir, "\tone\n\t\ttwo\n", TO_SPACES + [SAVE]),
+          "        one\n                two\n")
+    check("Edit > Spaces to tabs converts it back",
+          edit(tmpdir, "        one\n          two\n", TO_TABS + [SAVE]),
+          "\tone\n\t  two\n")
+    check("and a single undo restores it",
+          edit(tmpdir, "\tone\n\ttwo\n", TO_SPACES + [UNDO, SAVE]),
+          "\tone\n\ttwo\n")
+    rows = screen_rows(run([MOLLY, write_file(tmpdir, "ic.txt", "\tx\n\ty\n")],
+                           TO_SPACES))
+    check("the message says how many lines", "2 lines now indented with spaces"
+          in rows[23], True)
+    rows = screen_rows(run([MOLLY, write_file(tmpdir, "id.txt", "x\n")],
+                           TO_SPACES))
+    check("and says so when there was nothing to do",
+          "No indentation to convert in this file" in rows[23], True)
+
 def test_insert_output(tmpdir):
     """Alt-!: a command's output at the cursor, with nothing sent to it.
 
@@ -4574,6 +4605,7 @@ def main():
         test_insert_output(tmpdir)
         test_grep(tmpdir)
         test_indent(tmpdir)
+        test_indent_convert(tmpdir)
         test_multicursor(tmpdir)
         test_soft_wrap(tmpdir)
     finally:

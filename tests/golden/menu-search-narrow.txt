@@ -8,8 +8,8 @@
 │  Regular expres      Alt-R │
 ├────────────────────────────┤
 │  Replace…           Ctrl-R │
-└────────────────────────────┘
-~
+├────────────────────────────┤
+└───────────────────────────▾┘
 ~
 sample.txt - 3 lines
 HELP: Ctrl-S = save | Ctrl-Q =
@@ -24,8 +24,8 @@ gggggggggggggggggggggggggggggg
 gggggggggggggggggggggggggggggg
 gggggggggggggggggggggggggggggg
 gggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggg
 g.gggggggggggggggggggggggggggg
-g
 RRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 
 --- colors ---
@@ -39,8 +39,8 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 8: 0-29 7/8
 9: 0-0 7/8  1-28 15/8  29-29 7/8
 10: 0-29 7/8
-11: 0-0 8/-  2-29 8/0
-12: 0-0 8/-
+11: 0-29 7/8
+12: 0-0 8/-  2-29 8/0
 --- modifiers ---
 1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u
 3: 3-3 u

@@ -1240,7 +1240,7 @@ def test_help(tmpdir):
                   "FIND & REPLACE", "CLIPBOARD", "HISTORY", "WINDOWS", "VIEW",
                   "F6", "Shift-F6", "F7", "F8", "F9",
                   "Ctrl-S", "Ctrl-Q", "F1", "Ctrl-G", "Ctrl-F", "F3",
-                  "Shift-F3", "Ctrl-T", "Ctrl-R", "Ctrl-Z", "Ctrl-Y", "Ctrl-C",
+                  "Shift-F3", "Ctrl-T", "Ctrl-R", "Ctrl-E", "F4", "Shift-F4", "Ctrl-Z", "Ctrl-Y", "Ctrl-C",
                   "Ctrl-X", "Ctrl-V", "Ctrl-A", "Ctrl-L", "F5", "Ctrl-U",
                   "Shift+Arrows", "PgUp/PgDn",
                   "Home/End", "Bksp/Ctrl-H", "Enter accepts", "Esc cancels"]:
@@ -4081,6 +4081,118 @@ def test_split_resize(tmpdir):
                                     drag(30, 2), release(30, 2), "X", SAVE]),
           "Xalpha\n")
 
+
+def test_grep(tmpdir):
+    """Ctrl-E: find in files, the results buffer, and getting from it to a file.
+
+    The command line is unit-tested by running it in a scratch directory, the
+    quoting included. What is here is the editor's half: where the results go,
+    what Enter and F4 do with them, and that they never count as unsaved work.
+    Run in a directory of its own that is not a git work tree, so it is grep -r
+    -- whose file order is the directory's, which is why only the checks that
+    name one file depend on order.
+    """
+    print("\nfind in files: the results")
+
+    work = os.path.join(tmpdir, "grepwork")
+    os.makedirs(os.path.join(work, "sub"), exist_ok=True)
+
+    def fresh():
+        with open(os.path.join(work, "a.txt"), "w") as fh:
+            fh.write("alpha\nneedle one\n")
+        with open(os.path.join(work, "sub", "b.txt"), "w") as fh:
+            fh.write("x\ny\n  needle two\nz\nlast needle\n")
+        with open(os.path.join(work, "c.txt"), "w") as fh:
+            fh.write("nothing to see\n")
+
+    GREP = "\x05"           # Ctrl-E
+    F4, SHIFT_F4 = "\x1bOS", "\x1b[1;2S"
+
+    def screen(keys, argv=("c.txt",)):
+        scr = Screen(24, 80)
+        scr.feed(run([MOLLY] + list(argv), keys))
+        return scr.text()
+
+    def read(name):
+        with open(os.path.join(work, name)) as fh:
+            return fh.read()
+
+    here = os.getcwd()
+    os.chdir(work)
+    try:
+        fresh()
+        text = screen([GREP, "needle", "\r"])
+        joined = "\n".join(text)
+        check("Ctrl-E lists a match in one file", "a.txt:2:needle one" in joined,
+              True)
+        check("and in a file in a subdirectory",
+              "sub/b.txt:3:  needle two" in joined, True)
+        check("without the ./ grep -r puts on every path",
+              "./" in joined, False)
+        check("and not a file without one", "c.txt:" in joined, False)
+        check("the results open in a window below the file",
+              any("c.txt - 1 lines" in r for r in text[:15]), True)
+        check("which is called what it is", "grep: needle" in joined, True)
+        check("and the message line counts them",
+              "3 matches in 2 files" in text[23], True)
+
+        # Into the one file whose order is fixed. Enter on its first match
+        # opens it in the window the search ran from, on the match: typing
+        # there and saving shows exactly where the cursor landed.
+        fresh()
+        screen([GREP, "needle two", "\r", "\r", "X", "\x13"])
+        check("Enter opens the file at the match, on its first character",
+              read("sub/b.txt"), "x\ny\n  Xneedle two\nz\nlast needle\n")
+        check("and the results are left alone", read("c.txt"),
+              "nothing to see\n")
+
+        # A pattern only one file matches, on rows 1, 2 and 4, so the order is
+        # fixed: three F4s reach row 4, a Shift-F4 comes back to row 2.
+        fresh()
+        screen(["\x1br", GREP, "^[xyz]$", "\r", F4, F4, F4, SHIFT_F4, "Y",
+                "\x13"])
+        check("F4 steps through the matches and Shift-F4 steps back",
+              read("sub/b.txt"), "x\nYy\n  needle two\nz\nlast needle\n")
+        text = screen(["\x1br", GREP, "^[xyz]$", "\r", F4, F4, F4, F4])
+        check("and past the last one says so rather than wrapping",
+              "That was the last match." in text[23], True)
+
+        fresh()
+        text = screen([GREP, "nowhere-at-all", "\r"])
+        check("no matches says so", "No matches for nowhere-at-all" in text[23],
+              True)
+        check("and opens no results", "grep:" in "\n".join(text), False)
+
+        fresh()
+        text = screen([GREP, "ne+dle", "\r"])
+        check("plain text by default: + is a plus",
+              "No matches" in text[23], True)
+        text = screen(["\x1br", GREP, "ne+dle", "\r"])
+        check("with pattern search on, + repeats",
+              "3 matches" in text[23], True)
+
+        fresh()
+        text = screen([GREP, "needle", "\r", GREP, "alpha", "\r"])
+        joined = "\n".join(text)
+        check("a second search reuses the results buffer",
+              ("grep: alpha" in joined, "grep: needle" in joined), (True, False))
+        text = screen([GREP, "alpha", "\r", GREP, "\r"])
+        check("and Enter on an empty prompt runs the last search again",
+              "1 match in 1 file" in text[23], True)
+
+        # The results are not unsaved work. Quitting straight after a search
+        # must not stop to ask about them.
+        fresh()
+        out, st = run([MOLLY, "c.txt"], [GREP, "needle", "\r", 0.3, "\x11"],
+                      status=True)
+        check("quitting after a search does not ask about the results",
+              os.WIFEXITED(st) and os.WEXITSTATUS(st) == 0, True)
+        text = screen([F4])
+        check("F4 with no search says how to make one",
+              "Ctrl-E searches" in text[23], True)
+    finally:
+        os.chdir(here)
+
 def test_insert_output(tmpdir):
     """Alt-!: a command's output at the cursor, with nothing sent to it.
 
@@ -4460,6 +4572,7 @@ def main():
         test_split_resize(tmpdir)
         test_filter(tmpdir)
         test_insert_output(tmpdir)
+        test_grep(tmpdir)
         test_indent(tmpdir)
         test_multicursor(tmpdir)
         test_soft_wrap(tmpdir)

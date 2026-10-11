@@ -1,0 +1,38 @@
+--- screen ---
+ File  Edit  Search  View  Go
+ sample.txt  grep: quokka
+alpha
+beta
+gamma
+~
+[1/2] sample.txt - 3 lines
+found.txt:2:the quokka
+~
+~
+[2/2] grep: quokka - 1 lines
+1 match in 1 file for quokka -
+--- attrs ---
+gggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggg
+
+
+
+g
+gggggggggggggggggggggggggggggg
+
+g
+g
+RRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-29 7/0
+2: 0-11 7/0  12-25 15/8  26-29 7/0
+6: 0-0 8/-
+7: 0-29 7/8
+9: 0-0 8/-
+10: 0-0 8/-
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u
+2: 12-25 b
+--- cursor ---
+row 8 col 1 visible 1

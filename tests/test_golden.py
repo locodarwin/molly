@@ -388,6 +388,17 @@ def main():
           files={"sample.txt": THREE_LINES},
           env={"TERM": "xterm-256color"})
 
+    # Find in files. The goldens run in a scratch directory that is not a work
+    # tree, so this is grep -r over every file the run has written so far --
+    # which is why the word is one no other golden's text contains, and the
+    # file it is in is the only match whatever order the directory lists in.
+    QUOKKA = {"sample.txt": THREE_LINES, "found.txt": "a\nthe quokka\nb\n"}
+    check("grep-results", ["\x05", "quokka", "\r"], files=QUOKKA)
+    check("grep-results-256", ["\x05", "quokka", "\r"], files=QUOKKA,
+          env={"TERM": "xterm-256color"})
+    check("grep-results-narrow", ["\x05", "quokka", "\r"], rows=12, cols=30,
+          files=QUOKKA)
+
     # The Edit menu, which Select all and Select line joined. Nothing had
     # captured it either -- the same gap the View menu had, and the reason both
     # are here now: Cut and Copy are greyed out without a selection, so the

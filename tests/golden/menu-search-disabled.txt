@@ -8,10 +8,10 @@ gamma       │  Find next                  F3 │
 ~           │  Regular expression      Alt-R │
 ~           ├────────────────────────────────┤
 ~           │  Replace…               Ctrl-R │
-~           └────────────────────────────────┘
-~
-~
-~
+~           ├────────────────────────────────┤
+~           │  Find in files…         Ctrl-E │
+~           │  Next result                F4 │
+~           └───────────────────────────────▾┘
 ~
 sample.txt - 3 lines                                 Ln 1, Col 1
 HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | F3 = next
@@ -26,10 +26,10 @@ g...........gggggggggggggggggggggggggggggggggggg
 g...........gggggggggggggggggggggggggggggggggggg
 g...........gggggggggggggggggggggggggggggggggggg
 g...........gggggggggggggggggggggggggggggggggggg
+g...........gggggggggggggggggggggggggggggggggggg
+g...........gggggggggggggggggggggggggggggggggggg
+g...........gggggggggggggggggggggggggggggggggggg
 g.............gggggggggggggggggggggggggggggggggg
-g
-g
-g
 RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 
 --- colors ---
@@ -43,15 +43,16 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 8: 0-0 8/-  12-45 7/8  46-47 8/0
 9: 0-0 8/-  12-12 7/8  13-44 15/8  45-45 7/8  46-47 8/0
 10: 0-0 8/-  12-45 7/8  46-47 8/0
-11: 0-0 8/-  14-47 8/0
-12: 0-0 8/-
-13: 0-0 8/-
-14: 0-0 8/-
+11: 0-0 8/-  12-12 7/8  13-44 15/8  45-45 7/8  46-47 8/0
+12: 0-0 8/-  12-12 7/8  13-44 0/8  45-45 7/8  46-47 8/0
+13: 0-0 8/-  12-45 7/8  46-47 8/0
+14: 0-0 8/-  14-47 8/0
 --- modifiers ---
 1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u  39-39 u
 3: 15-15 u
 6: 21-21 u
 7: 17-17 u
 9: 15-15 u
+11: 20-20 u
 --- cursor ---
 row 2 col 1 visible 0

@@ -39,6 +39,10 @@
  * which only decides whether to reset it. */
 
 static int cmd_newline(void) {
+  /* In the find-in-files results Enter opens the match under the cursor, which
+   * is what a list of matches is for -- the way it is in every other editor's
+   * results. A row that names no file falls back to an ordinary Enter. */
+  if (B.grep_results && V.ncursors <= 1 && grep_jump(0)) return 0;
   cursors_edit(MC_NEWLINE, 0);
   return 0;
 }
@@ -242,6 +246,10 @@ static int cmd_find_prev(void) { editor_find_prev(); return 0; }
 static int cmd_case_toggle(void) { editor_toggle_case_sensitive(); return 0; }
 static int cmd_regex_toggle(void) { editor_toggle_regex(); return 0; }
 static int cmd_replace(void) { editor_replace(); return 0; }
+static int cmd_grep(void) { editor_grep(); return 0; }
+static int cmd_grep_next(void) { grep_jump(1); return 0; }
+static int cmd_grep_prev(void) { grep_jump(-1); return 0; }
+static int have_grep_results(void) { return grep_result_count() > 0; }
 static int cmd_goto_line(void) { editor_goto_line(); return 0; }
 static int cmd_help(void) { editor_help(); return 0; }
 
@@ -696,6 +704,14 @@ static const struct command commands[] = {
    .run = cmd_regex_toggle, .checked = search_regex_is_on},
   {.name = "search.replace", .label = "Replace…",
    .help = "Find & replace", .group = "FIND & REPLACE", .run = cmd_replace},
+  {.name = "search.in-files", .label = "Find in files…",
+   .help = "Search all files", .group = "FIND & REPLACE", .run = cmd_grep},
+  {.name = "search.next-result", .label = "Next result",
+   .help = "Next file match", .group = "FIND & REPLACE", .run = cmd_grep_next,
+   .enabled = have_grep_results},
+  {.name = "search.prev-result", .label = "Previous result",
+   .help = "Prev file match", .group = "FIND & REPLACE", .run = cmd_grep_prev,
+   .enabled = have_grep_results},
 
   {.name = "edit.copy", .label = "Copy",
    .help = "Copy selection", .group = "CLIPBOARD", .run = cmd_copy, .enabled = have_selection},
@@ -1122,6 +1138,13 @@ static const struct binding default_bindings[] = {
   {"ctrl-p",   "search.prev"},
   {"alt-r",  "search.regex"},
   {"ctrl-r", "search.replace"},
+  /* Ctrl-E, because Ctrl-Shift-F -- what most editors use -- reaches a
+   * terminal program as plain Ctrl-F, and E was one of two Ctrl letters left.
+   * F4 and Shift-F4 step through the results, which is VS Code's pair, and
+   * sits beside F3's find-next where the hand already is. */
+  {"ctrl-e",   "search.in-files"},
+  {"f4",       "search.next-result"},
+  {"shift-f4", "search.prev-result"},
   {"ctrl-g", "goto.line"},
 
   {"left",   "move.left"},
@@ -1532,6 +1555,9 @@ static const struct help_entry help_entries[] = {
    * still in the Search menu and in the palette. */
   {NULL,             NULL, NULL, "search.regex"},
   {NULL,             NULL, NULL, "search.replace"},
+  {NULL,             NULL, NULL, "search.in-files"},
+  {NULL,             NULL, NULL, "search.next-result"},
+  {NULL,             NULL, NULL, "search.prev-result"},
 
   {"CLIPBOARD", NULL, NULL, "edit.copy"},
   {NULL,        NULL, NULL, "edit.cut"},

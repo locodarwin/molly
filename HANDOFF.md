@@ -46,7 +46,8 @@ indents a new line under the old one, with the width, the character and
 auto-indent each answerable per filetype; it puts the cursor in as many places
 as you like and edits in all of them as one undo step; and it lays a line too
 long for the window out over as many screen rows as it needs without touching a
-byte of the file.
+byte of the file. And every menu now works on a terminal shorter than the menu
+is, which is what let the last three commands into theirs.
 
 **Measured, not remembered** (all of these taken at the last commit from a
 clean build on 2026-10-10; re-measure before quoting them anywhere):
@@ -166,7 +167,7 @@ Full table in `ROADMAP.md` §7. The ones that bite soonest:
   to parse *and* small to write back, because the Options dialogs have to
   persist.
 - **Keymap is CUA on the four conflicts, and fully remappable** except the
-  eight Alt-letter menu titles.
+  Alt-letter menu titles, which are seven today and read off the menu table.
 - **Multi-cursor edits in document order, and undo collapses to one cursor.**
   The order is what makes one fixup rule enough (see the gotchas); the collapse
   is because an undo record restores one position and not a list, so after
@@ -350,7 +351,7 @@ Two things the shell filter now makes cheap, neither of them asked for yet:
   both of which exist, and the filter is how the search would be run. A window
   showing a buffer of matches is the whole of what is left.
 
-Smaller things the last five features left behind, each a self-contained
+Smaller things the last six features left behind, each a self-contained
 commit:
 
 - **A buffer-list dialog**, for picking a buffer by name instead of walking the
@@ -372,6 +373,13 @@ commit:
   gesture and the chord. Dragging the separator with the mouse is the one users
   will reach for, and `window_mouse()` already ignores clicks that land on it,
   which is where that would hook in.
+
+The drop-down's height is **not** a pattern the menu *band* can reuse, which is
+the thing to know before picking the band's clipping off the list below: a
+drop-down could scroll because it has a selected item to keep in view, and the
+band's titles are also its Alt mnemonics, so scrolling one out of sight hides a
+menu whose letter still opens it. That one still needs a decision, not a
+scroll.
 
 ### Found along the way, not fixed
 
@@ -430,6 +438,12 @@ later.
   an estimate in a comment.
 - **Probe at sizes nothing has been tried at.** 6×20, 7×22 and 8×24 are what
   found both Find-dialog fit bugs. Every dialog needs a narrow golden.
+- **Lift the arithmetic out of the drawing, so a terminal is not needed to
+  prove it.** `wrap.c`'s display-row map and `menu.c`'s `menu_dropdown_height()`
+  and `menu_dropdown_scroll()` are both pure over numbers, and both carry the
+  cases a snapshot can only reach by running molly at a size nobody runs — a
+  five-row terminal, a list of sixteen items in a box of three. The unit test
+  then sweeps every shape instead of asserting three of them.
 - **Prefer the test a reference engine can arbitrate.** Where the references
   disagree, pin molly's answer in a unit test and say so in the comment. Two
   such corners are named at the top of `src/regex.c`.
@@ -488,7 +502,10 @@ later.
   the check after it opens the file that was never written, so the suite stops
   there with a traceback and every later group goes unrun — a second gate run,
   not a second failure. Press `End` for the last item or its mnemonic for any
-  other, both of which say what they mean.
+  other, both of which say what they mean. While you are there, check the golden
+  screens still show the whole menu: nine of them had to move to taller
+  terminals when these three items landed, because a sixteen-row screen stopped
+  being tall enough for the Edit or the View menu.
 - **A local in a pty test can shadow a keystroke.** `tests/test_molly.py` keeps
   the keys as short module-level names — `CUT`, `SAVE`, `HOME`, `END`, `COPY`,
   `PASTE` — so a test-local `CUT = "alpha beta…"` silently turns `[CUT]` from

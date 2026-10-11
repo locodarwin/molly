@@ -6,10 +6,10 @@
  * key and the menu follows; add a command and it has a menu entry the moment it is
  * listed here.
  *
- * Only commands that exist are listed, which is why there are six menus rather than
- * eight: Tools and Options have nothing in them until Phase 2, and a menu that opens
+ * Only commands that exist are listed, which is why there are seven menus rather
+ * than nine: Tools and Options have nothing in them yet, and a menu that opens
  * onto nothing is worse than a menu that is not there. Their Alt letters stay
- * reserved regardless, so adding them later costs nothing.
+ * held regardless, so adding them later costs nothing.
  *
  * Turbo Vision's structure in modern colors, as decided: a band a shade darker than
  * a dialog, drop-downs with a single-line border -- against the dialogs' double line,

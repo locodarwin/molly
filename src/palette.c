@@ -8,8 +8,8 @@
  * a dialog around it.
  *
  * It is the answer to a problem the menu bar only half solves. A menu is good at
- * showing you what exists, but it has to be curated -- six menus list eighteen of the
- * thirty-odd commands, and the long tail will only get longer. The palette lists
+ * showing you what exists, but it has to be curated -- seven menus list thirty-nine
+ * of the sixty-seven commands in the table, and the long tail only gets longer. The palette lists
  * everything, with no second place to keep a name in step: a command is in the
  * palette the moment it is in the table.
  *

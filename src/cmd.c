@@ -1132,7 +1132,7 @@ static const struct binding default_bindings[] = {
   /* The palette, on two chords. Ctrl-Space is the one the roadmap settles on, and
    * Alt-X is there because not every terminal sends NUL for Ctrl-Space -- and because
    * Alt-X has meant "run a command by name" for forty years. X is not one of the
-   * eight letters the menu bar reserves. */
+   * letters the menu bar reserves. */
   {"ctrl-space", "app.palette"},
   {"alt-x",      "app.palette"},
 

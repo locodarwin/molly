@@ -376,7 +376,7 @@ drops Paste when the clipboard is empty looks broken rather than careful.
 
 Three details worth recording. `Ctrl-Space` is bound **and so is `Alt-X`**, because
 not every terminal sends NUL for `Ctrl-Space` and `Alt-X` has meant "run a command by
-name" for forty years; X is not one of the eight letters the menu bar reserves. The
+name" for forty years; X is not one of the letters the menu bar reserves. The
 matcher runs **two passes** and takes the better — matching each character's first
 occurrence ranks "ln" no better in *Line numbers* than in *Line end*, and preferring
 the one that starts a word fixes that but can walk past the only match there was, so

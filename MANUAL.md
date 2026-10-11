@@ -122,7 +122,8 @@ terminals send and a few swallow. `Alt-X` opens the command palette too, for
 exactly that reason.
 
 **Every binding is remappable**, in the `[keys]` section of your
-[configuration](#configuration) file, except the eight `Alt`-letter menu titles.
+[configuration](#configuration) file, except the `Alt`-letter menu titles — seven
+today, one per menu.
 The bindings below are CUA, which is what most editors written in the last
 thirty years use: `Ctrl-A` selects everything, `Ctrl-L` selects the line,
 `Ctrl-T` transposes the two characters at the cursor, `F1` is help and

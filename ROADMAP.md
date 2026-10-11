@@ -730,9 +730,9 @@ molly runs under `ulimit -v` and has to reach a clean quit.
   It takes a row only when there is a second buffer, and `[view] tab bar = off`
   declines it. Scrolled rather than squeezed on purpose: tabs cut to three
   characters are harder to read than tabs you have to scroll past.
-- **Still to come:** a buffer-list dialog for picking one by name rather than by
-  walking the list, which is also what the quit-with-unsaved-work dialog wants
-  to be built on.
+- **Buffer list and quit dialog — done** (`src/bufdlg.c`): Ctrl-B picks a buffer
+  by name, and Ctrl-Q lists the unsaved ones with Save All / Discard / Cancel in
+  place of the old three-press countdown.
 
 ### Window splits — **done**
 

@@ -174,8 +174,8 @@ there is not even room for that: the box keeps a border, one item and a border,
 and takes the status row if it must — one item beats none.)
 
 Running a command from a menu is the same as running it from its key, down to
-the details: choosing **Quit** from the File menu with unsaved changes starts the
-same countdown `Ctrl-Q` does.
+the details: choosing **Quit** from the File menu with unsaved changes opens the
+same dialog `Ctrl-Q` does.
 
 The bar can be switched off with **View → Menu bar**, which gives its row back to
 the text — worth having on a 24-row terminal. While it is hidden, opening a menu
@@ -1035,12 +1035,22 @@ draw, which is what every editor with tabs does.
 
 ### Quitting
 
-`Ctrl-Q` counts **every** buffer, not the one on screen:
+`Ctrl-Q` looks at **every** buffer, not the one on screen. If any has unsaved
+changes, a dialog lists them by name with three buttons:
 
-    WARNING!!! 2 files have unsaved changes. Press Ctrl-Q 2 more times to quit.
+- **Save All** (the default; `S` or Enter) saves each one through the ordinary
+  save, so a nameless buffer asks for its name. If any save is aborted the
+  editor stays open, on that buffer.
+- **Discard** (`D`) quits and throws the changes away.
+- **Cancel** (`Esc`) goes back to editing.
 
-With one unsaved file the message names it. Any other keypress resets the
-countdown.
+A clean session quits at once.
+
+### Picking a buffer
+
+`Ctrl-B`, or **Go → Buffers…**, lists every open buffer, with `*` marking the
+unsaved ones. Up and Down move, Enter shows the chosen buffer, Esc leaves things
+as they were.
 
 ### Crashes
 
@@ -1219,9 +1229,8 @@ overwriting that change, rather than silently discarding it. Answering `n`
 aborts the save; `y` proceeds and overwrites it as normal.
 
 Molly protects you from losing work: when there are unsaved changes, the first
-few presses of `Ctrl-Q` only confirm that you really want to quit, and a
-warning shows how many more presses are needed. A clean buffer quits on the
-first `Ctrl-Q`.
+`Ctrl-Q` lists the unsaved buffers and offers Save All, Discard or Cancel. A
+clean session quits on the first `Ctrl-Q`.
 
 If Molly is stopped from outside instead — its terminal window is closed, or it
 receives `SIGTERM`, `SIGHUP`, `SIGINT` or `SIGQUIT` — it puts your terminal's
@@ -1267,7 +1276,8 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     F8       Split, new window below
     F6 / Shift-F6  Next / previous window
     F9       Close this window
-    Ctrl-Q   Quit (asks several times if there are unsaved changes)
+    Ctrl-Q   Quit (asks what to do with unsaved changes)
+    Ctrl-B   List the open buffers
     Ctrl-F   Open the Find dialog (case-insensitive by default)
     F3       Find next instance of the search
     Shift-F3 Find previous instance of the search

@@ -15,7 +15,19 @@ This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
 
-**Nothing is in flight.** The drop-down's height is done end to end, in the arc
+**Latest:** the
+buffer-list dialog (`Ctrl-B`, Go → Buffers…) and the quit dialog (Save All /
+Discard / Cancel) are done, in `src/bufdlg.c`, picked by Shawn on 2026-10-10 as
+"1" from a ranked menu. The Ctrl-Q countdown, `quit_times` and
+`KILO_QUIT_TIMES` are gone; `CMD_KEEP_QUIT_COUNT` stays because the close
+warning still uses it. Save All walks the dirty buffers through `editor_save()`
+and refuses to quit if any is still dirty afterwards. **The full `make test` was
+last run before one test fix** (a quit test named the wrong file); the other 757
+checks passed on that run, and the fixed one has not been re-run — run the suite
+first. The counts in the table below predate this feature. Not done: the dialog's
+mouse path has no test, and neither is in `make test-oom`.
+
+**Nothing else is in flight.** The drop-down's height is done end to end, in the arc
 this repo keeps: `803c5fe` the geometry and the scroll with no menu changed,
 `8a93dec` the three items that were waiting on it, and the documentation commit
 after them. Soft wrap before it went the same way: `eaa8626` the display-row map
@@ -354,13 +366,6 @@ Two things the shell filter now makes cheap, neither of them asked for yet:
 Smaller things the last six features left behind, each a self-contained
 commit:
 
-- **A buffer-list dialog**, for picking a buffer by name instead of walking the
-  list with Ctrl-PgDn. The toolkit already has `W_LIST`, and the open dialog is
-  the pattern to copy.
-- **The quit-with-unsaved-work dialog.** `ROADMAP.md` §5 asks for a *list*, not
-  a question; what is there is a message with a count. It wants Save All /
-  Discard / Cancel on it, and it would share most of its shape with the
-  buffer-list dialog — which is why they are worth doing together.
 - **Block selection**, which `ROADMAP.md` §5 moved from "follows multi-cursor"
   to LATER rather than doing here. A column of cursors covers most of what
   people reach for it for, and a rectangular selection is a different model:

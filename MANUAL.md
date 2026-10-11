@@ -285,6 +285,15 @@ wins over the colouring: reverse video on top of a keyword's own colour is
 unreadable, and what you are being told at that moment is that the text is
 selected.
 
+Comments are drawn in italic as well as in their own dimmer colour, so they
+read as comments even where your terminal's palette puts that colour close to
+the text's. Molly leaves italic off where `TERM` names a terminal that would
+draw it as something worse: the Linux console, which paints italic in a
+substitute colour, and a `screen` or `screen-256color` TERM, under which tmux
+draws italic as reverse video and a comment looks selected. If you run tmux,
+`set -g default-terminal tmux-256color` gives you italic back. `italic = off` in
+`[view]`, or **View ▸ Options…**, turns it off everywhere; the colour stays.
+
 ### Teaching molly a language
 
 A `[syntax <name>]` section in your [configuration](#configuration) file defines
@@ -1505,6 +1514,7 @@ Names are matched on their words, so `line numbers`, `Line-Numbers` and
 | `view` | `menu bar` | `on` | Give the menu bar its row (`View ▸ Menu Bar` toggles it). |
 | `view` | `tab bar` | `on` | Show a tab per open file (`Alt-B` toggles it). Only ever drawn with two or more buffers open. |
 | `view` | `syntax` | `on` | Colour the text by filetype (`Alt-Y` toggles it). See [Syntax Highlighting](#syntax-highlighting). |
+| `view` | `italic` | `on` | Draw comments in italic, on terminals that can (not the Linux console, not under a `screen` TERM). See [Syntax Highlighting](#syntax-highlighting). |
 | `view` | `soft wrap` | `off` | Wrap long lines at the window edge instead of scrolling sideways (`Alt-Z` toggles it). See [Soft Wrap](#soft-wrap). |
 | `shell` | `timeout` | `10` | Seconds a filter command may run before molly stops it, 1 to 3600. See [Filtering Through a Command](#filtering-through-a-command). |
 | `shell` | `output limit` | `8192` | Kilobytes of output a filter command may produce, 1 to 1048576. |

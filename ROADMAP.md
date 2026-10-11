@@ -805,9 +805,11 @@ molly runs under `ulimit -v` and has to reach a clean quit.
   loaded — the same arrangement the keymap has, so the path a user's first
   definition takes is exercised on every start.
 - **Not done, and not planned:** a shebang line to type an extensionless
-  script, and italic for comments. Italic would mean a fourth cell modifier,
-  the SGR for it, and the snapshot harness learning to read it; the colour is
-  doing the work for now.
+  script.
+- **Italic for comments — done since.** Not the fourth cell modifier this
+  section once expected, but a property of the comment's role in the theme,
+  as bold is of a heading's; left off on terminals whose TERM says they would
+  draw it as a colour or as reverse video, and `[view] italic` turns it off.
 
 ### Indentation, filetypes and configuration — **done**
 

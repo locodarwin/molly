@@ -75,7 +75,8 @@ Everything olly does, molly does. These all work today:
   undo history.
 - **Syntax highlighting** for Rust, C, C++, C#, Python, AutoIt and Markdown,
   table-driven, with a `[syntax <name>]` block in the config file enough to
-  teach it another language.
+  teach it another language. Comments are italic where the terminal draws
+  italic properly.
 - **Window splits**: `F7` puts a new window to the right, `F8` below, `F6`
   walks them and `F9` closes one. `Ctrl-Shift` and an arrow moves a border, and
   so does dragging it. Each window has its own cursor, scroll position, gutter

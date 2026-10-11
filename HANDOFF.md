@@ -15,7 +15,22 @@ This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
 
-**Latest:** the Options dialog (View → Options…), the last of the three.
+**Latest:** italic comments, picked by Shawn on 2026-10-11. Italic is a
+property of a theme role, as bold already was — `theme_entry` and `struct style`
+gained a field, only `ROLE_SYN_COMMENT` sets it, and `grid.c` emits SGR 3/23 —
+not a fourth `ATTR_` cell modifier, because nothing draws a comment without it.
+`theme_detect_italic(TERM)` is a list of noes (`linux`, `screen*`, `vt*`,
+`dumb`): those draw italic as a colour or as reverse video, which on a comment
+reads as a selection. `[view] italic` (default on, so in the Options dialog
+too) is what the user asked for and is what gets saved; drawn is that *and*
+the terminal. Chosen without asking: comments only (not Markdown emphasis,
+whose role also covers bold text), and no override to force italic under a
+`screen` TERM — the manual points tmux users at `tmux-256color` instead.
+`tests/screen.py` reads 3/23 into an `i` modifier. Pty checks are
+`test_italic`; the C, AutoIt, Python and selection syntax goldens gained their
+`i` runs.
+
+**Before that:** the Options dialog (View → Options…), the last of the three.
 `src/optdlg.c` lists config.c's table — section, name, value, and the selected
 row's comment — and changes go through `setting_set()`, so a setting added to
 the table appears here untouched. Changes are live; Enter keeps them, Ctrl-S
@@ -426,9 +441,6 @@ commit:
   to LATER rather than doing here. A column of cursors covers most of what
   people reach for it for, and a rectangular selection is a different model:
   every selection in molly is a pair of positions and a rectangle is not.
-- **Italic for comments.** `ROADMAP.md` said italic would be what a comment
-  wants; the colour is doing that work instead, because italic means a fourth
-  cell modifier, the SGR for it, and `tests/screen.py` learning to read it.
 
 The drop-down's height is **not** a pattern the menu *band* can reuse, which is
 the thing to know before picking the band's clipping off the list below: a

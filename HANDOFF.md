@@ -1,8 +1,9 @@
 # Handoff
 
-Written 2026-10-10 and re-measured the same day. Everything is committed and
-the working tree is clean; `main` is **three commits ahead of `origin/main`**
-and CI has not run on them yet. The last work on it was the **menu drop-down's
+Written 2026-10-10 and re-measured the same day. `main` and `origin/main` are
+level: everything is committed and pushed, the working tree is clean, nothing
+is half-finished, and CI is green on the head commit. The last work on it was
+the **menu drop-down's
 height**, which Shawn picked on 2026-10-10 after soft wrap: the box now measures
 itself against the text area and scrolls what will not fit, which let indent,
 dedent and soft wrap into the menus that had been too short for them. Before
@@ -78,8 +79,9 @@ identical to the green one, so the fault could only be in the harness. See
 "What only CI sees".
 
 Since that fix, CI has returned its four numbers on every push: `a2ccf87` in
-12m38s and `aa2ad2c` in 12m40s, against 14m31s for the run before it on the
-same molly — the harness no longer waits out a session whose program has
+12m38s, `aa2ad2c` in 12m40s, `38528f1`, and `8424bae` — this session's head —
+in 12m41s (run 38100739091, with the OOM sweep green behind it), against 14m31s
+for the run before the fix on the same molly — the harness no longer waits out a session whose program has
 already exited, which is most of two minutes across 737 of them. Those are also
 the first runs whose log has no `pty_harness:` line in it, and that line is the
 thing to grep a red run for now: it is what a session that was typed at and
@@ -801,6 +803,11 @@ These all cost real time in the last session.
   killed it — exit 144 — twice.
 - **Background task output files stay empty until the command completes.**
   Reading one immediately tells you nothing.
+- **`gh` in this repo resolves to olly, not molly.** There is an `upstream`
+  remote pointing at `locodarwin/olly`, and `gh` prefers it, so a bare
+  `gh run list` here lists *olly's* workflow runs — the newest of them from
+  2026-10-09, which reads exactly like molly's CI having not run. Every run id
+  in this file 404s against that resolution. Pass `-R locodarwin/molly`.
 - **A `make test` put in the background with `&` is not a tracked task.** The
   shell the tool runs detaches it, so the "completed" notification arrives
   seconds later and describes the launch, not the run — and the run is still

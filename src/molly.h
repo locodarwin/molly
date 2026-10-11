@@ -329,8 +329,16 @@ struct view {
  *
  * `frac` rather than a stored column count: a split keeps its *proportion* when
  * the terminal is resized, and nothing has to remember the size it was laid out
- * at last time in order to scale. It is 500 -- an even split -- for every node
- * molly makes today; it is the field a grow/shrink command sets. */
+ * at last time in order to scale. A new split is WIN_FRAC_HALF; moving its
+ * border is what changes it.
+ *
+ * In 1/65536ths rather than the thousandths it started in. A border moved by
+ * hand has to be able to sit on every cell, and a share rounds back to the
+ * cell it was taken from only while one unit of it is under half a cell --
+ * which thousandths stop being past two thousand columns, where the border
+ * then skipped cells it could not express. */
+#define WIN_FRAC_ONE  65536
+#define WIN_FRAC_HALF (WIN_FRAC_ONE / 2)
 enum win_kind {
   WIN_LEAF,   /* shows `view` */
   WIN_COLS,   /* kid[0] left of kid[1], with a separator column between */
@@ -342,7 +350,7 @@ struct window {
   struct view *view;        /* WIN_LEAF only */
   struct window *kid[2];
   struct window *parent;    /* NULL at the root */
-  int frac;                 /* kid[0]'s share of the split axis, in 1/1000ths */
+  int frac;                 /* kid[0]'s share of the split axis, of WIN_FRAC_ONE */
   int x, y, w, h;           /* this frame's rect; window_layout() fills it in */
 };
 
@@ -1103,6 +1111,7 @@ int window_close_current(void);
 int window_count(void);
 int window_index_of(const struct view *v);
 int window_mouse(const struct layer *self, const struct mouse_event *ev);
+int window_move_border(int dx, int dy);
 int window_split(int kind);
 struct view *view_select(struct view *v);
 struct view *window_view_at(int i);

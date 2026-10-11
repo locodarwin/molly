@@ -243,7 +243,7 @@ int window_split(int kind) {
   leaf = win_leaf(v);
 
   node->kind = kind;
-  node->frac = 500;
+  node->frac = WIN_FRAC_HALF;
   node->parent = parent;
   node->kid[0] = cur;
   node->kid[1] = leaf;
@@ -371,6 +371,12 @@ static void layout_leaf(struct window *w) {
   view_select(was);
 }
 
+/* A share of `avail` cells, rounded to the nearest. In long long because a
+ * share is up to 65536 and a width times that passes INT_MAX at 32768 cells. */
+static int frac_cells(int avail, int frac) {
+  return (int)(((long long)avail * frac + WIN_FRAC_ONE / 2) / WIN_FRAC_ONE);
+}
+
 static void layout_node(struct window *w, int x, int y, int cw, int ch) {
   int avail, cut;
 
@@ -395,7 +401,7 @@ static void layout_node(struct window *w, int x, int y, int cw, int ch) {
       layout_node(w->kid[1], x + cw, y, 0, ch);
       return;
     }
-    cut = (avail * w->frac + 500) / 1000;
+    cut = frac_cells(avail, w->frac);
     if (cut < WIN_MIN_COLS) cut = WIN_MIN_COLS;
     if (cut > avail - WIN_MIN_COLS) cut = avail - WIN_MIN_COLS;
     if (cut < 1) cut = avail / 2;   /* too narrow for two minimums: halve it */
@@ -412,7 +418,7 @@ static void layout_node(struct window *w, int x, int y, int cw, int ch) {
     layout_node(w->kid[1], x, y + ch, cw, 0);
     return;
   }
-  cut = (avail * w->frac + 500) / 1000;
+  cut = frac_cells(avail, w->frac);
   if (cut < WIN_MIN_ROWS) cut = WIN_MIN_ROWS;
   if (cut > avail - WIN_MIN_ROWS) cut = avail - WIN_MIN_ROWS;
   if (cut < 1) cut = avail / 2;
@@ -434,6 +440,97 @@ void window_layout(void) {
   int x, y, w, h;
   screen_window_area(&x, &y, &w, &h);
   window_layout_rect(x, y, w, h);
+}
+
+/* ---- resizing ------------------------------------------------------------ */
+
+/* The least room a subtree can be given along one axis without a window in it
+ * going below its minimum. A split along that axis needs both children's
+ * minimums (and the separator column, side by side); a split across it needs
+ * only the larger of the two, because both children get the whole of it.
+ *
+ * layout_node() only holds a split's own two children to WIN_MIN_*, which is
+ * enough for a split made by window_split() -- that refuses to make a window
+ * too small -- but not for a border moved by hand: dragging a border into a
+ * half that is itself split would squeeze the windows inside it out of sight
+ * with nothing said. This is what the border moves are held to instead. */
+static int min_extent(const struct window *w, int axis) {
+  int a, b;
+  if (w->kind == WIN_LEAF) return (axis == WIN_COLS) ? WIN_MIN_COLS : WIN_MIN_ROWS;
+  a = min_extent(w->kid[0], axis);
+  b = min_extent(w->kid[1], axis);
+  if (w->kind != axis) return (a > b) ? a : b;
+  return a + b + (axis == WIN_COLS ? 1 : 0);
+}
+
+/* The room a split shares between its children: its whole extent along the
+ * axis, less the separator column if it has one. */
+static int split_avail(const struct window *w) {
+  return (w->kind == WIN_COLS) ? w->w - 1 : w->h;
+}
+
+/* kid[0]'s share as layout_node() last measured it. */
+static int split_cut(const struct window *w) {
+  return (w->kind == WIN_COLS) ? w->kid[0]->w : w->kid[0]->h;
+}
+
+/* Put a split's cut at exactly `cut` cells, clamped to what both sides need.
+ * Returns the cut it settled on.
+ *
+ * The cut is stored as a share so that a terminal resize scales it, and
+ * layout_node() rounds the share back to cells. The share picked here is the
+ * nearest one, which rounds back to exactly `cut` for any split narrower than
+ * WIN_FRAC_ONE / 2 cells -- see WIN_FRAC_ONE. What is returned is the cut the
+ * share actually comes back to rather than the one asked for, so that a caller
+ * comparing it with the old cut cannot be told a border moved that did not. */
+static int split_set_cut(struct window *w, int cut) {
+  int avail = split_avail(w);
+  int lo = min_extent(w->kid[0], w->kind);
+  int hi = avail - min_extent(w->kid[1], w->kind);
+
+  if (avail < 2 || lo > hi) return split_cut(w);
+  if (cut > hi) cut = hi;
+  if (cut < lo) cut = lo;
+  w->frac = (int)(((long long)cut * WIN_FRAC_ONE + avail / 2) / avail);
+  return frac_cells(avail, w->frac);
+}
+
+/* Move the current window's nearest border one cell: dx is -1 or +1 for the
+ * one beside it, dy for the one above or below. The arrow says which way the
+ * *border* goes, not whether the window grows -- tmux's rule, and the only one
+ * that means the same thing in the left window as in the right: Ctrl-Shift-Left
+ * moves the line between them left, whichever side of it the keyboard is on.
+ *
+ * "Nearest" is the innermost split along that axis that the window is in. That
+ * is the border the window was made by, and the one a user is looking at when
+ * the window is the size they want to change.
+ *
+ * Returns 1 if the border moved. A refusal says which of the two reasons it is,
+ * because "it did not move" leaves the user to guess whether to try the other
+ * arrow or give up. */
+int window_move_border(int dx, int dy) {
+  int axis = (dx != 0) ? WIN_COLS : WIN_ROWS;
+  int step = (dx != 0) ? dx : dy;
+  struct window *w = current_leaf();
+  int cut;
+
+  while (w != NULL && w->parent != NULL && w->parent->kind != axis) w = w->parent;
+  if (w == NULL || w->parent == NULL) {
+    editor_set_status_message(axis == WIN_COLS
+                              ? "No window beside this one to make room."
+                              : "No window above or below this one to make room.");
+    return 0;
+  }
+  w = w->parent;
+
+  cut = split_cut(w);
+  if (split_set_cut(w, cut + step) == cut) {
+    editor_set_status_message("That border will not go any further.");
+    return 0;
+  }
+  window_layout();
+  screen_force_repaint();
+  return 1;
 }
 
 /* ---- scrolling ----------------------------------------------------------- */
@@ -519,6 +616,7 @@ void window_draw(const struct layer *self) {
  * without it dragging past the edge would hand the drag to the neighbour and
  * leave two half-selections. */
 static struct view *drag_view;
+
 
 static struct window *leaf_at(int x, int y) {
   struct window *l[WINDOWS_MAX];

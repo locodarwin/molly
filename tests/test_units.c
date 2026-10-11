@@ -1699,6 +1699,134 @@ static void test_windows_too_small(void) {
   buflist_cleanup();
 }
 
+/* Moving a border with the keyboard. As above, the tree is laid out by the
+ * test after every call, since window_move_border() lays out against a terminal
+ * there is none of. */
+static void test_windows_resize(void) {
+  int w, ok, cut, prev;
+  int widths[] = {17, 18, 25, 80, 81, 159, 333, 999, 1000, 1001, 1500, 2047};
+  int i;
+
+  printf("\nwindows: moving the border between two\n");
+
+  window_init();
+  buflist_init();
+  win_screen();
+  check("one window has no border beside it", window_move_border(-1, 0), 0);
+  check("or above it", window_move_border(0, -1), 0);
+
+  window_split(WIN_COLS);
+  win_screen();
+  /* 79 columns between them: 40 and 39, the keyboard in the right one. */
+  check("the arrow moves the border, here left", window_move_border(-1, 0), 1);
+  win_screen();
+  check("so the left window is a column narrower",
+        window_view_at(0)->screencols, 39);
+  check("and the right one, which has the keyboard, a column wider",
+        window_view_at(1)->screencols, 40);
+  check("and starts a column earlier", window_view_at(1)->screenx, 40);
+  window_focus(0);
+  check("from the left window, Left moves the same border the same way",
+        window_move_border(-1, 0), 1);
+  win_screen();
+  check("so now the window with the keyboard is the one that shrinks",
+        window_view_at(0)->screencols, 38);
+  check("and Right takes it back", window_move_border(1, 0), 1);
+  win_screen();
+  check("a column at a time", window_view_at(0)->screencols, 39);
+  check("a side-by-side split has no border above or below",
+        window_move_border(0, 1), 0);
+
+  for (ok = 0; window_move_border(-1, 0); ok++) win_screen();
+  win_screen();
+  check("Left stops at the narrowest a window may be",
+        window_view_at(0)->screencols, 8);
+  check("after one press per column", ok, 31);
+  for (ok = 0; window_move_border(1, 0); ok++) win_screen();
+  win_screen();
+  check("and Right stops where the other window is that narrow",
+        window_view_at(1)->screencols, 8);
+
+  /* A terminal resize scales the cut rather than keeping its column, because
+   * what was stored is a share. */
+  while (window_move_border(-1, 0)) win_screen();
+  for (i = 0; i < 12; i++) { window_move_border(1, 0); win_screen(); }
+  check("twenty columns of seventy-nine", window_view_at(0)->screencols, 20);
+  window_layout_rect(0, 1, 159, 22);
+  check("are forty of a hundred and fifty-eight",
+        window_view_at(0)->screencols, 40);
+  win_screen();
+
+  /* A half that is itself split needs room for both its windows and the
+   * separator between them, not just one window's minimum. */
+  window_focus(1);
+  window_split(WIN_COLS);
+  win_screen();
+  window_focus(0);
+  while (window_move_border(1, 0)) win_screen();
+  win_screen();
+  check("a border stops short of squeezing a split half's own windows",
+        window_view_at(1)->screencols, 8);
+  check("both of them", window_view_at(2)->screencols, 8);
+  check("so the left window takes what is left of the 79",
+        window_view_at(0)->screencols, 79 - 17);
+
+  /* ---- stacked ---- */
+  window_init();
+  buflist_init();
+  win_screen();
+  window_split(WIN_ROWS);
+  win_screen();
+  check("a stacked split has no border to either side",
+        window_move_border(1, 0), 0);
+  check("Up moves the border between them up", window_move_border(0, -1), 1);
+  win_screen();
+  check("so the upper window is a row shorter",
+        window_view_at(0)->screenrows, 9);
+  check("and the lower one starts a row earlier", window_view_at(1)->screeny, 11);
+  while (window_move_border(0, -1)) win_screen();
+  win_screen();
+  check("Up stops at one row of text and a status bar",
+        window_view_at(0)->screenrows, 1);
+  while (window_move_border(0, 1)) win_screen();
+  win_screen();
+  check("Down stops at the same for the lower window",
+        window_view_at(1)->screenrows, 1);
+
+  /* Every press is one cell, at every width: the cut is stored in thousandths,
+   * in thousandths stopped being exact past two thousand columns, and the
+   * border stuck there for ever -- which is what 2047 is here for. A width it
+   * skips a column at, or sticks at, is a border that cannot be put where the
+   * user wants it. */
+  ok = 1;
+  for (i = 0; i < (int)(sizeof(widths) / sizeof(widths[0])); i++) {
+    for (w = widths[i]; w < widths[i] + 3; w++) {
+      window_init();
+      buflist_init();
+      window_layout_rect(0, 0, w, 10);
+      window_split(WIN_COLS);
+      window_focus(0);
+      window_layout_rect(0, 0, w, 10);
+      while (window_move_border(-1, 0)) window_layout_rect(0, 0, w, 10);
+      window_layout_rect(0, 0, w, 10);
+      prev = window_view_at(0)->screencols;
+      if (prev != 8) ok = 0;
+      while (window_move_border(1, 0)) {
+        window_layout_rect(0, 0, w, 10);
+        cut = window_view_at(0)->screencols;
+        if (cut != prev + 1) ok = 0;
+        prev = cut;
+      }
+      window_layout_rect(0, 0, w, 10);
+      if (window_view_at(1)->screencols != 8) ok = 0;
+    }
+  }
+  check("one press is one column, from minimum to minimum, at any width", ok, 1);
+  win_screen();
+
+  buflist_cleanup();
+}
+
 /* Closing a buffer that another window is showing.
  *
  * This is the one thing splits add to the buffer list, and it is the kind of
@@ -3152,6 +3280,7 @@ int main(void) {
   test_filter();
   test_windows();
   test_windows_too_small();
+  test_windows_resize();
   test_windows_buffer_closed();
   test_chords();
   test_config_parse();

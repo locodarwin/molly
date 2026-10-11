@@ -532,6 +532,14 @@ static int cmd_window_prev(void) {
   return 0;
 }
 
+/* Move the border beside or above the current window. CMD_KEEP_SELECTION
+ * because the size of the window the text is in has nothing to do with what
+ * is selected in it, and losing a selection to a resize would be a surprise. */
+static int cmd_border_left(void)  { window_move_border(-1, 0); return CMD_KEEP_SELECTION; }
+static int cmd_border_right(void) { window_move_border(1, 0);  return CMD_KEEP_SELECTION; }
+static int cmd_border_up(void)    { window_move_border(0, -1); return CMD_KEEP_SELECTION; }
+static int cmd_border_down(void)  { window_move_border(0, 1);  return CMD_KEEP_SELECTION; }
+
 /* Opening a menu is a command like any other, one per menu, so Alt-F and F10 are
  * ordinary bindings rather than a special case in the dispatcher -- and the command
  * palette will be able to offer "File menu" alongside everything else.
@@ -761,6 +769,21 @@ static const struct command commands[] = {
    * spent on the four above. */
   {.name = "window.only", .label = "Only this window",
    .run = cmd_window_only, .enabled = several_windows},
+  /* Named for the border and the way it goes, not for the window growing: the
+   * same arrow moves the same line whichever side of it the keyboard is on, so
+   * "Wider" would be true in one window and false in the other. */
+  {.name = "window.border-left", .label = "Move border left",
+   .help = "Border left", .group = "WINDOWS", .run = cmd_border_left,
+   .enabled = several_windows},
+  {.name = "window.border-right", .label = "Move border right",
+   .help = "Border right", .group = "WINDOWS", .run = cmd_border_right,
+   .enabled = several_windows},
+  {.name = "window.border-up", .label = "Move border up",
+   .help = "Border up", .group = "WINDOWS", .run = cmd_border_up,
+   .enabled = several_windows},
+  {.name = "window.border-down", .label = "Move border down",
+   .help = "Border down", .group = "WINDOWS", .run = cmd_border_down,
+   .enabled = several_windows},
 
   /* Hidden from the palette, all of them: the palette has no business offering to
    * open itself, and the menu openers are how you reach commands rather than commands
@@ -1140,6 +1163,16 @@ static const struct binding default_bindings[] = {
   {"f7",       "window.split-right"},
   {"f8",       "window.split-below"},
   {"f9",       "window.close"},
+  /* Ctrl-Shift and an arrow. Until now those fell through to Shift and the
+   * arrow -- a second spelling of extending the selection, which nobody types
+   * on purpose -- and they are the arrows, which is what a border move wants.
+   * What this costs is the CUA word selection, Ctrl-Shift-Left and -Right, if
+   * molly ever gets word movement; a binding is a line in mollyrc, so that is
+   * a choice deferred rather than made. */
+  {"ctrl-shift-left",  "window.border-left"},
+  {"ctrl-shift-right", "window.border-right"},
+  {"ctrl-shift-up",    "window.border-up"},
+  {"ctrl-shift-down",  "window.border-down"},
 
   /* The palette, on two chords. Ctrl-Space is the one the roadmap settles on, and
    * Alt-X is there because not every terminal sends NUL for Ctrl-Space -- and because
@@ -1512,6 +1545,13 @@ static const struct help_entry help_entries[] = {
   {NULL,        NULL, NULL, "window.next"},
   {NULL,        NULL, NULL, "window.prev"},
   {NULL,        NULL, NULL, "window.close"},
+  /* Two literal rows rather than the four commands: "Ctrl-Shift-Right" is
+   * sixteen columns and the key column is fourteen, so the four came out as
+   * "Ctrl-Shift-Rig" and "Ctrl-Shift-Dow" -- the one part of the row that is
+   * the information, cut. Literal like Shift+Arrows above, and with the same
+   * cost: a rebinding in mollyrc does not reach these two lines. */
+  {NULL,        "Ctrl-Shift-\xe2\x86\x90\xe2\x86\x92", "Border left/right", NULL},
+  {NULL,        "Ctrl-Shift-\xe2\x86\x91\xe2\x86\x93", "Border up/down",    NULL},
   /* Only this window is not here: it has no chord, and the left column of this
    * screen is a key. It is in the Window menu and in the palette. */
 

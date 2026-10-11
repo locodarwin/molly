@@ -1,0 +1,78 @@
+--- screen ---
+ File  Edit  Search  View  Go  Window  Help
+alpha
+be╔═══════════════════════════ Keyboard Reference ═══════════════════════════╗
+ga║   Shift+Home/End To line edge         WINDOWS                            ║
+~ ║   Shift+PgUp/Dn  Extend by page         F7             New window right  ║
+~ ║   Ctrl-A         Select everything      F8             New window below  ║
+~ ║   Ctrl-L         Select this line       F6             Next window       ║
+~ ║                                         Shift-F6       Previous window   ║
+~ ║ CURSORS                                 F9             Close this window ║
+~ ║   Ctrl-D         Cursor: next matc      Ctrl-Shift-←→  Border left/right ║
+~ ║   Alt-D          Cursor: skip matc      Ctrl-Shift-↑↓  Border up/down    ║
+~ ║   Alt-A          Cursor: all match                                       ║
+~ ║   Alt-U          Drop last cursor     VIEW                               ║
+~ ║   Ctrl-Down      Cursor below           F5             Redraw screen     ║
+~ ║   Ctrl-Up        Cursor above           Ctrl-U         Line numbers      ║
+~ ║   Esc            Back to one curso      Alt-M          Show the menu bar ║
+~ ║                                         Alt-B          Show a tab per fi ║
+~ ║                                         Alt-Y          Colour by filetyp ║
+~ ║                                         Alt-Z          Wrap long lines   ║
+~ ║ In prompts: Enter accepts   Esc cancels                                  ║
+~ ║ PgUp/PgDn scroll   any other key returns                                 ║
+~ ╚══════════════════════════════════════════════════════════════════════════╝
+sample.txt - 3 lines                                                 Ln 1, Col 1
+HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | F3 = next | F1 = help
+--- attrs ---
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+
+..gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+..gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+g.gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+RRRRgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+
+--- colors ---
+1: 0-79 7/0
+3: 2-30 7/8  31-48 15/8  49-77 7/8
+4: 2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+5: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+6: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+7: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+8: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+9: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+10: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+11: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+12: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+13: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+14: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+15: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+16: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+17: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+18: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+19: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+20: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+21: 0-0 8/-  2-2 7/8  3-76 15/8  77-77 7/8  78-79 8/0
+22: 0-0 8/-  2-77 7/8  78-79 8/0
+23: 4-79 8/0
+--- modifiers ---
+1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u  39-39 u
+3: 31-48 b
+--- cursor ---
+row 2 col 1 visible 0

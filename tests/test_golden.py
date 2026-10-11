@@ -151,6 +151,11 @@ def main():
     # The help screen, which reflows between one and two columns.
     check("help-wide", ["\x1f"], files={"sample.txt": THREE_LINES})
     check("help-narrow", ["\x1f"], cols=50, files={"sample.txt": THREE_LINES})
+    # Paged to WINDOWS, whose border chords are the first keys with a glyph in
+    # them: both columns are cut and padded in display columns, which this is
+    # the only screen to see. Three pages down is where the group lands at 80.
+    check("help-windows", ["\x1f", "\x1b[6~", "\x1b[6~", "\x1b[6~"],
+          files={"sample.txt": THREE_LINES})
 
     # The Find dialog: a field, two checkboxes and two buttons, with the field
     # holding the focus and the cursor, and the default button in bold.

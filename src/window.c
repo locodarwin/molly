@@ -617,6 +617,50 @@ void window_draw(const struct layer *self) {
  * leave two half-selections. */
 static struct view *drag_view;
 
+/* The split whose border a press landed on, while it is being dragged. Held
+ * instead of drag_view, never alongside it: a press is either on a border or in
+ * a window. */
+static struct window *drag_split;
+
+/* The side-by-side split whose separator column is at (x, y), if any. */
+static struct window *separator_at(struct window *w, int x, int y) {
+  struct window *hit;
+  if (w == NULL || w->kind == WIN_LEAF) return NULL;
+  if (y < w->y || y >= w->y + w->h || x < w->x || x >= w->x + w->w) return NULL;
+  if (w->kind == WIN_COLS && w->kid[0]->w >= 1 && x == w->kid[0]->x + w->kid[0]->w)
+    return w;
+  if ((hit = separator_at(w->kid[0], x, y)) != NULL) return hit;
+  return separator_at(w->kid[1], x, y);
+}
+
+/* The stacked split whose border is window `leaf`'s status bar, if it has one.
+ * A stacked split pays no row for a separator, because the upper window's
+ * status bar already is one -- so that bar is what gets dragged. The bottom
+ * window's bar is above nothing and moves nothing.
+ *
+ * Walking up, the subtree's bottom row stays the leaf's -- a side-by-side
+ * split's children and a stacked split's lower half all end where their parent
+ * does -- until the subtree is a stacked split's upper half, and that split is
+ * the one whose border the row is. */
+static struct window *status_border_of(struct window *leaf) {
+  struct window *w = leaf;
+  while (w->parent != NULL) {
+    if (w->parent->kind == WIN_ROWS && w->parent->kid[0] == w) return w->parent;
+    w = w->parent;
+  }
+  return NULL;
+}
+
+/* Put the dragged border under the pointer. For a separator the pointer's column
+ * is where the separator goes; for a status bar its row is where the bar goes,
+ * and the bar is the upper half's last row, so the cut is one past it. */
+static void drag_border_to(const struct mouse_event *ev) {
+  struct window *w = drag_split;
+  int cut = (w->kind == WIN_COLS) ? ev->x - w->x : ev->y - w->y + 1;
+  if (split_set_cut(w, cut) == split_cut(w)) return;
+  window_layout();
+  screen_force_repaint();
+}
 
 static struct window *leaf_at(int x, int y) {
   struct window *l[WINDOWS_MAX];
@@ -638,6 +682,26 @@ int window_mouse(const struct layer *self, const struct mouse_event *ev) {
    * which window inside it the event landed in is the tree's answer. */
   (void)self;
 
+  if (drag_split != NULL) {
+    if (ev->type == MOUSE_DRAG) {
+      drag_border_to(ev);
+      return 1;
+    }
+    /* A release ends the drag. So does anything else: a press with a border
+     * still held means the release went somewhere molly never saw. */
+    drag_split = NULL;
+    if (ev->type == MOUSE_RELEASE) return 1;
+  }
+
+  if (ev->type == MOUSE_PRESS && ev->button == MOUSE_BUTTON_LEFT) {
+    struct window *s = separator_at(E.winroot, ev->x, ev->y);
+    if (s != NULL) {
+      drag_split = s;
+      drag_view = NULL;
+      return 1;
+    }
+  }
+
   if (ev->type == MOUSE_DRAG && drag_view != NULL) {
     was = view_select(drag_view);
     screen_text_mouse(ev);
@@ -652,12 +716,17 @@ int window_mouse(const struct layer *self, const struct mouse_event *ev) {
    * status bar -- which is the one row of it that is not text, and the obvious
    * place to click when the point is to focus the window rather than to put the
    * cursor somewhere in it. */
+  on_status = (ev->y == w->y + w->h - 1);
   if (ev->type == MOUSE_PRESS) {
     window_focus(window_index_of(w->view));
     drag_view = w->view;
+    /* A press on a status bar that is also a border both focuses the window
+     * and picks the border up; a click that does not move changes nothing. */
+    if (on_status && ev->button == MOUSE_BUTTON_LEFT &&
+        (drag_split = status_border_of(w)) != NULL)
+      drag_view = NULL;
   }
 
-  on_status = (ev->y == w->y + w->h - 1);
   if (on_status) return 1;
 
   was = view_select(w->view);
@@ -686,6 +755,7 @@ void window_init(void) {
   cursors_init();
   E.winroot = win_leaf(view_first);
   drag_view = NULL;
+  drag_split = NULL;
 }
 
 void window_cleanup(void) {
@@ -695,4 +765,5 @@ void window_cleanup(void) {
   }
   E.curview = view_first;
   drag_view = NULL;
+  drag_split = NULL;
 }

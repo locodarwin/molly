@@ -89,7 +89,10 @@ static const struct menu_item go_items[] = {
 static const struct menu_item window_items[] = {
   {"window.split-right", 6}, {"window.split-below", 6}, SEP,
   {"window.next", 0}, {"window.prev", 0}, SEP,
-  {"window.close", 0}, {"window.only", 0},
+  {"window.close", 0}, {"window.only", 0}, SEP,
+  /* L, I, U and D: R is Split right's, so Right takes the I after it. */
+  {"window.border-left", 12}, {"window.border-right", 13},
+  {"window.border-up", 12}, {"window.border-down", 12},
 };
 static const struct menu_item help_items[] = {
   {"view.help", 0},

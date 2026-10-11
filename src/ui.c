@@ -220,8 +220,12 @@ static void help_build_col(char col[HELP_MAXROWS][HELP_MAXW], int *rn,
       const char *group, *desc;
       char key[64];
       help_entry_at(i, &group, key, sizeof(key), &desc);
-      snprintf(col[r], HELP_MAXW, "  %-*.*s %.*s",
-               keyw, keyw, key, descw, desc);
+      /* The key is cut and padded in columns, not bytes: printf's widths count
+       * bytes, so a key with an arrow glyph in it lost a column per glyph and
+       * pulled its description left out of line with the rest. */
+      int kc, kb = utf8_fit_cols(key, keyw, &kc);
+      snprintf(col[r], HELP_MAXW, "  %.*s%*s %.*s",
+               kb, key, keyw - kc, "", descw, desc);
       r++;
     }
     if (ran_out) break;
@@ -237,14 +241,18 @@ static void help_build_col(char col[HELP_MAXROWS][HELP_MAXW], int *rn,
 }
 
 /* One composed screen row: left field padded to colw, a gap, then the right
- * field truncated to whatever width remains. All help text is ASCII, so this
- * byte-wise truncation can never split a multibyte character. */
+ * field truncated to whatever width remains. Measured in columns: the help text
+ * was all ASCII until the border chords put arrows in a key, and printf's
+ * widths, which count bytes, then cut the end off that row's description. */
 static void help_row(char *dst, int dstsz, const char *left, const char *right,
                      int colw, int gap, int total) {
   int rightw = total - colw - gap;
+  int lc, rc, lb, rb;
   if (rightw < 0) rightw = 0;
-  snprintf(dst, dstsz, "%-*.*s%*s%.*s",
-           colw, colw, left, gap, "", rightw, right);
+  lb = utf8_fit_cols(left, colw, &lc);
+  rb = utf8_fit_cols(right, rightw, &rc);
+  snprintf(dst, dstsz, "%.*s%*s%.*s",
+           lb, left, colw - lc + gap, "", rb, right);
 }
 
 /* What a pane row says: the left column padded, the gap, then the right column.

@@ -1224,8 +1224,10 @@ def test_help(tmpdir):
     # until the WINDOWS group arrived and pushed the tail of VIEW below the
     # fold -- the screen scrolls, so nothing was lost, but a test that reads one
     # screenful has to be given a screen the reference fits on or it is checking
-    # the scroll position rather than the content.
-    wide = out(cols=80, rows=44)
+    # the scroll position rather than the content. 44 then went the same way
+    # when the border chords added two rows; 60 leaves room for the next few
+    # groups rather than being bumped by two each time one grows.
+    wide = out(cols=80, rows=60)
     check("help has a title", "Keyboard Reference" in wide, True)
     # Every keybinding and group heading must be documented somewhere.
     #
@@ -3896,6 +3898,110 @@ def test_filter(tmpdir):
 
 
 
+
+def test_split_resize(tmpdir):
+    """Moving the border between two windows, by key and by mouse.
+
+    window_move_border() is unit-tested for the arithmetic: one cell a press at
+    any width, and the minimums of every window a border moves into. What is
+    here is that the chords and the menu reach it, which way the arrow moves
+    the line, and the drags, which only a running editor has.
+    """
+    print("\nresizing a split: Ctrl-Shift and an arrow")
+
+    work = os.path.join(tmpdir, "resize")
+    os.makedirs(work, exist_ok=True)
+    name = os.path.join(work, "r.txt")
+    with open(name, "w") as fh:
+        fh.write("alpha\nbeta\n")
+
+    SPLIT_RIGHT = "\x1b[18~"    # F7
+    SPLIT_BELOW = "\x1b[19~"    # F8
+    NEXT_WIN = "\x1b[17~"       # F6
+    B_LEFT, B_RIGHT = "\x1b[1;6D", "\x1b[1;6C"
+    B_UP, B_DOWN = "\x1b[1;6A", "\x1b[1;6B"
+
+    def text_of(keys):
+        scr = Screen(24, 80)
+        scr.feed(run([MOLLY, name], keys))
+        return scr.text()
+
+    def sep(keys):
+        row = text_of(keys)[1]
+        return row.index("\u2502") if "\u2502" in row else -1
+
+    def bars(keys):
+        return [i for i, r in enumerate(text_of(keys)) if " - 2 lines" in r]
+
+    # 79 columns either side of the separator: 40 and 39.
+    check("a new side-by-side split puts its border at column 40",
+          sep([SPLIT_RIGHT]), 40)
+    check("Ctrl-Shift-Left moves it a column left", sep([SPLIT_RIGHT, B_LEFT]), 39)
+    check("three times, three columns",
+          sep([SPLIT_RIGHT, B_LEFT, B_LEFT, B_LEFT]), 37)
+    check("Ctrl-Shift-Right moves it back", sep([SPLIT_RIGHT, B_LEFT, B_RIGHT]), 40)
+    # The keyboard is in the right window after a split. From the left one the
+    # same arrow moves the same line the same way, rather than meaning "grow".
+    check("from the other window the arrow still says which way the line goes",
+          sep([SPLIT_RIGHT, NEXT_WIN, B_LEFT]), 39)
+    check("it stops at the narrowest a window may be",
+          sep([SPLIT_RIGHT] + [B_LEFT] * 40), 8)
+
+    # Stacked: 22 rows, so 11 each, and the upper window's status bar is the
+    # border -- on row 11 of the screen.
+    check("a stacked split's border is the upper status bar",
+          bars([SPLIT_BELOW])[0], 11)
+    check("Ctrl-Shift-Up moves it up a row", bars([SPLIT_BELOW, B_UP])[0], 10)
+    check("and Ctrl-Shift-Down down", bars([SPLIT_BELOW, B_DOWN])[0], 12)
+
+    rows = text_of([B_LEFT])
+    check("one window has no border to move, and says so",
+          "No window beside" in rows[23], True)
+    check("and the screen is unsplit", "\u2502" in rows[1], False)
+
+    # A selection outlives a resize: Shift-Right takes the "a", the border
+    # moves, and typing replaces the "a" -- which it would not if the move had
+    # dropped the selection on its way out.
+    check("a selection survives moving a border",
+          edit(tmpdir, "alpha\n", [SPLIT_RIGHT, "\x1b[1;2C", B_LEFT, "X", SAVE]),
+          "Xlpha\n")
+
+    # The Window menu: Alt-W, then L.
+    check("Window > Move border left reaches it",
+          sep([SPLIT_RIGHT, "\x1bw", "l"]), 39)
+
+    print("\nresizing a split: dragging the border")
+
+    # 1-based, as the terminal reports them: the separator is column 41, and
+    # the upper window's status bar is row 12.
+    def press(x, y):
+        return "\x1b[<0;%d;%dM" % (x, y)
+
+    def drag(x, y):
+        return "\x1b[<32;%d;%dM" % (x, y)
+
+    def release(x, y):
+        return "\x1b[<0;%d;%dm" % (x, y)
+
+    check("dragging the separator moves it to the pointer",
+          sep([SPLIT_RIGHT, press(41, 6), drag(31, 6), drag(21, 6),
+               release(21, 6)]), 20)
+    check("and not past a window's minimum",
+          sep([SPLIT_RIGHT, press(41, 6), drag(2, 6), release(2, 6)]), 8)
+    check("dragging the upper status bar moves the border between them",
+          bars([SPLIT_BELOW, press(30, 12), drag(30, 6), release(30, 6)])[0], 5)
+    # The bottom window's bar is above nothing. A drag on it is a drag on a
+    # status bar, which does nothing at all.
+    check("the bottom window's bar is not a border",
+          bars([SPLIT_BELOW, press(30, 23), drag(30, 16), release(30, 16)]),
+          [11, 22])
+    # A drag that starts on the separator is not a text selection in the
+    # window it passes over: typing afterwards inserts, it does not replace.
+    check("a border drag selects nothing",
+          edit(tmpdir, "alpha\n", [SPLIT_RIGHT, press(41, 2), drag(43, 2),
+                                    drag(30, 2), release(30, 2), "X", SAVE]),
+          "Xalpha\n")
+
 def test_insert_output(tmpdir):
     """Alt-!: a command's output at the cursor, with nothing sent to it.
 
@@ -4272,6 +4378,7 @@ def main():
         test_tabbar(tmpdir)
         test_syntax(tmpdir)
         test_splits(tmpdir)
+        test_split_resize(tmpdir)
         test_filter(tmpdir)
         test_insert_output(tmpdir)
         test_indent(tmpdir)

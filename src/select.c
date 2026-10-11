@@ -196,21 +196,29 @@ void selection_delete(void) {
   undo_group_end();
 }
 
-/* Insert the clipboard at the cursor as one undo step; embedded newlines split
- * lines. An active selection is replaced. */
+/* Insert a run of text at the cursor as one undo step; embedded newlines split
+ * lines. An active selection is replaced. The newlines are the plain kind, not
+ * Enter's: text that arrives from somewhere else brings its own indentation,
+ * and copying the cursor row's leading whitespace onto every line of it would
+ * indent it twice. */
+void editor_insert_text(const char *s, int len) {
+  int i;
+  selection_delete();
+  undo_group_begin();
+  for (i = 0; i < len; i++) {
+    if (s[i] == '\n') editor_insert_newline();
+    else editor_insert_char((unsigned char)s[i]);
+  }
+  undo_group_end();
+}
+
+/* Insert the clipboard at the cursor. */
 void editor_paste(void) {
   if (E.clipsize == 0) {
     editor_set_status_message("Clipboard is empty");
     return;
   }
-  selection_delete();
-  undo_group_begin();
-  int i;
-  for (i = 0; i < E.clipsize; i++) {
-    if (E.clipboard[i] == '\n') editor_insert_newline();
-    else editor_insert_char(E.clipboard[i]);
-  }
-  undo_group_end();
+  editor_insert_text(E.clipboard, E.clipsize);
   editor_set_status_message("Pasted %d bytes", E.clipsize);
 }
 

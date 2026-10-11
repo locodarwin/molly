@@ -462,6 +462,26 @@ static int count_lines(const char *s, int len) {
   return n;
 }
 
+/* Ask for a command, with Enter on an empty prompt meaning the last one -- the
+ * idiom Ctrl-F already has for repeating a search. `last` is the caller's, so
+ * that the filter and the output insert each remember their own: `sort` and
+ * `date` are not answers to the same question. Returns 0 if there is nothing
+ * to run. */
+static int ask_command(char *prompt, const char *last, char *cmd,
+                       size_t cmdsz) {
+  char *input = editor_prompt(prompt, NULL);
+  if (input == NULL) return 0;
+  if (input[0] == '\0') {
+    free(input);
+    if (last[0] == '\0') return 0;
+    snprintf(cmd, cmdsz, "%s", last);
+  } else {
+    snprintf(cmd, cmdsz, "%s", input);
+    free(input);
+  }
+  return 1;
+}
+
 /* Filter the selection -- or the whole buffer, when nothing is selected --
  * through a command, and replace it with the output.
  *
@@ -486,7 +506,7 @@ void editor_filter(void) {
   struct filter_io io;
   struct cursor saved = CUR;
   char cmd[512];
-  char *input, *text;
+  char *text;
   int len = 0, result, lines_in, lines_out, i;
   int had_newline;
 
@@ -495,16 +515,8 @@ void editor_filter(void) {
     return;
   }
 
-  input = editor_prompt("Filter through: %s (ESC to cancel)", NULL);
-  if (input == NULL) return;
-  if (input[0] == '\0') {
-    free(input);
-    if (last[0] == '\0') return;
-    snprintf(cmd, sizeof(cmd), "%s", last);
-  } else {
-    snprintf(cmd, sizeof(cmd), "%s", input);
-    free(input);
-  }
+  if (!ask_command("Filter through: %s (ESC to cancel)", last, cmd, sizeof(cmd)))
+    return;
 
   if (!CUR.sel_active) {
     CUR.sy = 0;
@@ -566,5 +578,73 @@ void editor_filter(void) {
 
   editor_set_status_message("%.30s: %d line%s in, %d out", cmd,
                             lines_in, lines_in == 1 ? "" : "s", lines_out);
+  filter_free(&io);
+}
+
+/* Run a command and insert what it prints at the cursor -- at every cursor, when
+ * there are several -- without sending it anything: `date`, `git rev-parse
+ * HEAD`, `uuidgen`, `ls`.
+ *
+ * Standard input is empty rather than the selection. A selection is replaced by
+ * the output, as typing or pasting over one replaces it, so the command was
+ * never going to be a filter of it; the filter is Alt-| and already does that.
+ *
+ * One trailing newline is dropped, always. What these commands answer is
+ * mostly one line, and the place it is wanted is mostly the middle of one --
+ * a hash in a commit message, a date in a header -- where the terminator the
+ * command adds would split the line it lands in. A command whose output is
+ * several lines leaves the cursor at the end of the last one, which is where
+ * pasting the same text would have left it; Enter is one key away, and a
+ * blank line that was not asked for is a key to remove.
+ *
+ * As with the filter, a non-zero exit inserts nothing: `git rev-parse HEAD`
+ * outside a repository writes "fatal: not a git repository" to standard error
+ * and exits 128, and that sentence belongs on the status bar rather than in the
+ * file. */
+void editor_insert_output(void) {
+  static char last[512];
+  struct filter_io io;
+  char cmd[512];
+  int len, lines, result;
+
+  if (!ask_command("Insert output of: %s (ESC to cancel)", last, cmd, sizeof(cmd)))
+    return;
+
+  editor_set_status_message("Running %.40s ... (ESC cancels)", cmd);
+  editor_refresh_screen();
+
+  memset(&io, 0, sizeof(io));
+  io.cmd = cmd;
+  io.in = "";
+  io.inlen = 0;
+  io.timeout_ms = shell_timeout_ms();
+  io.max_out = shell_output_max();
+  result = filter_run(&io, filter_cancelled);
+
+  if (result != FILTER_OK) {
+    editor_set_status_message("%.30s: %s", cmd,
+                              io.err[0] != '\0' ? io.err : "did not run");
+    filter_free(&io);
+    return;
+  }
+
+  snprintf(last, sizeof(last), "%s", cmd);
+
+  len = io.outlen;
+  if (len > 0 && io.out[len - 1] == '\n') len--;
+  if (len == 0) {
+    editor_set_status_message("%.30s: no output", cmd);
+    filter_free(&io);
+    return;
+  }
+  lines = count_lines(io.out, len);
+
+  /* One undo step, the replaced selection included -- the filter's rule. */
+  undo_group_begin();
+  cursors_insert_text(io.out, len);
+  undo_group_end();
+
+  editor_set_status_message("%.30s: %d line%s inserted", cmd,
+                            lines, lines == 1 ? "" : "s");
   filter_free(&io);
 }

@@ -187,6 +187,7 @@ struct cursor {
 #define MC_DELETE_BACK 3
 #define MC_DELETE_FWD  4
 #define MC_PASTE       5
+#define MC_TEXT        6   /* the text cursors_insert_text() was given */
 
 #define UC_INSERT 0
 #define UC_DELETE 1
@@ -962,6 +963,7 @@ void screen_window_area(int *x, int *y, int *w, int *h);
 void editor_draw_text_row(int y, erow *row, const struct drow *d, int sel0, int sel1);
 void editor_refresh_screen(void);
 void editor_filter(void);
+void editor_insert_output(void);
 void editor_set_status_message(const char *fmt, ...);
 void screen_cleanup(void);
 void screen_force_repaint(void);
@@ -993,6 +995,7 @@ void selection_row_rx_of(const struct cursor *c, int filerow, int *out0, int *ou
 void clipboard_set(const char *s, int len);
 void clipboard_sync_system(void);
 void editor_paste(void);
+void editor_insert_text(const char *s, int len);
 void selection_clear(void);
 void selection_delete(void);
 void selection_row_rx(int filerow, int *out0, int *out1);
@@ -1143,6 +1146,7 @@ int cursors_add_vertical(int down);
 void cursors_line_edge(int to_end);
 void cursors_move_all(int key);
 void cursors_edit(int what, int arg);
+void cursors_insert_text(const char *s, int len);
 void cursors_sort(void);
 void editor_move_cursor(int key);
 void editor_scroll(void);

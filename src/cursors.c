@@ -218,6 +218,13 @@ static void cursor_shift(struct cursor *c, int r1, int c1, int nr, int nc) {
   }
 }
 
+/* What MC_TEXT inserts. A pointer does not fit in cursors_edit()'s `arg`, and
+ * every operation passing a pointer it does not use would be a wider change than
+ * the one caller is worth; cursors_insert_text() sets these for the length of
+ * one call and clears them. */
+static const char *mc_text;
+static int mc_textlen;
+
 /* Run one editing operation at the current cursor. The single place that maps a
  * multi-cursor edit onto the ordinary editing functions, so that nothing here
  * is a second implementation of an edit. */
@@ -245,6 +252,7 @@ static void edit_one(int what, int arg) {
      * happened by the time this runs -- harmless, because the second one finds
      * nothing selected. */
     case MC_PASTE:       editor_paste(); break;
+    case MC_TEXT:        editor_insert_text(mc_text, mc_textlen); break;
     default: break;
   }
 }
@@ -297,6 +305,19 @@ void cursors_edit(int what, int arg) {
   undo_group_end();
   V.primary = (keep < V.ncursors) ? keep : 0;
   cursors_dedup();
+}
+
+/* Insert the same run of text at every cursor, as one undo step -- what paste
+ * does with the clipboard, for text that came from somewhere else. A command's
+ * output is the case it was written for: the command runs once and its answer
+ * lands at each cursor, rather than the command running once per cursor. */
+void cursors_insert_text(const char *s, int len) {
+  if (len <= 0) return;
+  mc_text = s;
+  mc_textlen = len;
+  cursors_edit(MC_TEXT, 0);
+  mc_text = NULL;
+  mc_textlen = 0;
 }
 
 /* ---- drawing the cursors the terminal cannot ------------------------------ */

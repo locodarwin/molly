@@ -93,7 +93,8 @@ Everything olly does, molly does. These all work today:
 - **Filter through a shell command**: `Alt-|` pipes the selection — or the whole
   file — through `sort`, `jq`, `fmt`, `black` or any pipeline, and replaces it
   with the output. One undo step, with a timeout, an output cap and `Esc` to
-  cancel; a command that fails leaves your text alone.
+  cancel; a command that fails leaves your text alone. `Alt-!` inserts a
+  command's output at the cursor instead — `date`, `git rev-parse HEAD`.
 - **Keyboard reference built in**: press `F1` at any time.
 - **Configurable**: `~/.config/molly/mollyrc` holds the settings and the
   keymap, and `View ▸ Save Settings` writes it for you.
@@ -161,6 +162,7 @@ resize the terminal window.
 | `Ctrl-V` | Paste at the cursor |
 | `Ctrl-T` | Swap the two characters at the cursor |
 | `Alt-\|` | Filter the selection (or the file) through a command |
+| `Alt-!` | Insert a command's output at the cursor |
 | `Ctrl-Z` | Undo |
 | `Ctrl-Y` | Redo |
 | `F1` | Help screen (`Ctrl-?` too) |

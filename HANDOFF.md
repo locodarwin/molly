@@ -15,7 +15,18 @@ This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
 
-**Latest:** the
+**Latest:** inserting a command's output (`Alt-!`, Edit → Insert output…),
+picked by Shawn on 2026-10-11 as "#1" from a ranked menu. `editor_insert_output()`
+in `src/filter.c` runs the command with empty input through `filter_run()` and
+hands the result to `cursors_insert_text()`, so it lands at every cursor and the
+command runs once. Paste now goes through the same `editor_insert_text()`. Three
+calls made without asking, any of them a line to change: one trailing newline
+always comes off (so `date` lands inline); a selection is replaced rather than
+sent; and it keeps its own last command, separate from the filter's. The Edit
+menu is now seventeen rows, so at the 20-row size its goldens use it scrolls by
+one; at 24 rows it still fits. Its pty checks are `test_insert_output`.
+
+**Before that:** the
 buffer-list dialog (`Ctrl-B`, Go → Buffers…) and the quit dialog (Save All /
 Discard / Cancel) are done, in `src/bufdlg.c`, picked by Shawn on 2026-10-10 as
 "1" from a ranked menu. The Ctrl-Q countdown, `quit_times` and
@@ -354,11 +365,9 @@ buffer rewrite (which soft wrap just gave a second reason — see §5's big-file
 section), the integrated terminal and the language server. Each is a phase of
 its own, not an afternoon.
 
-Two things the shell filter now makes cheap, neither of them asked for yet:
+One thing the shell filter now makes cheap, not asked for yet (its sibling,
+inserting a command's output, is done — see "Latest"):
 
-- **Insert a command's output** at the cursor without sending anything — `date`,
-  `git rev-parse HEAD`. `filter_run()` already takes an empty input; what is
-  missing is a second command and a second prompt.
 - **A results panel.** `ROADMAP.md` gates grep-in-files on splits and buffers,
   both of which exist, and the filter is how the search would be run. A window
   showing a buffer of matches is the whole of what is left.

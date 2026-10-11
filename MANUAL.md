@@ -1119,6 +1119,33 @@ what the message bar shows.
 The command is your own, typed deliberately, and runs with exactly the
 privileges your shell has. Molly does not run anything you have not typed.
 
+### Inserting a command's output
+
+`Alt-!` (or `Edit ▸ Insert output…`) runs a command with nothing on its standard
+input and puts what it prints at the cursor:
+
+    Insert output of: date
+    Insert output of: git rev-parse HEAD
+    Insert output of: uuidgen
+    Insert output of: ls *.c
+
+One trailing newline comes off what the command printed, so a one-line answer
+goes into the middle of the line you are on rather than splitting it — a hash
+lands in a commit message, a date in a header. Output of several lines leaves
+the cursor at the end of the last one, where pasting the same text would.
+
+A selection is replaced, as typing or pasting over it would replace it; to send
+the selection to the command instead, that is `Alt-|`. With
+[several cursors](#several-cursors) the command runs once and its output goes
+in at every one of them.
+
+Everything above about the filter holds here too: `Enter` on an empty prompt
+runs the last command again (this command remembers its own, not the
+filter's), it is one undo step, `Esc`, the timeout and the output cap stop it,
+and a command that exits non-zero inserts nothing — `git rev-parse HEAD`
+outside a repository puts `fatal: not a git repository` on the status bar, not
+in your file.
+
 ## Window Splits
 
 A **buffer** is a file; a **window** is a view onto one. Until you split, there
@@ -1299,6 +1326,7 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     Tab      Indent the selected rows (or insert one indent step)
     Shift-Tab  Dedent the selected rows, or the cursor's row
     Alt-|    Filter the selection (or the file) through a command
+    Alt-!    Insert a command's output at the cursor
     Ctrl-Z   Undo the last change
     Ctrl-Y   Redo an undone change
     F1       Show this help screen (Ctrl-? does the same)

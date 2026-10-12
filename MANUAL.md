@@ -1725,3 +1725,12 @@ default.
   columns, combining marks take none, so the cursor and horizontal scrolling
   stay aligned with what the terminal actually shows.
 - The status bar shows the file name capped at 20 characters.
+- A file is read into memory whole, in one piece, and Molly needs about one and a
+  half times its size: a 743 MB log of ten million lines opens in under half a
+  second and takes about 1.1 GB. Lines you have not changed are not copied, so
+  scrolling, searching and editing a few places in a big file add little to
+  that. A file larger than the memory you have will not open.
+- With [soft wrap](#soft-wrap) on, the first time a window lays out a very long
+  file it measures every line, and does it again whenever the window's width
+  changes: about two seconds for ten million lines. Unwrapped, nothing walks
+  the file.

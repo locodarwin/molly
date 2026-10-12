@@ -15,7 +15,27 @@ This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
 
-**Latest:** block selection, which Shawn picked on 2026-10-11. A block is a
+**Latest:** the big-file rewrite, which Shawn picked on 2026-10-11 and then
+chose the shape of: line spans rather than a true piece table, because every
+reader in molly takes a row as one contiguous string by index and a piece
+table would have put a lookup and a pointer-lifetime rule under all ~250 of
+them. Four commits. `c6f7f06` drops the tab-expanded `render` copy:
+`text_cell()` walks a tab a column at a time, so no golden moved. `b14b93f`
+lexes a row when it is drawn (`syntax_roles()`) instead of keeping a role per
+byte for every row ever lexed, and packs `erow` to 24 bytes behind a
+`_Static_assert`. `5228d36` is the storage: the file is read whole into
+`B.text`, each row is a NUL-terminated span of it, a row is copied the first
+time it changes (`row_own`), the block doubles as the saved snapshot through
+`B.saved_off[]`, and the rows are a gap array (`B.gap`; `row_at`/`buf_row`
+translate). The fourth makes a save compact the rows into the block in place
+instead of beside it. Measured: 400,000 lines went from 3.1× to 1.48×; ten
+million lines (743 MB) load in 0.42 s at 1.40× and save at 1.66×. Unit checks
+`test_storage_load`, `test_storage_edit`, `test_storage_gap` (3,000 random
+edits against a plain list, with a save every 97); `test_syntax_roles`; pty
+`test_tab_cells`. The pty suite also passes under clang's ASan+UBSan — gcc's
+`libasan` is not installed here, so use `clang`.
+
+**Before that:** block selection, which Shawn picked on 2026-10-11. A block is a
 cursor per row, each with a selection over the same display columns, so no
 edit path changed: `src/block.c` keeps two corners (row, display column),
 lays the cursors out from them, and calls the block live only while the
@@ -153,9 +173,9 @@ views of the command table that had room for it, `bf35a8f` the documentation.
 **The three candidates the first handoff named are all done**, and so is the
 drop-down item that was the best value-to-work ratio left. What is left is the
 smaller work under "Next by dependency", none of it confirmed as next — ask
-before starting any of it. The two biggest things on the whole list are now the
-piece-table buffer rewrite and the integrated terminal, and `ROADMAP.md` has
-the argument for each.
+before starting any of it. The big-file rewrite is done (see "Latest"); the
+biggest things left on the whole list are the integrated terminal and the
+language server, and `ROADMAP.md` has the argument for each.
 
 ---
 
@@ -465,10 +485,10 @@ keymap, multiple buffers with tabs, syntax highlighting, window splits, the
 shell filter, indentation with per-filetype defaults, multiple cursors, and
 soft wrap. Nothing on the list below has been confirmed as next.
 
-The largest things left are in `ROADMAP.md` rather than here: the piece-table
-buffer rewrite (which soft wrap just gave a second reason — see §5's big-file
-section), the integrated terminal and the language server. Each is a phase of
-its own, not an afternoon.
+The largest things left are in `ROADMAP.md` rather than here: the integrated
+terminal and the language server. Each is a phase of its own, not an afternoon.
+The big-file rewrite is done; what it leaves (wrap measuring every row of a
+huge file once per width) is at the end of §5's big-file section.
 
 Smaller things the last six features left behind, each a self-contained
 commit:
@@ -544,6 +564,22 @@ later.
   writing config nobody asked for.
 
 ### Gotchas
+
+- **Never write a row's `chars` directly.** A row that has not been changed
+  since the file was read (or saved) is a span of `B.text`, which is also the
+  saved snapshot; writing into it changes what "unmodified" is compared
+  against, and nothing fails until undo back to the saved state stops clearing
+  the modified flag. Every `editor_row_*` mutator and `editor_row_truncate()`
+  calls `row_own()` first. A new mutator has to as well.
+- **Nothing outside `buffer.c` indexes `B.row[]`.** It is a gap array, so slot
+  and index differ past `B.gap`; use `row_at()`, or `buf_row()` for a buffer
+  that is not current. And an `erow *` does not survive an insert or delete of
+  *any* row now, above or below it — the gap moves rows on both sides. Fetch it
+  again after.
+- **Borrowed rows have to stay in file order**: the in-place compaction in
+  `saved_snapshot_take()` depends on it. It holds because only a load or a save
+  makes a row borrowed and every inserted row gets text of its own — so code
+  that swapped two `erow` structs to move a line would break saving, quietly.
 
 - **`pty_harness.run()` execs via `os.execve`** — the binary path must be
   absolute. A relative path fails silently in the child and every assertion

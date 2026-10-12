@@ -132,6 +132,10 @@ Fresh advertises multi-gigabyte files with negligible overhead. On this base a
 1 GB file wants ~3.5 GB of RAM. **Matching Fresh there is not a tuning job, it
 is a buffer rewrite** — see §5.
 
+**Since done** (2026-10-11, §5 "Big-file handling"): the same 29 MB, 400,000-line
+file now peaks at 43.3 MB, 1.48×, and a 743 MB, ten-million-line one opens in
+under half a second at 1.04 GB, 1.40×.
+
 ---
 
 ## 3. Phase 0 — Foundations — **done**
@@ -190,7 +194,8 @@ have been speculative now:
   them in — and should delete code doing it.
 - **`erow` is still visible to the renderer and to search**, so the buffer is not
   fully isolated. Closing that gap is part of the big-file rewrite, not of
-  laying a seam for it.
+  laying a seam for it. *(The rewrite kept it visible on purpose: a row is still a contiguous
+  string, and what changed is where its bytes live — see §5.)*
 - **The keymap is still olly's.** The CUA moves settled on in §6 are feature work.
 
 ## 4. Phase 1 — The UI shell
@@ -946,7 +951,8 @@ molly runs under `ulimit -v` and has to reach a clean quit.
   row wrapping into two. A row caches its own slice count, and `drow_at` keeps
   one step of its walk so that a screenful costs one pass rather than one per
   row — without that last part the same frame was 2.9 ms. The remaining walk is
-  the flat `erow[]` array's to lose: see big-file handling below.
+  still there after the big-file rewrite, which kept rows in an array: see
+  big-file handling below for what it measures at ten million rows.
 
 ### Multi-cursor — **done.** Block selection — **done**
 
@@ -1085,7 +1091,7 @@ and is genuinely useful. Not core, and gated on panels.
   effort.
 - **A GUI**, a daemon, or anything that cannot work on a bare terminal over SSH.
 
-### Big-file handling — **IN**
+### Big-file handling — **done** (line spans, not a piece table)
 
 Replacing the `erow[]` array with a piece table or gap buffer, plus dropping the
 duplicated `render` string, gets molly from 3.5× file size toward ~1×, and is
@@ -1106,6 +1112,53 @@ the only route to Fresh's multi-gigabyte claim.
   carry a count per node and answer it in a step; a flat array cannot, and no
   cache over the flat array would survive an edit. So the number in `wrap.c` is
   the bound to beat, not a target to optimise where it is.
+- **Done, on 2026-10-11, and not as a piece table.** Shawn chose between the two
+  with both laid out. Every one of molly's ~250 places that read text reads a
+  row as one contiguous, NUL-terminated string by index; a piece table would
+  have made each of those an O(log n) lookup that might copy, with a rule about
+  how long the pointer lives. What was built keeps the row model and changes
+  where the bytes are:
+  - **The file is read in one piece** (`read_all`, sized from `fstat`) and each
+    row is a span of that block, with the byte after the line overwritten by a
+    NUL so the row is terminated where it lies. An LF file is not moved at all;
+    a CRLF file moves each line back by its carriage returns. No allocation per
+    line.
+  - **A row is copied the first time it changes** (`row_own`). Until then it is
+    borrowed, and a borrowed row is never written, which is what lets the block
+    double as the saved snapshot: `saved_off[i]` is where line i of what was
+    saved starts, and a row still borrowing its own line is equal to it without
+    a comparison. The snapshot used to be a second full copy of the file.
+  - **A save compacts the rows back into the block, in place.** Borrowed rows are
+    always in file order (only a load or a save makes a row borrowed, and every
+    inserted row has text of its own), so rows moving right go last-first, rows
+    moving left go first-first, and owned rows are copied in after both. A new
+    block beside the old would have been a second copy at the moment of saving:
+    2.6× at the peak, against 1.66× now.
+  - **The rows are a gap array**, so a new line moves the rows between the last
+    edit and this one rather than every row below it. `row_at()` and `buf_row()`
+    are the only translation from index to slot. Growth is half again rather
+    than double, because the array is the per-line cost.
+  - **`render` is gone** — the cheaper half, as predicted. A tab is laid out a
+    column at a time from the stored bytes (`text_cell`), which is exactly what
+    it was when it was a run of spaces in `render`; no golden screen changed.
+  - **Syntax roles are worked out when a row is drawn** (`syntax_roles`) rather
+    than kept per byte for every row ever lexed, which after a jump to the end
+    of a highlighted file was a second copy of it. A row keeps two state bytes.
+  - **`erow` is 24 bytes, and asserted to stay so**: it is most of what a line
+    costs beyond its own bytes.
+
+  Measured with a harness linked against `$(LIBOBJ)`, on a 743 MB file of ten
+  million 74-byte lines: load 0.42 s at a 1.04 GB peak; the first new line at
+  the top 29 ms (it grows the array and walks the gap across the file); a line
+  at the far end after that 13 ms; a thousand characters typed mid-file too
+  quick to measure; a save's snapshot 0.10 s, peaking at 1.23 GB. In molly
+  itself, open, edit and save of the same file took 1.9 s at a 1.12 GB peak.
+- **What it leaves.** Soft wrap's walk is still over the rows: 13 ms a frame at
+  ten million lines, which is fine, but *measuring* them — the first frame with
+  wrap on, and again on every change of width — is 2.3 s at that size. A count
+  per block of rows, kept as rows change, is the next step if anyone wraps files
+  that size. And a file is still read whole, so a file larger than memory does
+  not open; nothing short of paging the block from disk changes that.
 
 ---
 

@@ -88,6 +88,9 @@ Everything olly does, molly does. These all work today:
 - **Block selection**: `Alt-Shift` and the arrows, or `Alt`-drag, select a
   rectangle in screen columns. It is a cursor per row, so typing writes on
   every row; a copied block pastes back as a block.
+- **Big files**: a file is read in one piece and its lines are not copied until
+  they change, so Molly needs about 1.5 times a file's size — a 743 MB,
+  ten-million-line log opens in under half a second.
 - **Soft wrap**: `Alt-Z` lays a line too long for the window out over as many
   screen rows as it needs, breaking it after the last space that fits. The
   arrows walk the rows of a long line, the gutter numbers it once, and nothing

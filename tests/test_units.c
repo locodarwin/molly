@@ -3911,6 +3911,212 @@ static void test_cursors_edit(void) {
             mc_text(), "a-bc-f");
 }
 
+/* ---- JSON ---------------------------------------------------------------- */
+
+/* Parse a NUL-terminated literal, or NULL. */
+static struct json_doc *jp(const char *s) { return json_parse(s, strlen(s)); }
+
+/* Is `s` refused? */
+static int jbad(const char *s) {
+  struct json_doc *d = jp(s);
+  json_free(d);
+  return d == NULL;
+}
+
+/* The string `s` comes out as once written. */
+static char *jwrite(const char *s, int len) {
+  struct abuf ab = ABUF_INIT;
+  json_put_str(&ab, s, len);
+  ab_append(&ab, "", 1);
+  return ab.b;
+}
+
+static void test_json(void) {
+  struct json_doc *d;
+  const struct json *r, *v;
+  char *w;
+  int i, bad;
+
+  printf("\nJSON: reading\n");
+
+  d = jp(" {\"id\": 7, \"method\":\"textDocument/publishDiagnostics\","
+         " \"params\": {\"diagnostics\": [ {\"range\": {\"start\":"
+         " {\"line\": 3, \"character\": 12}}, \"severity\": 1,"
+         " \"message\": \"expected \\\";\\\"\"}, {\"message\": \"two\"} ],"
+         " \"flag\": true, \"none\": null, \"no\": false} } ");
+  check("a message parses", d != NULL, 1);
+  r = json_root(d);
+  check("its root is an object", r != NULL && r->type == JSON_OBJECT, 1);
+  check("an integer member", json_int(json_get(r, "id"), -1), 7);
+  check_str("a string member", json_str(json_get(r, "method")),
+            "textDocument/publishDiagnostics");
+  v = json_get(json_get(r, "params"), "diagnostics");
+  check("an array counts its elements", v != NULL ? v->n : -1, 2);
+  check("a lookup three objects down",
+        json_int(json_get(json_get(json_get(json_at(v, 0), "range"), "start"),
+                          "character"), -1), 12);
+  check_str("escaped quotes come out as quotes",
+            json_str(json_get(json_at(v, 0), "message")), "expected \";\"");
+  check_str("the second element", json_str(json_get(json_at(v, 1), "message")),
+            "two");
+  check("past the end of an array is NULL", json_at(v, 2) == NULL, 1);
+  check("a missing key is NULL", json_get(r, "nope") == NULL, 1);
+  check("a lookup through NULL is NULL",
+        json_get(json_get(r, "nope"), "deeper") == NULL, 1);
+  check("a lookup on a non-object is NULL", json_get(json_get(r, "id"), "x") == NULL, 1);
+  check("true", json_bool(json_get(json_get(r, "params"), "flag"), -1), 1);
+  check("false", json_bool(json_get(json_get(r, "params"), "no"), -1), 0);
+  check("null is not a boolean",
+        json_bool(json_get(json_get(r, "params"), "none"), -1), -1);
+  check("a string is not an integer", json_int(json_get(r, "method"), -5), -5);
+  check("json_str of a number is NULL", json_str(json_get(r, "id")) == NULL, 1);
+  json_free(d);
+
+  d = jp("[-12, 0, 3.5, 1e3, 2E+2, 250e-2, 2147483648000]");
+  r = json_root(d);
+  check("a negative number", json_int(json_at(r, 0), 0), -12);
+  check("zero", json_int(json_at(r, 1), 9), 0);
+  check("a fraction truncates", json_int(json_at(r, 2), 0), 3);
+  check("an exponent", json_int(json_at(r, 3), 0), 1000);
+  check("an exponent with a sign", json_int(json_at(r, 4), 0), 200);
+  check("a negative exponent", json_int(json_at(r, 5), 0), 2);
+  check("a number past int clamps", json_int(json_at(r, 6), 0), INT_MAX);
+  json_free(d);
+
+  d = jp("[\"\\n\\t\\\\\\/\\b\\f\\r\", \"\\u00e9\\u4e2d\", \"\\ud83d\\ude00\","
+         " \"\\ud83d!\", \"\\ude00\", \"\\u0000x\"]");
+  r = json_root(d);
+  check("escapes parse", d != NULL, 1);
+  check_str("the single-character escapes", json_str(json_at(r, 0)),
+            "\n\t\\/\b\f\r");
+  check_str("\\u escapes become UTF-8", json_str(json_at(r, 1)),
+            "\xc3\xa9\xe4\xb8\xad");
+  check_str("a surrogate pair is one character", json_str(json_at(r, 2)),
+            "\xf0\x9f\x98\x80");
+  check_str("a lone high surrogate is U+FFFD", json_str(json_at(r, 3)),
+            "\xef\xbf\xbd!");
+  check_str("a lone low surrogate is U+FFFD", json_str(json_at(r, 4)),
+            "\xef\xbf\xbd");
+  check("an escaped NUL keeps the length", json_at(r, 5)->n, 2);
+  json_free(d);
+
+  d = jp("{}");
+  check("an empty object", d != NULL && json_root(d)->n == 0, 1);
+  json_free(d);
+  d = jp("[ ]");
+  check("an empty array", d != NULL && json_root(d)->n == 0, 1);
+  json_free(d);
+  d = jp("\"\"");
+  check("an empty string", d != NULL && json_root(d)->n == 0, 1);
+  json_free(d);
+
+  printf("\nJSON: refusing\n");
+  check("nothing", jbad(""), 1);
+  check("only whitespace", jbad("   "), 1);
+  check("an unterminated string", jbad("\"abc"), 1);
+  check("an unterminated array", jbad("[1, 2"), 1);
+  check("an unterminated object", jbad("{\"a\": 1"), 1);
+  check("a trailing comma in an array", jbad("[1,]"), 1);
+  check("a trailing comma in an object", jbad("{\"a\":1,}"), 1);
+  check("a key that is not a string", jbad("{a: 1}"), 1);
+  check("a missing colon", jbad("{\"a\" 1}"), 1);
+  check("a raw newline in a string", jbad("\"a\nb\""), 1);
+  check("an unknown escape", jbad("\"\\q\""), 1);
+  check("a short \\u escape", jbad("\"\\u12\""), 1);
+  check("a bad hex digit", jbad("\"\\u12g4\""), 1);
+  check("a word that is not one", jbad("nul"), 1);
+  check("a bare minus", jbad("-"), 1);
+  check("a point with no digits", jbad("1."), 1);
+  check("an exponent with no digits", jbad("1e"), 1);
+  check("text after the value", jbad("{} x"), 1);
+  check("two values", jbad("1 2"), 1);
+  {
+    /* Deeper than the reader will go, which has to be a refusal and not a
+     * stack overflow; and just shallow enough, which has to parse. */
+    char deep[600];
+    for (i = 0; i < 300; i++) deep[i] = '[';
+    for (i = 0; i < 300; i++) deep[300 + i] = ']';
+    check("three hundred levels is refused", json_parse(deep, 600) == NULL, 1);
+    d = json_parse(deep + 300 - 100, 200);
+    check("a hundred levels is not", d != NULL, 1);
+    json_free(d);
+  }
+  {
+    /* Not NUL-terminated: the length is the end, whatever follows it. */
+    const char s[] = "[1, 2]garbage";
+    d = json_parse(s, 6);
+    check("the length is the end", d != NULL && json_root(d)->n == 2, 1);
+    json_free(d);
+  }
+  {
+    /* More nodes than one chunk holds, so the chunks have to chain. */
+    struct abuf ab = ABUF_INIT;
+    ab_append(&ab, "[", 1);
+    for (i = 0; i < 1000; i++) json_putf(&ab, "%s{\"n\":%d}", i ? "," : "", i);
+    ab_append(&ab, "]", 1);
+    d = json_parse(ab.b, (size_t)ab.len);
+    check("a thousand objects", d != NULL ? json_root(d)->n : -1, 1000);
+    check("the last of them",
+          json_int(json_get(json_at(json_root(d), 999), "n"), -1), 999);
+    json_free(d);
+    free(ab.b);
+  }
+
+  printf("\nJSON: writing\n");
+  w = jwrite("plain", 5);
+  check_str("plain text is quoted", w, "\"plain\"");
+  free(w);
+  w = jwrite("a\"b\\c\nd\te\rf\x01g\x7f", 14);
+  check_str("the characters JSON escapes", w,
+            "\"a\\\"b\\\\c\\nd\\te\\rf\\u0001g\\u007f\"");
+  free(w);
+  w = jwrite("caf\xc3\xa9 \xf0\x9f\x98\x80", 10);
+  check_str("valid UTF-8 goes through as it is", w,
+            "\"caf\xc3\xa9 \xf0\x9f\x98\x80\"");
+  free(w);
+  w = jwrite("a\xff" "b\xc3" "c\x80", 6);
+  check_str("invalid bytes become U+FFFD",
+            w, "\"a\xef\xbf\xbd" "b\xef\xbf\xbd" "c\xef\xbf\xbd\"");
+  free(w);
+  w = jwrite("a\0b", 3);
+  check_str("a NUL is escaped", w, "\"a\\u0000b\"");
+  free(w);
+
+  /* Whatever goes out must come back. Random bytes, so the invalid ones are
+   * in there too: what comes back is then the text with each of those
+   * replaced, which is checked by writing it again and getting the same. */
+  bad = 0;
+  srand(7);
+  for (i = 0; i < 2000; i++) {
+    char src[40];
+    int n = rand() % 40, k;
+    struct json_doc *d2;
+    for (k = 0; k < n; k++) {
+      int pick = rand() % 6;
+      src[k] = pick == 0 ? (char)(rand() % 256)
+             : pick == 1 ? "\"\\\n\t"[rand() % 4]
+             : (char)('a' + rand() % 26);
+    }
+    w = jwrite(src, n);
+    d = jp(w);
+    if (d == NULL) {
+      bad++;
+      free(w);
+      continue;
+    }
+    {
+      char *w2 = jwrite(json_root(d)->str, json_root(d)->n);
+      d2 = jp(w2);
+      if (strcmp(w, w2) != 0 || d2 == NULL) bad++;
+      json_free(d2);
+      free(w2);
+    }
+    json_free(d);
+    free(w);
+  }
+  check("2,000 random strings survive the round trip", bad, 0);
+}
+
 int main(void) {
   test_loop_sources();
   test_wait_key_services_sources();
@@ -3941,6 +4147,7 @@ int main(void) {
   test_indent_block();
   test_indent_convert();
   test_block();
+  test_json();
   test_storage_load();
   test_storage_edit();
   test_storage_gap();

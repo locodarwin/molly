@@ -613,6 +613,33 @@ struct filter_io {
 int filter_run(struct filter_io *io, int (*cancelled)(void));
 void filter_free(struct filter_io *io);
 
+/* --- JSON -------------------------------------------------------------------
+ *
+ * What the language server speaks. A parsed message is a tree of these, owned by
+ * the json_doc it came out of: nothing in it is freed on its own, and nothing in
+ * it outlives json_free(). See json.c. */
+enum json_type {
+  JSON_NULL = 0,
+  JSON_FALSE,
+  JSON_TRUE,
+  JSON_NUMBER,
+  JSON_STRING,
+  JSON_ARRAY,
+  JSON_OBJECT
+};
+
+struct json {
+  int type;
+  int n;               /* children of an array or object; bytes of a string */
+  double num;
+  char *str;           /* decoded and NUL-terminated (it may also hold NULs) */
+  const char *key;     /* this value's name, when it is an object member */
+  struct json *kid;    /* first child */
+  struct json *next;   /* next sibling */
+};
+
+struct json_doc;
+
 /* --- the event loop --------------------------------------------------------
  *
  * What loop_wait returns. The keyboard is reported; every other source is
@@ -946,6 +973,18 @@ int input_last_key_had_ctrl(void);
 int input_last_key_had_shift(void);
 int ui_wait_key(void);
 void input_last_mouse(struct mouse_event *out);
+
+/* json.c */
+const struct json *json_at(const struct json *arr, int i);
+const struct json *json_get(const struct json *obj, const char *key);
+const struct json *json_root(const struct json_doc *doc);
+const char *json_str(const struct json *v);
+int json_bool(const struct json *v, int dflt);
+int json_int(const struct json *v, int dflt);
+struct json_doc *json_parse(const char *s, size_t len);
+void json_free(struct json_doc *doc);
+void json_put_str(struct abuf *ab, const char *s, int len);
+void json_putf(struct abuf *ab, const char *fmt, ...);
 
 /* layer.c */
 int layer_at(int x, int y);

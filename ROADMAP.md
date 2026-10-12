@@ -1053,7 +1053,7 @@ and is genuinely useful. Not core, and gated on panels.
 - Suspend-to-shell (Ctrl-Z job control) is worth having anyway and costs almost
   nothing.
 
-### LSP — **IN**
+### LSP — **done** (diagnostics, definition, hover, completion)
 
 - **For:** completion, diagnostics, go-to-definition and rename are the line
   between "comfortable editor" and "development environment." Doable in C with
@@ -1071,6 +1071,54 @@ and is genuinely useful. Not core, and gated on panels.
 - Build order: diagnostics first (display-only, no new UI interaction), then
   go-to-definition and hover, then completion last, since completion needs the
   most UI and is the most sensitive to latency.
+- **Done, on 2026-10-12, in that order.** Shawn named it; nothing about the
+  shape was put to him, because the build order above already said what it
+  was. What landed, and where it differs from what this section expected:
+  - **`src/json.c`** is the hand-rolled JSON: a tree reader whose nodes and
+    strings live in one document (a few allocations per message, one free), and
+    a string writer that turns bytes that are not UTF-8 into U+FFFD, because a
+    buffer is bytes and the protocol is not. 435 lines, not "a few hundred",
+    most of the difference being comments.
+  - **`src/lsp.c`** is the client. A server is found by the command line that
+    starts it, so C and C++ share one clangd. It is looked for on `PATH`
+    before it is started, and a missing one is silence, which is what makes it
+    safe for the built-in definitions to name servers most people do not have.
+  - **Documents are synchronised by a sweep, not by hooks.** `lsp_idle()`
+    compares every buffer with what its server was last told -- open, change,
+    rename, close -- and sends the difference, when a tick passes with no key.
+    A buffer counts its own edits at the row primitives, so nothing that edits
+    knows there is a server.
+  - **Every change sends the whole document.** The protocol's range edits would
+    have meant recording every change in the server's position encoding at
+    the row primitives, and one missed is a server silently out of step. A
+    source file goes down a pipe in microseconds; past 16 MB nothing is sent.
+  - **Positions are offered as UTF-8 first**, which clangd and rust-analyzer
+    take, and converted when a server insists on UTF-16.
+  - **Answers go through a mailbox the main loop opens.** One arrives inside the
+    event loop -- possibly while a menu is open, possibly after the user has
+    moved on -- so it is acted on only from the main loop, and only if the
+    buffer, its text and the cursor are where they were when it was asked (a
+    completion: or the cursor has only typed on through the word). The
+    "non-modal overlay" this section worried about was not needed: a popup is
+    a layer that closes on the next key, which the key dispatcher checks first.
+  - **Tested against `tests/fake_lsp.py`**, a server whose answers are computed
+    from the text it is sent and whose failures -- crashing, garbage, UTF-16,
+    asking the client questions, answering slowly -- are chosen by
+    environment variable. CI has no clangd, and a real server's answers move
+    with its version. Checked against clangd by hand.
+- **Chosen without asking**, each a line to change: F2/Shift-F2 for problems
+  (VS Code's F8 is a split here); F12 for definition; Alt-Left for back;
+  Alt-K for hover (vi's K; Ctrl-K cannot be followed by a second chord);
+  Alt-/ for completion (Ctrl-Space is the palette's); clangd, rust-analyzer
+  and pylsp as the built-in servers, and none for C#, whose server has no one
+  command line; completion only on Alt-/ and trigger characters, never while
+  a word is typed; the working directory as the project root.
+- **Left for later:** rename, find references, signature help, formatting, a
+  problems list in a buffer of its own (the grep results buffer is the
+  model), completion that opens as a word is typed, snippets, range edits for
+  very large files, and finding the project root from a marker file rather
+  than the working directory. None of them needs anything the client does not
+  already have: each is a request, an answer and a way to show it.
 
 ### Plugin runtime — **NO**
 
@@ -1259,7 +1307,8 @@ structural to the menu bar.
 | What Ctrl-D matches | **Literal text, case-sensitively**, and not through `search.c` -- the Find dialog's modes must not change what it finds |
 | Cursors after an undo | **One.** A record restores a position, not a list |
 | Where the multi-cursor commands live | **The palette and the help screen, not the Edit menu** -- keyboard operations, as transpose already was |
-| LSP | **In.** Forces an async event loop and overlay widgets into Phase 0 |
+| LSP | **Done.** Diagnostics, definition, hover and completion; whole-document sync, answers through a mailbox the main loop opens |
+| LSP servers | **Found on PATH, silent when missing**; one per command line, so C and C++ share clangd |
 | Integrated terminal | **In**, late — needs panels first |
 | Big files | **In.** Buffer rewrite is planned, not optional |
 | Keymap | CUA on the four conflicts, and **fully customizable** |

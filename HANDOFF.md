@@ -15,7 +15,30 @@ This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
 
-**Latest:** the big-file rewrite, which Shawn picked on 2026-10-11 and then
+**Latest:** the language server, which Shawn named on 2026-10-12, built in the
+order `ROADMAP.md` already gave it: diagnostics, then definition and hover, then
+completion. Four commits. `7521f49` is `src/json.c`, a tree reader and a string
+writer, nothing calling it. `b897ef3` is the client, `src/lsp.c`, reachable only
+from a `[syntax <lang>] language server =` line: servers found by command line
+(so C and C++ share one clangd), looked for on PATH first and silent when
+missing, documents synchronised by a sweep (`lsp_idle()`) on every quiet tick
+rather than by hooks, the whole text on every change, UTF-8 positions offered
+first and UTF-16 converted. `dc0b35e` draws diagnostics -- underlined in the
+text, `E:n W:n` on the status bar, the one under the cursor on the message bar
+-- walks them with F2/Shift-F2, names clangd/rust-analyzer/pylsp in the
+built-in definitions, and adds `[editor] language servers`. `672f313` is F12,
+Alt-Left, Alt-K and Alt-/ in `src/lspui.c`, with answers going through a
+mailbox the main loop opens (`lspui_deliver()`) and only if the cursor has not
+moved on. Everything is tested against `tests/fake_lsp.py`, a server whose
+answers come from the text and whose failures are chosen by environment
+variable; checked by hand against clangd. Unit checks `test_json`, `test_lsp`,
+`test_lsp_answers`; pty `test_lsp`, `test_lsp_questions`, `test_lsp_complete`;
+goldens `lsp-diagnostics`, `lsp-message`, `lsp-hover`, `lsp-complete` at both
+depths, plus `lsp-narrow`, `lsp-hover-narrow`, `lsp-complete-narrow`. All of it
+clean under clang's ASan+UBSan, units and pty both. The keys were chosen without
+asking -- see `ROADMAP.md` §5's LSP section for each and why.
+
+**Before that:** the big-file rewrite, which Shawn picked on 2026-10-11 and then
 chose the shape of: line spans rather than a true piece table, because every
 reader in molly takes a row as one contiguous string by index and a piece
 table would have put a lookup and a pointer-lifetime rule under all ~250 of
@@ -173,18 +196,18 @@ views of the command table that had room for it, `bf35a8f` the documentation.
 **The three candidates the first handoff named are all done**, and so is the
 drop-down item that was the best value-to-work ratio left. What is left is the
 smaller work under "Next by dependency", none of it confirmed as next — ask
-before starting any of it. The big-file rewrite is done (see "Latest"); the
-biggest things left on the whole list are the integrated terminal and the
-language server, and `ROADMAP.md` has the argument for each.
+before starting any of it. The big-file rewrite and the language server are
+both done; the biggest thing left on the whole list is the integrated terminal,
+and `ROADMAP.md` has the argument for it.
 
 ---
 
 ## Where we are
 
-Phases 0 and 1 are done. Phase 2 has eleven features finished end to end:
+Phases 0 and 1 are done. Phase 2 has twelve features finished end to end:
 regular expressions, the configuration file, the CUA keymap, multiple buffers,
 the tab bar, syntax highlighting, window splits, the shell filter, indentation,
-multiple cursors, and soft wrap. Molly searches and replaces with patterns on
+multiple cursors, soft wrap, and the language-server client. Molly searches and replaces with patterns on
 an engine of its own; it reads `~/.config/molly/mollyrc` and can write it back;
 its keys are CUA and remappable; it holds any number of files open at once with
 a tab per file; it colours seven languages from table-driven definitions a
@@ -297,6 +320,11 @@ to a 4K block.
   `[syntax <name>]` block may override, which is what makes them the first
   per-filetype settings. The tab width stopped being one global in the process
   — see the gotcha about `indent_sync()` below.
+- **A language-server client** (`src/json.c`, `src/lsp.c`, `src/lspui.c`):
+  clangd, rust-analyzer or pylsp started for the files that name them, where
+  installed; problems underlined and walked with F2; F12 to a definition and
+  Alt-Left back; Alt-K for what a name is; Alt-/ to complete. Hand-rolled JSON,
+  whole-document sync, answers acted on only from the main loop.
 - **A shell filter** (`src/filter.c`): `Alt-|` pipes the selection, or the whole
   buffer, through `/bin/sh` and replaces it with the output, as one undo step.
   The file is in two halves with a banner between them: above it is text in and
@@ -485,10 +513,13 @@ keymap, multiple buffers with tabs, syntax highlighting, window splits, the
 shell filter, indentation with per-filetype defaults, multiple cursors, and
 soft wrap. Nothing on the list below has been confirmed as next.
 
-The largest things left are in `ROADMAP.md` rather than here: the integrated
-terminal and the language server. Each is a phase of its own, not an afternoon.
-The big-file rewrite is done; what it leaves (wrap measuring every row of a
-huge file once per width) is at the end of §5's big-file section.
+The largest thing left is in `ROADMAP.md` rather than here: the integrated
+terminal, a phase of its own and not an afternoon. The big-file rewrite is done;
+what it leaves (wrap measuring every row of a huge file once per width) is at
+the end of §5's big-file section. The language server is done; what it leaves
+-- rename, references, signature help, a problems list, completion as a word is
+typed -- is at the end of §5's LSP section, and each is a request, an answer
+and a way to show it on top of what exists.
 
 Smaller things the last six features left behind, each a self-contained
 commit:
@@ -564,6 +595,27 @@ later.
   writing config nobody asked for.
 
 ### Gotchas
+
+- **The pty harness pins `MOLLY_LSP=off`.** C files open in dozens of tests, and
+  on a machine with clangd each would start one and draw its diagnostics. A
+  language-server test sets `MOLLY_LSP` back to empty and names
+  `tests/fake_lsp.py` in a mollyrc. The Options dialog shows the setting's own
+  value (`lsp_setting()`), not the environment's, so Save Settings never writes
+  a harness's "off" into anyone's file.
+- **Never act on a server's answer where it arrives.** `lsp_answer()` runs inside
+  the event loop, which a menu or a dialog may be pumping. It fills the mailbox;
+  `lspui_deliver()`, called from the main loop only, acts on it if the cursor
+  has not moved on. A new kind of question goes through the same two steps.
+- **A popup closes in `lspui_key()`, before the key is dispatched.** It is a
+  layer the size of the grid, so a click would otherwise be swallowed by it;
+  closing first means the click lands on the text. `WINCH_KEY` must not close
+  one: it is also what `ui_request_redraw()` sends when an answer arrives.
+- **Search the fake server's log for a method's full name.** `"didSave"` alone
+  is in the capabilities `initialize` sends, so a check for it passed before
+  anything was saved, until ASan's slower run showed it.
+- **`/tmp/molly-golden` is one fixed directory.** Two golden runs at once delete
+  each other's files. A `TMPDIR` of its own keeps a second run apart, at the
+  cost of the four Open-dialog goldens, which print the directory.
 
 - **Never write a row's `chars` directly.** A row that has not been changed
   since the file was read (or saved) is a span of `B.text`, which is also the

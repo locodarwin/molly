@@ -1,10 +1,10 @@
 # Molly — A Command-Line Text Editor
 
-> **Note:** molly is at `0.1.0-dev`. The eight things this note used to say it
+> **Note:** molly is at `0.1.0-dev`. The nine things this note used to say it
 > did not have — more than one file open at once, regular-expression search,
 > syntax highlighting, a configuration file, window splits, a shell filter,
-> multi-cursor editing and soft wrap — it now has. What is still missing is on
-> the other side of the line: no integrated terminal and no language server.
+> multi-cursor editing, soft wrap and a language server — it now has. What is
+> still missing is an integrated terminal.
 > This manual describes what is there today and is accurate. For what is
 > coming, and why in that order, see [`ROADMAP.md`](ROADMAP.md).
 
@@ -44,6 +44,7 @@ and a searchable label, so nothing is reachable only by knowing a secret key.
 - [Filtering Through a Command](#filtering-through-a-command)
 - [Finding in Files](#finding-in-files)
 - [Window Splits](#window-splits)
+- [Language Servers](#language-servers)
 - [Saving and Quitting](#saving-and-quitting)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [Configuration](#configuration)
@@ -343,6 +344,8 @@ types = string table math io pairs ipairs tostring true false nil
 | `tab width` | Columns a tab occupies in this language's files, 1 to 16 |
 | `insert spaces` | `on` or `off`, for this language only |
 | `auto indent` | `on` or `off`, for this language only |
+| `language server` | The command that starts this language's [server](#language-servers), or `none` |
+| `language id` | The name the server protocol knows the language by, when it is not the section's (`csharp` for `cs`) |
 
 A section naming a language molly ships adds to it, so
 
@@ -1389,6 +1392,143 @@ proportions, and a window squeezed below the minimum is left blank until there
 is room for it again — the window you are typing in stays legible, which is
 what matters while you are dragging a corner.
 
+## Language Servers
+
+A **language server** is a program that knows a language — clangd for C and
+C++, rust-analyzer for Rust, pylsp for Python — and answers questions about the
+file you are editing: what is wrong with it, where a name is defined, what a
+name is, and what could come next. Molly starts the one your file's language
+names the first time you open such a file, tells it about every change, and
+shows you what it says.
+
+    F2 / Shift-F2  Next / previous problem
+    F12            Go to the definition of what is under the cursor
+    Alt-Left       Back to where F12 jumped from
+    Alt-K          What is under the cursor: its type, signature and docs
+    Alt-/          Complete the word before the cursor
+
+The first four are also in the **Go** menu, and all five are in the command
+palette, along with **Language server status** and **Restart language
+servers**.
+
+### Which server, and when
+
+| Language | Server it starts |
+| --- | --- |
+| C, C++ | `clangd` |
+| Rust | `rust-analyzer` |
+| Python | `pylsp` |
+
+Molly looks for the program on your `PATH` before starting anything, and a
+server that is not installed is silence: nothing is underlined, nothing is
+counted, and no message says so every time you open a file. **Language server
+status** in the palette is where to ask — it says which server a file would
+use and whether it is running, starting, stopped or not installed. C and C++
+files share one clangd.
+
+To name a different server, or one for a language that has none, give the
+language's `[syntax]` section a `language server` line; `none` turns one off:
+
+```ini
+[syntax python]
+language server = pyright-langserver --stdio
+
+[syntax c]
+language server = clangd --background-index --header-insertion=never
+
+[syntax rust]
+language server = none
+```
+
+The line is run by the shell, so arguments, a variable in front and `~` all
+work. `[editor] language servers = off` turns every server off at once, and is
+in the [Options dialog](#the-options-dialog).
+
+A server is started in the directory molly was started in, and told that is
+the project. clangd finds a `compile_commands.json` from the file itself, so it
+does not mind; rust-analyzer wants molly started inside the Cargo project.
+
+### Problems
+
+What a server says is wrong is shown three ways:
+
+- **In the text, underlined.** An error is red and a warning amber, over the
+  syntax colour; information and hints are only underlined, in the colour the
+  text already had. A selection over one keeps the underline.
+- **On the status bar**, as `E:2 W:1` before the cursor's position: whether
+  there is anything wrong anywhere in the file, including off the screen.
+- **On the message bar**, when the cursor is on one: `error: use of undeclared
+  identifier 'y'`. Moving onto a problem shows it straight away; a message
+  that is the answer to something you just did keeps the bar until you move.
+
+`F2` goes to the next problem and `Shift-F2` to the previous one, round the end
+of the file, saying `2 of 5: error: …` as they go. A problem moves with its
+text when you insert or delete lines above it, and the server's next opinion
+replaces it a moment after you stop typing — molly sends the server your
+changes when the keyboard has been quiet for a tenth of a second, not on
+every key.
+
+### Going to a definition, and back
+
+`F12` asks where the name under the cursor is defined and goes there — in
+another file if that is where it is, opening the file or switching to it if it
+is already open. `Alt-Left` goes back to where you were, and keeps going back
+through as many jumps as you have made, up to thirty-two.
+
+### What is under the cursor
+
+`Alt-K` opens a box under the cursor with what the server knows about the name
+there: its type or signature, and its documentation. Servers write this in
+Markdown, which molly reads for a terminal rather than renders — the code is
+shown as code, without the fences, and the emphasis marks are dropped. A box
+too long for the screen ends in `…`. The next key closes it and then does what
+it does; `Esc` only closes it.
+
+### Completion
+
+`Alt-/` lists what could finish the word before the cursor. The list sits
+under the word, with each item's type or signature dimmed on the right:
+
+- **Type** to narrow it — it is matched the way the [command
+  palette](#the-command-palette) matches, so `gsz` finds `get_size`.
+- `Up` and `Down` choose, `PgUp` and `PgDn` move a boxful.
+- `Enter` or `Tab` puts the chosen one in place of the word typed so far.
+- `Esc`, or any key that is not part of a word, closes it.
+
+Typing a character the server says starts a completion — `.` after a struct,
+`->` or `::` in C++ — opens the list without `Alt-/`. Taking a completion is
+one undo step, separate from the typing before it: `Ctrl-Z` takes the
+completion back and leaves the word as you typed it.
+
+### When a server goes wrong
+
+- **It stops.** The message bar says so once, with the last line the server
+  wrote to its error output, which is usually why. The marks it made go, and
+  molly does not start it again behind your back: **Restart language servers**
+  in the palette does, once you have fixed whatever it was.
+- **It is slow.** Nothing waits for it. An answer that arrives after you have
+  moved on — the cursor elsewhere, the text changed — is dropped rather than
+  acted on, so a slow definition cannot pull you away from where you went
+  instead. A completion still arrives if all you did was keep typing the word.
+- **It is noisy.** Only the errors and warnings it shows as messages reach the
+  message bar; its log does not.
+
+### What it deliberately does not do
+
+- **Every change sends the whole file.** The protocol also allows sending
+  only what changed, and getting that wrong would leave the server and molly
+  disagreeing about the text without anyone knowing. A source file goes down a
+  pipe in microseconds; a file over 16 MB is not sent to a server at all.
+- **Completion does not open while you type a word**, only on `Alt-/` and the
+  server's own trigger characters. A list appearing under every word you type
+  is a matter of taste, and the taste is not yet decided.
+- **No snippets.** Completion asks for plain text, so taking a function puts in
+  its name, not its name with placeholders for the arguments.
+- **One cursor.** Completion is offered at the main cursor only; with several,
+  `Alt-/` says so.
+- **Not yet:** renaming, finding references, signature help as you type the
+  arguments, formatting, and a list of every problem in a buffer of its own.
+
 ## Saving and Quitting
 
 | Key | Action |
@@ -1487,6 +1627,11 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     Ctrl-E   Find in files
     F4 / Shift-F4  Next / previous find-in-files match
     Ctrl-G   Go to line
+    F2 / Shift-F2  Next / previous problem a language server found
+    F12      Go to the definition of what is under the cursor
+    Alt-Left Back to where F12 jumped from
+    Alt-K    What is under the cursor, from the language server
+    Alt-/    Complete the word before the cursor
     Ctrl-A   Select everything
     Ctrl-L   Select the current line
     Ctrl-C   Copy the selection
@@ -1573,6 +1718,7 @@ Names are matched on their words, so `line numbers`, `Line-Numbers` and
 | `editor` | `insert spaces` | `off` | `Tab` inserts spaces as far as the next tab stop rather than a tab character. See [Indentation](#indentation). |
 | `editor` | `auto indent` | `on` | A new line starts at the indentation of the line above it. |
 | `editor` | `undo steps` | `32768` | How many undo steps to keep. |
+| `editor` | `language servers` | `on` | Start the language server a file's language names, where it is installed. See [Language Servers](#language-servers). |
 | `view` | `line numbers` | `off` | Show the line-number gutter (`Ctrl-U` toggles it). |
 | `view` | `menu bar` | `on` | Give the menu bar its row (`View ▸ Menu Bar` toggles it). |
 | `view` | `tab bar` | `on` | Show a tab per open file (`Alt-B` toggles it). Only ever drawn with two or more buffers open. |
@@ -1709,6 +1855,7 @@ default.
 | `MOLLY_DUMP_CONFIG` | Print the parsed configuration — the file's path, every setting's value, the key bindings it asked for and any warnings — and exit, without touching the terminal. See [Configuration](#configuration). |
 | `MOLLY_CONFIG` | Read configuration from this path instead of `~/.config/molly/mollyrc`. Set to the empty string to read none at all, which is what the test suite does so that its results do not depend on the configuration of the machine it runs on. |
 | `MOLLY_UNDO_STEPS` | Lower the undo history's step limit, which is how the test suite exercises its eviction. |
+| `MOLLY_LSP` | Set to `off` to start no language server whatever the configuration says. The test suite sets it, so that a machine with clangd installed draws the same screens as one without; its own language-server tests set it back and name a fake server instead. |
 
 ## File Format Notes
 

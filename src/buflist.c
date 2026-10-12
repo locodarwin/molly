@@ -110,16 +110,16 @@ struct buffer *buf_new(void) {
   return b;
 }
 
-/* Everything a buffer owns. The row array, the saved snapshot and the undo
+/* Everything a buffer owns. Its text -- rows, block and snapshot -- and its undo
  * history each have their own owner elsewhere, so this calls them rather than
- * reaching into them -- which is what keeps the piece-table rewrite from having
- * to touch this file.
+ * reaching into them, which is what let the storage under the rows change
+ * without touching this file beyond the call.
  *
- * The undo and snapshot frees work on the *current* buffer, because that is what
- * their B-relative code says, so freeing a buffer that is not current means
- * pointing the view at it for the duration. That is ugly and it is honest: the
- * alternative is giving every one of those functions a buffer argument, which is
- * a change to code the buffer rewrite is going to replace. The view is restored
+ * Those frees work on the *current* buffer, because that is what their
+ * B-relative code says, so freeing a buffer that is not current means pointing
+ * the view at it for the duration. That is ugly and it is honest: the
+ * alternative is giving every one of those functions a buffer argument, for the
+ * sake of this one caller and write_recovery_all(). The view is restored
  * before returning unless the view was looking at this very buffer, in which
  * case the caller is mid-close and sets it afterwards. */
 static void buf_free(struct buffer *b) {

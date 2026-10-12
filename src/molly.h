@@ -435,27 +435,27 @@ extern struct editorConfig E;
  * and it is the correct definition for splits too, where "the current buffer"
  * can only ever mean "the current view's".
  *
- * Code that owns the row array -- insert, delete, load, save -- still writes
- * through this rather than taking a buffer argument. That is the same bet
- * row_at() documents below: those are the functions the planned piece-table
- * rewrite replaces anyway. */
+ * Code that owns the row array -- insert, delete, load, save -- writes through
+ * this rather than taking a buffer argument, and borrows the view to act on a
+ * buffer that is not current (see buf_free). */
 #define B (*V.buf)
 
 /* The cursor that scrolls the view and owns the status-bar position. Every
  * single-cursor code path uses this; a path that must act on all of them loops
  * over V.cursors[0 .. V.ncursors) instead. */
 #define CUR (V.cursors[V.primary])
-/* Rows, reached through the view's buffer rather than the global.
+/* Rows, reached through the view's buffer.
  *
- * Two reasons, both about later work. Editor code that asks the *view* for its
- * rows keeps working when there is more than one buffer, whereas code that names
- * B does not. And the planned big-file rewrite replaces the flat erow array with
- * a piece table: the fewer places that index B.row directly, the smaller that
- * change is. Functions that own the array -- insert, delete, load, save -- still
- * use B directly, because they are what gets replaced.
+ * The array is a gap array (see struct buffer and buffer.c), so a row's index
+ * and its slot differ past the gap, and these are the only translation. Nothing
+ * outside buffer.c indexes `row[]`; buf_row() is for a buffer that is not the
+ * current one.
  *
- * erow itself is still visible to the renderer and to search, so this is not yet
- * full isolation; closing that gap is part of the buffer rewrite, not of Phase 0. */
+ * A row's `chars` is contiguous and NUL-terminated wherever it lives -- in the
+ * block the file was read into, or in an allocation of its own -- so the code
+ * that reads rows did not change when the storage did. Code that *writes* a
+ * row goes through the editor_row_* functions, which give it text of its own
+ * first; writing through `chars` directly would change the saved snapshot. */
 static inline erow *buf_row(const struct buffer *b, int i) {
   return &b->row[i < b->gap ? i : i + (b->rowcap - b->numrows)];
 }

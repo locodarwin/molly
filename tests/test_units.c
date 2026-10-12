@@ -3306,13 +3306,28 @@ static void test_storage_edit(void) {
   check("a new row is a difference", editor_matches_saved(), 0);
   editor_delete_row(1);
   check("and taking it away is not", editor_matches_saved(), 1);
+
+  {
+    /* Most of a file deleted and saved gives most of the block back. */
+    static char big[20000];
+    int i;
+    for (i = 0; i < (int)sizeof(big); i++) big[i] = (i % 100 == 99) ? '\n' : 'a' + i % 26;
+    store_load(big, sizeof(big));
+    while (row_count() > 3) editor_delete_row(1);
+    saved_snapshot_take();
+    check("a save after deleting most of a file shrinks the block",
+          B.textlen < 1000, 1);
+    check("and the rows left are in it", store_all_borrowed(), 1);
+    check("intact", row_at(2)->size == 99 && row_at(2)->chars[98] == 'a' + 19998 % 26, 1);
+    check("and matching", editor_matches_saved(), 1);
+  }
 }
 
 static void test_storage_gap(void) {
   /* A plain list of strings beside the buffer, given the same random edits:
    * the gap array has to agree with it after every one. */
   static char model[300][16];
-  int n = 0, step, bad = -1;
+  int n = 0, step, bad = -1, snap_bad = -1;
   unsigned seed = 12345;
   printf("\nstorage: the gap array agrees with a plain list\n");
   mc_load("");
@@ -3342,13 +3357,22 @@ static void test_storage_gap(void) {
         editor_row_insert_char(row_at(at), 0, '+');
       }
     }
+    /* Now and then a save, which compacts the rows into the block in place:
+     * rows inserted since the last one push the rest right, rows deleted pull
+     * them left, and both have to land without treading on each other. */
+    if (step % 97 == 96) {
+      saved_snapshot_take();
+      if (!store_all_borrowed() || !editor_matches_saved()) snap_bad = step;
+    }
     if (row_count() != n) bad = step;
     for (i = 0; i < n && bad < 0; i++)
       if (row_at(i)->size != (int)strlen(model[i]) ||
-          memcmp(row_at(i)->chars, model[i], strlen(model[i])) != 0)
+          memcmp(row_at(i)->chars, model[i], strlen(model[i])) != 0 ||
+          row_at(i)->chars[row_at(i)->size] != '\0')
         bad = step;
   }
   check("3000 random edits, and every row where it should be", bad, -1);
+  check("with a save every 97, each leaving every row in the block", snap_bad, -1);
   check("the gap is inside the array", B.gap >= 0 && B.gap <= row_count(), 1);
 }
 

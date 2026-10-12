@@ -61,47 +61,111 @@ void saved_snapshot_free(void) {
   B.saved_numrows = -1;
 }
 
+/* Where a borrowed row's text starts in the block, as an offset. */
+static size_t row_off(const erow *row) {
+  return (size_t)(row->chars - B.text);
+}
+
+/* Point every borrowed row at the same offset in a block that has moved. */
+static void rows_rebase(uintptr_t was, size_t waslen) {
+  int i;
+  for (i = 0; i < row_count(); i++) {
+    erow *row = row_at(i);
+    uintptr_t p = (uintptr_t)row->chars;
+    if (p >= was && p < was + waslen) row->chars = B.text + (p - was);
+  }
+}
+
 /* Make what the buffer holds now the saved state.
  *
- * Which means a new block: every row is copied into it, one after another, and
- * then points there -- rows that had text of their own give it up, and the old
- * block goes. So this is also where the memory an editing session has scattered
- * across rows comes back to one allocation the size of the file, and it happens
- * at every save. It costs a copy of the buffer, which a save has just written
- * out anyway.
+ * Which means the rows, one NUL-terminated line after another, in the block --
+ * and that is done *in* the block rather than in a new one beside it, because a
+ * new one would be a second copy of the file at the moment of saving it: 2.6
+ * times the file's size at the peak, where every other moment is 1.4. The block
+ * grows first if the rows have, and every row still borrowing is moved to where
+ * it now belongs. Then the rows with text of their own are copied in and give it
+ * up. So this is also where an editing session's scattered rows come back to one
+ * allocation the size of the file, at every save.
+ *
+ * Moving rows within one block is safe because borrowed rows are always in file
+ * order: a row is only ever made borrowed by a load or by this, in row order,
+ * and every inserted row has text of its own. So the rows that move right are
+ * moved last row first, and each lands past the end of every row before it that
+ * has not moved yet; then the rows that move left are moved first row first, and
+ * each lands before the start of every row after it. Rows that own their text
+ * are copied in after both, when nothing borrowed is left to overwrite.
  *
  * An allocation failure leaves the rows where they were and no snapshot at all,
  * so the buffer reads as modified until the next save: wrong in the safe
  * direction, since the worst it does is ask before quitting. */
 void saved_snapshot_take(void) {
   int i, n = row_count();
-  size_t need = 1, w = 0;
-  char *text;
-  size_t *off;
+  size_t need, w = 0;
+  size_t *off = malloc(sizeof(size_t) * ((size_t)n + 1));
 
-  for (i = 0; i < n; i++) need += (size_t)row_at(i)->size + 1;
-  text = malloc(need);
-  off = malloc(sizeof(size_t) * ((size_t)n + 1));
-  if (text == NULL || off == NULL) {
-    free(text);
-    free(off);
+  if (off == NULL) {
     saved_snapshot_free();
     return;
   }
   for (i = 0; i < n; i++) {
-    erow *row = row_at(i);
-    memcpy(text + w, row->chars, (size_t)row->size);
-    text[w + (size_t)row->size] = '\0';
     off[i] = w;
-    if (!row_borrowed(row)) free(row->chars);
-    row->chars = text + w;
-    w += (size_t)row->size + 1;
+    w += (size_t)row_at(i)->size + 1;
   }
   off[n] = w;
-  text[w] = '\0';
-  free(B.text);
-  B.text = text;
-  B.textlen = need;
+  need = w + 1;   /* a NUL after the last line's, so an empty block is one */
+
+  if (B.text == NULL || need > B.textlen) {
+    uintptr_t was = (uintptr_t)B.text;
+    size_t waslen = B.textlen;
+    char *t = realloc(B.text, need);
+    if (t == NULL) {
+      free(off);
+      saved_snapshot_free();
+      return;
+    }
+    B.text = t;
+    B.textlen = need;
+    if (was != 0) rows_rebase(was, waslen);
+  }
+
+  for (i = n - 1; i >= 0; i--) {
+    erow *row = row_at(i);
+    if (row_borrowed(row) && row_off(row) < off[i]) {
+      memmove(B.text + off[i], row->chars, (size_t)row->size + 1);
+      row->chars = B.text + off[i];
+    }
+  }
+  for (i = 0; i < n; i++) {
+    erow *row = row_at(i);
+    if (row_borrowed(row) && row_off(row) > off[i]) {
+      memmove(B.text + off[i], row->chars, (size_t)row->size + 1);
+      row->chars = B.text + off[i];
+    }
+  }
+  for (i = 0; i < n; i++) {
+    erow *row = row_at(i);
+    if (!row_borrowed(row)) {
+      memcpy(B.text + off[i], row->chars, (size_t)row->size);
+      B.text[off[i] + (size_t)row->size] = '\0';
+      free(row->chars);
+      row->chars = B.text + off[i];
+    }
+  }
+  B.text[w] = '\0';
+
+  /* Give back what deleting rows left unused. Only worth a call when it is a
+   * real amount, and a shrink that fails or moves is still correct. */
+  if (B.textlen - need > need / 8 + 4096) {
+    uintptr_t was = (uintptr_t)B.text;
+    size_t waslen = B.textlen;
+    char *t = realloc(B.text, need);
+    if (t != NULL) {
+      B.text = t;
+      B.textlen = need;
+      rows_rebase(was, waslen);
+    }
+  }
+
   free(B.saved_off);
   B.saved_off = off;
   B.saved_numrows = n;

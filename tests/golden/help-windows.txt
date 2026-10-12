@@ -2,11 +2,15 @@
  File  Edit  Search  View  Go  Window  Help
 alpha
 be╔═══════════════════════════ Keyboard Reference ═══════════════════════════╗
-ga║                                         Ctrl-U         Line numbers      ║
+ga║   Alt+drag       Block selection      VIEW                               ║
+~ ║                                         F5             Redraw screen     ║
+~ ║                                         Ctrl-U         Line numbers      ║
 ~ ║                                         Alt-M          Show the menu bar ║
 ~ ║                                         Alt-B          Show a tab per fi ║
 ~ ║                                         Alt-Y          Colour by filetyp ║
 ~ ║                                         Alt-Z          Wrap long lines   ║
+~ ║                                         Alt-.          Show whitespace   ║
+~ ║                                         Alt--          Fold / unfold     ║
 ~ ║                                                                          ║
 ~ ║                                       CODE                               ║
 ~ ║                                         F2             Next problem      ║
@@ -14,10 +18,6 @@ ga║                                         Ctrl-U         Line numbers      �
 ~ ║                                         Ctrl-F2        List all problems ║
 ~ ║                                         F12            Go to definition  ║
 ~ ║                                         Shift-F12      Find references   ║
-~ ║                                         Alt-K          Info at cursor    ║
-~ ║                                         Alt-/          Complete word     ║
-~ ║                                         Alt-N          Rename symbol     ║
-~ ║                                         Alt-P          Show signature    ║
 ~ ║ In prompts: Enter accepts   Esc cancels                                  ║
 ~ ║ PgUp/PgDn scroll   any other key returns                                 ║
 ~ ╚══════════════════════════════════════════════════════════════════════════╝

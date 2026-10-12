@@ -89,6 +89,9 @@ static void install_signal_handlers(void) {
   sigaction(SIGWINCH, &wsa, NULL);
 }
 
+/* The raw settings, kept for putting back after a suspend. */
+static struct termios raw_saved;
+
 void enable_raw_mode(void) {
   if (tcgetattr(STDIN_FILENO, &E.orig_termios) == -1) die("tcgetattr");
   atexit(disable_raw_mode);
@@ -103,6 +106,7 @@ void enable_raw_mode(void) {
   raw.c_cc[VTIME] = 1;
 
   if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) die("tcsetattr");
+  raw_saved = raw;
 
   /* Turn bracketed paste off even if the terminal or a parent shell left it
    * on. Molly does not parse the "\x1b[200~...\x1b[201~" wrappers, so with the
@@ -177,4 +181,22 @@ int get_window_size(int *rows, int *cols) {
     *rows = ws.ws_row;
     return 0;
   }
+}
+
+/* Suspend to the shell: the terminal handed back as it was found, molly
+ * stopped as Ctrl-Z stops any program, and everything put back -- raw mode,
+ * the mouse, the whole screen -- when the shell's `fg` continues it. A
+ * command rather than Ctrl-Z itself, which is undo here, as everywhere CUA. */
+void term_suspend(void) {
+  int mouse = mouse_on;
+  if (mouse) term_mouse_set(0);
+  write_all(STDOUT_FILENO, "\x1b[2J\x1b[H", 7);
+  tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.orig_termios);
+  signal(SIGTSTP, SIG_DFL);
+  raise(SIGTSTP);
+  /* Continued. */
+  tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw_saved);
+  write_all(STDOUT_FILENO, "\x1b[?2004l", 8);
+  if (mouse) term_mouse_set(1);
+  screen_force_repaint();
 }

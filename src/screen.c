@@ -48,12 +48,32 @@ static int last_wscols;
  * 3-column terminal never asks the row renderer to fit text into a
  * non-positive width. */
 int screen_gutter_width(void) {
-  if (!V.linenum || V.buf->tty != NULL) return 0;
-  int digits = 1, n = row_count();
-  while (n >= 10) { n /= 10; digits++; }
-  int w = digits + 3;
+  /* The git sign column first, a column of its own; then the numbers. */
+  int w = git_signs();
+  if (V.linenum && V.buf->tty == NULL) {
+    int digits = 1, n = row_count();
+    while (n >= 10) { n /= 10; digits++; }
+    w += digits + 3;
+  }
   if (V.screencols - w < 1) return 0;
   return w;
+}
+
+/* The sign column's cell for a row: a bar for a line added or changed since
+ * the last commit, a wedge where lines were taken out. */
+static void gutter_draw_sign(int y, int filerow) {
+  int m = filerow >= 0 ? git_mark(V.buf, filerow) : 0;
+  if (m == GIT_ADDED || m == GIT_CHANGED) {
+    grid_role(m == GIT_ADDED ? ROLE_GIT_ADDED : ROLE_GIT_CHANGED);
+    grid_puts(y, V.screenx, "\xe2\x96\x8e", 3);
+  } else if (m == GIT_DELETED) {
+    grid_role(ROLE_GIT_DELETED);
+    grid_puts(y, V.screenx, "\xe2\x96\xb8", 3);
+  } else {
+    grid_role(ROLE_TEXT);
+    grid_puts(y, V.screenx, " ", 1);
+  }
+  grid_role(ROLE_TEXT);
 }
 
 /* The gutter takes ROLE_GUTTER so the numbers and the U+2502
@@ -75,24 +95,35 @@ int screen_gutter_width(void) {
  * down the gutter would say they were not. */
 static void gutter_draw_number(int y, int filerow, int gutter_w, int frag) {
   char num[32];
-  int n;
+  int n, s = (gutter_w > 0) ? git_signs() : 0;
   if (gutter_w <= 0) return;
+  if (s) {
+    gutter_draw_sign(y, frag > 0 ? -1 : filerow);
+    gutter_w -= s;
+    if (gutter_w <= 0) return;
+  }
   if (frag > 0)
     n = snprintf(num, sizeof(num), "%*s ", gutter_w - 3, "");
   else
     n = snprintf(num, sizeof(num), "%*d ", gutter_w - 3, filerow + 1);
   grid_role(ROLE_GUTTER);
-  grid_puts(y, V.screenx, num, n);
-  grid_puts(y, V.screenx + gutter_w - 2, GUTTER_SEP " ", 4);
+  grid_puts(y, V.screenx + s, num, n);
+  grid_puts(y, V.screenx + s + gutter_w - 2, GUTTER_SEP " ", 4);
   grid_role(ROLE_TEXT);
 }
 
 /* Below-EOF row: a blank number field, the separator, then the gray tilde:
  * "    | ~", occupying gutter_w + 1 columns. */
 static void gutter_draw_tilde(int y, int gutter_w) {
+  int s = (gutter_w > 0) ? git_signs() : 0;
   grid_role(ROLE_GUTTER);
-  if (gutter_w <= 0) {
-    grid_puts(y, V.screenx, "~", 1);
+  if (gutter_w - s <= 0) {
+    grid_puts(y, V.screenx + s, "~", 1);
+  } else if (s) {
+    char blank[32];
+    int n = snprintf(blank, sizeof(blank), "%*s ", gutter_w - s - 3, "");
+    grid_puts(y, V.screenx + s, blank, n);
+    grid_puts(y, V.screenx + gutter_w - 2, GUTTER_SEP " ~", 5);
   } else {
     char blank[32];
     int n = snprintf(blank, sizeof(blank), "%*s ", gutter_w - 3, "");
@@ -111,6 +142,62 @@ static void gutter_draw_tilde(int y, int gutter_w) {
  * On the grid that is a property of the cell rather than an escape sequence spliced
  * into the row's bytes, so the renderer no longer has to reason about sequences
  * that occupy no columns. */
+/* ---- the view's aids ------------------------------------------------------
+ *
+ * Five things that help reading code and change nothing in it, each a [view]
+ * setting and each off until asked for: whitespace drawn as marks, indent
+ * guides, the cursor's line tinted, a ruler column, and the word under the
+ * cursor tinted wherever else it appears. Per screen rather than per window,
+ * like the colours, because they are how the screen is drawn. */
+static int vw_ws, vw_guides, vw_curline, vw_occ, vw_ruler;
+
+int view_whitespace(void) { return vw_ws; }
+int view_guides(void) { return vw_guides; }
+int view_curline(void) { return vw_curline; }
+int view_occurrences(void) { return vw_occ; }
+int view_ruler(void) { return vw_ruler; }
+void view_set_whitespace(int on) { vw_ws = on ? 1 : 0; }
+void view_set_guides(int on) { vw_guides = on ? 1 : 0; }
+void view_set_curline(int on) { vw_curline = on ? 1 : 0; }
+void view_set_occurrences(int on) { vw_occ = on ? 1 : 0; }
+void view_set_ruler(int col) { vw_ruler = col > 0 ? col : 0; }
+
+static int word_byte_at(const char *s, int i) {
+  unsigned char c = (unsigned char)s[i];
+  return isalnum(c) || c == '_' || c >= 0x80;
+}
+
+/* The word under the cursor of the view being drawn, as bytes of its row: 0
+ * when the cursor is not on one, or it is a single character -- a word of one
+ * letter is everywhere, and tinting every `i` says nothing. */
+static int cursor_word(const char **w, int *len) {
+  erow *r;
+  int a, b;
+  if (CUR.cy >= row_count()) return 0;
+  r = row_at(CUR.cy);
+  a = b = CUR.cx;
+  while (a > 0 && word_byte_at(r->chars, a - 1)) a--;
+  while (b < r->size && word_byte_at(r->chars, b)) b++;
+  if (b - a < 2) return 0;
+  *w = r->chars + a;
+  *len = b - a;
+  return 1;
+}
+
+/* Where the word occurs in this row as a whole word: up to `max` ranges. */
+static int occurrences(const char *s, int size, const char *w, int len,
+                       int *from, int max) {
+  int i, n = 0;
+  for (i = 0; i + len <= size && n < max; i++) {
+    if (memcmp(s + i, w, (size_t)len) != 0) continue;
+    if (i > 0 && word_byte_at(s, i - 1)) continue;
+    if (i + len < size && word_byte_at(s, i + len)) continue;
+    from[n++] = i;
+    i += len - 1;
+  }
+  return n;
+}
+
 void editor_draw_text_row(int y, erow *row, const struct drow *d,
                           int sel0, int sel1) {
   const char *r = row->chars;
@@ -160,8 +247,23 @@ void editor_draw_text_row(int y, erow *row, const struct drow *d,
   int x = V.screenx + gw + left_pad;  /* the pad columns stay blank */
   int dcol = col;         /* absolute display column of the character at i */
   int vis = left_pad;     /* visible columns emitted so far */
+
+  /* The aids' facts about this row: where its indentation ends and its
+   * trailing blanks begin, whether it is the cursor's, and where the word
+   * under the cursor is in it. */
+  int lead = 0, trail = rs, prev_i = -1;
+  int on_cursor_line = vw_curline && d->filerow == CUR.cy;
+  int occ_from[32], nocc = 0, occ_len = 0;
+  while (lead < rs && (r[lead] == ' ' || r[lead] == '\t')) lead++;
+  while (trail > 0 && (r[trail - 1] == ' ' || r[trail - 1] == '\t')) trail--;
+  if (vw_occ) {
+    const char *wd;
+    if (cursor_word(&wd, &occ_len)) nocc = occurrences(r, rs, wd, occ_len, occ_from, 32);
+  }
+
   while (i < rs && vis < text_cols) {
     int nb, w = text_cell(r, rs, i, dcol, tabw, &nb);
+    int tint = -1, mark = 0, o;
     if (vis + w > text_cols) break;  /* would overflow the right edge */
     /* A selection outranks the syntax colouring rather than blending with it:
      * reverse video over a keyword's own colour is unreadable, and what the
@@ -178,11 +280,30 @@ void editor_draw_text_row(int y, erow *row, const struct drow *d,
      * two keep the syntax's; all four are underlined. The selection outranks
      * both, and keeps the underline, so selecting a problem does not hide
      * where it is. */
+    /* Whitespace marks and indent guides: a tab's first column is an arrow,
+     * a trailing blank a dot, and a tab stop inside the indentation a bar.
+     * Drawn in place of the blank, never written to the file. */
+    if (vw_ws && r[i] == '\t' && i != prev_i) mark = 1;
+    else if (vw_ws && r[i] == ' ' && i >= trail) mark = 2;
+    else if (vw_guides && i < lead && dcol > 0 && dcol % tabw == 0) mark = 3;
+    for (o = 0; o < nocc; o++)
+      if (i >= occ_from[o] && i < occ_from[o] + occ_len) tint = ROLE_OCCURRENCE;
+    if (tint < 0 && vw_ruler && dcol == vw_ruler - 1) tint = ROLE_RULER;
+    if (tint < 0 && on_cursor_line) tint = ROLE_CURRENT_LINE;
     grid_role(selected ? ROLE_SELECTION
               : (sev == 1 || sev == 2) ? lspui_severity_role(sev)
+              : mark ? ROLE_WHITESPACE
               : roles ? roles[i] : ROLE_TEXT);
     if (sev) grid_attrs(ATTR_UNDERLINE);
-    if (r[i] == '\t')
+    if (!selected) grid_tint(tint);
+    prev_i = i;
+    if (mark == 1)
+      grid_put_char(y, x, "\xe2\x86\x92", 3, 1);
+    else if (mark == 2)
+      grid_put_char(y, x, "\xc2\xb7", 2, 1);
+    else if (mark == 3)
+      grid_put_char(y, x, "\xe2\x94\x82", 3, 1);
+    else if (r[i] == '\t')
       grid_put_char(y, x, " ", 1, 1);
     else
       grid_put_char(y, x, r + i, nb, w);
@@ -190,6 +311,38 @@ void editor_draw_text_row(int y, erow *row, const struct drow *d,
     vis += w;
     dcol += w;
     i += nb;
+  }
+  /* A folded block's first row says what it hides, after its text. */
+  if (V.buf->nfolds > 0 && d->rcols == DROW_ALL && d->filerow < V.buf->numrows) {
+    int f = fold_at(V.buf, d->filerow);
+    if (f >= 0 && vis < text_cols) {
+      char mark[48];
+      int len = snprintf(mark, sizeof(mark), " \xe2\x8b\xaf %d line%s",
+                         fold_size(V.buf, f), fold_size(V.buf, f) == 1 ? "" : "s");
+      int used;
+      grid_role(ROLE_WHITESPACE);
+      used = grid_puts(y, x, mark, len);
+      if (used > text_cols - vis) used = text_cols - vis;
+      x += used;
+      vis += used;
+      dcol += used;
+    }
+  }
+  /* Past the text: the current line's tint goes to the window's edge, and
+   * the ruler's column is drawn whether the line reaches it or not. */
+  if (on_cursor_line || vw_ruler) {
+    while (vis < text_cols) {
+      int tint = (vw_ruler && dcol == vw_ruler - 1) ? ROLE_RULER
+               : on_cursor_line ? ROLE_CURRENT_LINE : -1;
+      if (tint >= 0 && !(has_sel && dcol >= sel0 && dcol < sel1)) {
+        grid_role(ROLE_TEXT);
+        grid_tint(tint);
+        grid_put_char(y, x, " ", 1, 1);
+      }
+      x++;
+      vis++;
+      dcol++;
+    }
   }
   grid_role(ROLE_TEXT);
 }
@@ -288,7 +441,7 @@ void screen_draw_status_bar(int focused) {
     snprintf(lang, sizeof(lang), " [%s]", syntax_name(B.syn));
   int len = snprintf(status, sizeof(status), "%s%.20s - %d lines%s %s",
       which, buf_name(V.buf), row_count(), lang,
-      B.dirty ? "(modified)" : "");
+      B.readonly ? "[read-only]" : B.dirty ? "(modified)" : "");
   /* The character column: the Nth character in the line, not CUR.rx's
    * tab-stop- and glyph-width-aware display column, which jumps around
    * (a leading tab alone puts the display column at 9) and doesn't match
@@ -312,6 +465,13 @@ void screen_draw_status_bar(int focused) {
     else if (nw) snprintf(probs, sizeof(probs), "W:%d  ", nw);
   }
   int rlen;
+  /* Recording a macro is a mode, and a mode nobody can see is a trap: the bar
+   * says so for as long as it lasts. */
+  if (macro_recording()) {
+    char rec[sizeof(probs)];
+    snprintf(rec, sizeof(rec), "REC  %s", probs);
+    snprintf(probs, sizeof(probs), "%s", rec);
+  }
   if (V.ncursors > 1)
     rlen = snprintf(rstatus, sizeof(rstatus), "%sLn %d, Col %d  %d cursors",
         probs, CUR.cy + 1, charcol + 1, V.ncursors);

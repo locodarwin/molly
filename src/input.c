@@ -110,12 +110,11 @@ static int read_byte_patient(unsigned char *c, int ticks) {
 
 /* Static, so that nothing can bypass the event loop by reading the terminal
  * directly: ui_wait_key below is the only caller, and the only way in. */
+static int decode_key(unsigned char c);
+
 static int editor_read_key(void) {
   int nread;
   unsigned char c;
-  last_key_shift = 0;
-  last_key_ctrl = 0;
-  last_key_alt = 0;
   while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
     if (nread == -1 && errno != EAGAIN) die("read");
     /* VMIN=0/VTIME=1 already wakes this loop roughly every 100ms even with
@@ -123,7 +122,14 @@ static int editor_read_key(void) {
      * waiting for the next real keystroke to redraw at the new size. */
     if (term_take_winch()) return WINCH_KEY;
   }
+  return decode_key(c);
+}
 
+/* The key that begins with byte `c`, reading the rest of its sequence. */
+static int decode_key(unsigned char c) {
+  last_key_shift = 0;
+  last_key_ctrl = 0;
+  last_key_alt = 0;
   if (c != '\x1b') return c;
 
   unsigned char b;
@@ -278,8 +284,13 @@ static int editor_read_key(void) {
  * pressed while a command is running have nowhere to go, and queuing them to
  * be typed into the text afterwards would be worse than dropping them. */
 int input_escape_pressed(void) {
+  unsigned char c;
   if (!(loop_wait(0) & LOOP_STDIN)) return 0;
-  return editor_read_key() == '\x1b';
+  /* One read, not editor_read_key's wait for a key: standard input at end of
+   * file is readable for ever and reads nothing, and waiting there would hold
+   * the command being cancelled -- and its time limit -- for ever with it. */
+  if (read(STDIN_FILENO, &c, 1) != 1) return 0;
+  return decode_key(c) == '\x1b';
 }
 
 /* Something that is not a keystroke has changed what is on screen -- a language
@@ -293,15 +304,77 @@ static int redraw_wanted;
 
 void ui_request_redraw(void) { redraw_wanted = 1; }
 
+/* ---- keyboard macros ------------------------------------------------------
+ *
+ * Recorded here, in the one place molly waits for a key, rather than as a
+ * list of commands: so typing, a prompt's answer and a dialog's choices are
+ * all in a macro without anything else knowing there is one, and a replay
+ * feeds the keys back through the same door they came in by, modifiers and
+ * all. One macro, of up to MACRO_MAX keys. Resizes and the mouse are not
+ * recorded: neither means the same thing twice. */
+#define MACRO_MAX 4096
+
+static struct { int key; unsigned char shift, ctrl, alt; } macro[MACRO_MAX];
+static int macro_len, macro_pos = -1, recording;
+
+int macro_recording(void) { return recording; }
+int macro_playing(void) { return macro_pos >= 0; }
+
+/* Alt-(: start recording, or stop. The key that stops it was recorded on
+ * its way in, and is taken back off. Returns the keys recorded on stopping. */
+int macro_toggle(void) {
+  if (macro_pos >= 0) return -1;
+  if (!recording) {
+    recording = 1;
+    macro_len = 0;
+    return 0;
+  }
+  recording = 0;
+  if (macro_len > 0) macro_len--;
+  return macro_len;
+}
+
+/* Alt-): replay it. The keys come out of ui_wait_key() from here on, ahead of
+ * the keyboard, until they run out. */
+int macro_play(void) {
+  if (recording || macro_len == 0 || macro_pos >= 0) return 0;
+  macro_pos = 0;
+  return 1;
+}
+
 int ui_wait_key(void) {
+  if (macro_pos >= 0) {
+    if (macro_pos < macro_len) {
+      int k = macro[macro_pos].key;
+      last_key_shift = macro[macro_pos].shift;
+      last_key_ctrl = macro[macro_pos].ctrl;
+      last_key_alt = macro[macro_pos].alt;
+      macro_pos++;
+      return k;
+    }
+    macro_pos = -1;
+  }
   for (;;) {
     int ready = loop_wait(LOOP_TICK_MS);
     if (term_take_winch()) return WINCH_KEY;
-    if (ready & LOOP_STDIN) return editor_read_key();
+    if (ready & LOOP_STDIN) {
+      int k = editor_read_key();
+      if (recording && k != WINCH_KEY && k != MOUSE_KEY && macro_len < MACRO_MAX) {
+        macro[macro_len].key = k;
+        macro[macro_len].shift = (unsigned char)last_key_shift;
+        macro[macro_len].ctrl = (unsigned char)last_key_ctrl;
+        macro[macro_len].alt = (unsigned char)last_key_alt;
+        macro_len++;
+      }
+      return k;
+    }
     /* A whole tick with no key in it: the user has paused, which is when the
      * language servers are told what has changed. Not on every key, so that a
      * word typed quickly is sent once and not once per letter. */
-    if (ready == 0) lsp_idle();
+    if (ready == 0) {
+      lsp_idle();
+      git_idle();
+    }
     if (redraw_wanted) {
       redraw_wanted = 0;
       return WINCH_KEY;

@@ -4757,11 +4757,31 @@ static void test_vt(void) {
   vts(t, "\x1b[38;5;208;48;5;17my");
   check("256-colour indices", vt_at(t, 0, 3)->fg * 1000 + vt_at(t, 0, 3)->bg, 208017);
   vts(t, "\x1b[38;2;255;0;0mz");
-  check("a 24-bit colour is its nearest of the 256", vt_at(t, 0, 4)->fg, 196);
+  check("a 24-bit colour is kept as it is", vt_at(t, 0, 4)->fg, COLOR_RGB | 0xff0000);
+  /* What a 24-bit colour becomes on the way out depends on COLORTERM, so the
+   * environment this runs in is set aside for these. */
+  {
+    char *was = getenv("COLORTERM") ? strdup(getenv("COLORTERM")) : NULL;
+    setenv("TERM", "xterm-256color", 1);
+    setenv("COLORTERM", "truecolor", 1);
+    theme_init();
+    check("it goes out as it is where COLORTERM says it may",
+          theme_fit_color(vt_at(t, 0, 4)->fg), COLOR_RGB | 0xff0000);
+    unsetenv("COLORTERM");
+    theme_init();
+    check("and is its nearest of the 256 where that is all there is",
+          theme_fit_color(vt_at(t, 0, 4)->fg), 196);
+    check("a grey goes to the grey ramp",
+          theme_fit_color(COLOR_RGB | 0x808080), 244);
+    if (was != NULL) setenv("COLORTERM", was, 1);
+    setenv("TERM", "xterm", 1);
+    theme_init();
+    free(was);
+  }
   vts(t, "\x1b[38:2::0:0:255mz");
-  check("so is the colon form, with its empty slot", vt_at(t, 0, 5)->fg, 21);
+  check("so is the colon form, with its empty slot", vt_at(t, 0, 5)->fg, COLOR_RGB | 0xff);
   vts(t, "\x1b[38;2;128;128;128mz");
-  check("a grey goes to the grey ramp", vt_at(t, 0, 6)->fg, 244);
+  check("and a grey", vt_at(t, 0, 6)->fg, COLOR_RGB | 0x808080);
   vts(t, "\x1b[m\x1b[3;4;7mw\x1b[23;24;27mv");
   check("italic, underline, reverse",
         vt_at(t, 0, 7)->attrs, VT_ITALIC | VT_UNDERLINE | VT_REVERSE);
@@ -4804,6 +4824,61 @@ static void test_vt(void) {
   check_str("leaving puts the shell's screen back", vt_row_text(t, 0), "shell$ ls");
   check("and its cursor", vt_cur(t), 104);
   vt_free(t);
+
+  printf("\nterminal: the mouse, for a program that asks\n");
+  {
+    struct mouse_event ev;
+    char out[32];
+    int n;
+    t = vt_new(5, 300, 10);
+    memset(&ev, 0, sizeof(ev));
+    ev.type = MOUSE_PRESS;
+    check("nothing is sent before it asks", vt_mouse(t, &ev, 4, 2, out), 0);
+    vts(t, "\x1b[?1000h");
+    check("1000 asks", vt_mode(t, VT_MODE_MOUSE), 1000);
+    n = vt_mouse(t, &ev, 4, 2, out);
+    check("a press, the old way", n == 6 && memcmp(out, "\x1b[M %#", 6) == 0, 1);
+    ev.type = MOUSE_RELEASE;
+    n = vt_mouse(t, &ev, 4, 2, out);
+    check("a release says only that a button went up", n == 6 && out[3] == 32 + 3, 1);
+    ev.type = MOUSE_DRAG;
+    check("1000 is not told of drags", vt_mouse(t, &ev, 5, 2, out), 0);
+    ev.type = MOUSE_PRESS;
+    check("past column 223 the old way cannot say where", vt_mouse(t, &ev, 250, 2, out), 0);
+    vts(t, "\x1b[?1002h\x1b[?1006h");
+    check("1006 asks for the SGR form", vt_mode(t, VT_MODE_MOUSE_SGR), 1);
+    n = vt_mouse(t, &ev, 250, 2, out);
+    out[n > 0 ? n : 0] = '\0';
+    check_str("which has no such limit", out, "\x1b[<0;251;3M");
+    ev.type = MOUSE_RELEASE;
+    ev.button = MOUSE_BUTTON_RIGHT;
+    n = vt_mouse(t, &ev, 0, 0, out);
+    out[n > 0 ? n : 0] = '\0';
+    check_str("and says which button was released", out, "\x1b[<2;1;1m");
+    ev.type = MOUSE_DRAG;
+    ev.button = MOUSE_BUTTON_LEFT;
+    ev.mods = MOUSE_MOD_CTRL;
+    n = vt_mouse(t, &ev, 1, 1, out);
+    out[n > 0 ? n : 0] = '\0';
+    check_str("1002 hears drags, with their modifiers", out, "\x1b[<48;2;2M");
+    ev.type = MOUSE_WHEEL_DOWN;
+    ev.mods = 0;
+    n = vt_mouse(t, &ev, 1, 1, out);
+    out[n > 0 ? n : 0] = '\0';
+    check_str("the wheel is 64 and 65", out, "\x1b[<65;2;2M");
+    check("a cell off the screen is not sent", vt_mouse(t, &ev, 1, 5, out), 0);
+    vts(t, "\x1b[?1002l");
+    check("turning it off turns it off", vt_mode(t, VT_MODE_MOUSE), 0);
+    vts(t, "\x1b[?1003h\x1b" "c");
+    check("and a reset forgets it", vt_mode(t, VT_MODE_MOUSE), 0);
+    vt_free(t);
+
+    t = vt_new(2, 10, 3);
+    vts(t, "a\r\nb\r\nc\r\nd\r\ne\r\nf");
+    check("the ring is full", vt_scrollback(t), 3);
+    check("but the count of lines that left goes on", (int)vt_pushed(t), 4);
+    vt_free(t);
+  }
 
   printf("\nterminal: what it says back\n");
   t = vt_new(5, 20, 0);
@@ -5279,6 +5354,49 @@ static void test_nav(void) {
   check("away from brackets, nothing", nav_match(0, 0, &y, &x), 0);
 }
 
+static void test_recent(void) {
+  char tmpl[] = "/tmp/molly-recent-XXXXXX";
+  char here[4096], name[64], cmd[4200];
+  int i;
+  FILE *fp;
+
+  printf("\nrecent files: the list\n");
+  if (getcwd(here, sizeof(here)) == NULL || mkdtemp(tmpl) == NULL || chdir(tmpl) != 0) {
+    check("a scratch directory to work in", 0, 1);
+    return;
+  }
+  setenv("MOLLY_STATE", tmpl, 1);
+  recent_cleanup();
+  for (i = 0; i < 25; i++) {
+    snprintf(name, sizeof(name), "f%d.txt", i);
+    fp = fopen(name, "w");
+    fclose(fp);
+    recent_note(name);
+  }
+  check("it keeps twenty", recent_count(), 20);
+  check("newest first", strstr(recent_at(0), "/f24.txt") != NULL, 1);
+  check("the oldest kept is the twentieth from last",
+        strstr(recent_at(19), "/f5.txt") != NULL, 1);
+  recent_note("f10.txt");
+  check("opening one again moves it to the top, not in twice",
+        strstr(recent_at(0), "/f10.txt") != NULL && recent_count() == 20, 1);
+  recent_cleanup();
+  check("and it is all still there after a restart",
+        recent_count() == 20 && strstr(recent_at(0), "/f10.txt") != NULL, 1);
+  check("as absolute paths", recent_at(0)[0], '/');
+  recent_note("no-such-file");
+  check("a file that does not exist is not listed",
+        strstr(recent_at(0), "no-such") == NULL, 1);
+  setenv("MOLLY_STATE", "", 1);
+  recent_cleanup();
+  check("MOLLY_STATE empty is no list at all", recent_count(), 0);
+  unsetenv("MOLLY_STATE");
+  recent_cleanup();
+  if (chdir(here) != 0) check("back to where the tests started", 0, 1);
+  snprintf(cmd, sizeof(cmd), "rm -rf %s", tmpl);
+  if (system(cmd) != 0) printf("  note  could not remove %s\n", tmpl);
+}
+
 int main(void) {
   test_loop_sources();
   test_wait_key_services_sources();
@@ -5309,6 +5427,7 @@ int main(void) {
   test_lines();
   test_smart();
   test_nav();
+  test_recent();
   test_cursors_edit();
   test_cursors_more();
   test_indent_block();

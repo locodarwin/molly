@@ -24,12 +24,14 @@
  *
  * Deliberately not here:
  *   - **Reflow.** A line is as wide as the screen was when it was written, and
- *     a resize truncates or pads it. Re-wrapping old output to a new width is a
- *     feature of its own, and most terminal programs redraw on SIGWINCH anyway.
- *   - **Mouse reporting.** A program that asks for the mouse does not get it;
- *     the wheel scrolls molly's scrollback instead.
- *   - **True colour.** A 24-bit colour is brought to the nearest of the 256,
- *     which is what molly's own grid can carry. */
+ *     a resize truncates or pads it. Re-wrapping needs to know which rows were
+ *     one line wrapped and which were two, through every scroll, erase and
+ *     insert below; and re-wrapping the live screen fights the shell, which
+ *     redraws its own prompt on SIGWINCH and would then show it twice. What
+ *     would be left worth having is old output in the scrollback, re-wrapped,
+ *     and that is not worth the bookkeeping.
+ *   - **Colour depth.** A 24-bit colour is kept as it is, and brought down
+ *     to what the terminal can show when the frame is written. */
 
 #include "molly.h"
 
@@ -55,7 +57,7 @@ struct vt_line {
 
 struct saved_cursor {
   int cy, cx;
-  short fg, bg;
+  int fg, bg;
   unsigned char attrs;
   int g0_graphics;
   int origin;
@@ -68,13 +70,15 @@ struct vt {
 
   int cy, cx;
   int wrapnext;          /* the last column was written: the next char wraps */
-  short fg, bg;          /* the pen */
+  int fg, bg;            /* the pen */
   unsigned char attrs;
   int top, bottom;       /* the scroll region, inclusive */
 
   /* Modes. */
   int autowrap, insert, origin, cursor_visible, app_cursor, app_keypad;
   int bracketed_paste;
+  int mouse;             /* 0, 1000, 1002 or 1003 */
+  int mouse_sgr;         /* 1006: reported as CSI < ... M, with no limit on size */
   int g0_graphics, g1_graphics, shift_out;
 
   unsigned char *tabs;   /* one per column: a stop here */
@@ -97,6 +101,7 @@ struct vt {
   /* Lines scrolled off the top of the main screen: a ring, oldest first. */
   struct vt_line *sb;
   int sbcap, sbn, sbhead;
+  long pushed;           /* lines ever pushed, less any taken back */
 
   struct abuf reply;     /* for the program: cursor reports and the like */
   char title[128];
@@ -139,6 +144,7 @@ static void sb_push(struct vt *t, const struct vt_cell *r) {
   int n = t->cols, slot;
   struct vt_line *l;
   if (t->sbcap == 0) return;
+  t->pushed++;
   while (n > 0 && r[n - 1].cp == ' ' && r[n - 1].bg < 0 && r[n - 1].attrs == 0 &&
          r[n - 1].w == 1)
     n--;
@@ -169,6 +175,7 @@ static int sb_pop(struct vt *t, struct vt_cell *dst) {
   free(l->c);
   l->c = NULL;
   t->sbn--;
+  t->pushed--;
   return 1;
 }
 
@@ -440,43 +447,16 @@ static void alt_screen(struct vt *t, int on, int clear) {
 
 /* ---- the pen ------------------------------------------------------------- */
 
-/* A 24-bit colour as the nearest of the 256: the cube's nearest step on each
- * axis, or the grey ramp when the colour is close to grey. */
-static int rgb_to_256(int r, int g, int b) {
-  static const int level[6] = {0, 95, 135, 175, 215, 255};
-  int ri, gi, bi, best, cube, grey, gidx, cr, cg, cb;
-  long dc, dg;
-  #define NEAREST(v) ((v) < 48 ? 0 : (v) < 115 ? 1 : ((v) - 35) / 40)
-  ri = NEAREST(r);
-  gi = NEAREST(g);
-  bi = NEAREST(b);
-  #undef NEAREST
-  cube = 16 + 36 * ri + 6 * gi + bi;
-  cr = level[ri];
-  cg = level[gi];
-  cb = level[bi];
-  grey = (r + g + b) / 3;
-  gidx = grey > 238 ? 23 : (grey - 3) / 10;
-  if (gidx < 0) gidx = 0;
-  {
-    int gv = 8 + gidx * 10;
-    dc = (long)(r - cr) * (r - cr) + (long)(g - cg) * (g - cg) + (long)(b - cb) * (b - cb);
-    dg = (long)(r - gv) * (r - gv) + (long)(g - gv) * (g - gv) + (long)(b - gv) * (b - gv);
-  }
-  best = dg < dc ? 232 + gidx : cube;
-  return best;
-}
-
 /* 38 or 48 and what follows it: `5;n` for an index, `2;r;g;b` for a colour.
  * The same with colons, where `2` may be followed by a colour-space id that
  * is empty in practice. Returns how many parameters after `i` it used. */
-static int ext_color(const struct vt *t, int i, short *out) {
+static int ext_color(const struct vt *t, int i, int *out) {
   int k = i + 1, kind;
   if (k >= t->nparams) return 0;
   kind = t->params[k];
   if (kind == 5 && k + 1 < t->nparams) {
     int c = t->params[k + 1];
-    if (c >= 0 && c <= 255) *out = (short)c;
+    if (c >= 0 && c <= 255) *out = c;
     return 2;
   }
   if (kind == 2) {
@@ -489,7 +469,10 @@ static int ext_color(const struct vt *t, int i, short *out) {
       if (r < 0) r = 0;
       if (g < 0) g = 0;
       if (b < 0) b = 0;
-      *out = (short)rgb_to_256(r > 255 ? 255 : r, g > 255 ? 255 : g, b > 255 ? 255 : b);
+      /* Kept as the colour it is: the grid brings it down to what the
+       * terminal can show as the frame is written (theme_fit_color). */
+      *out = COLOR_RGB | ((r > 255 ? 255 : r) << 16) | ((g > 255 ? 255 : g) << 8) |
+             (b > 255 ? 255 : b);
       return first + 2 - i;
     }
   }
@@ -532,10 +515,10 @@ static void sgr(struct vt *t) {
     case 48: i += ext_color(t, i, &t->bg); break;
     case 49: t->bg = -1; break;
     default:
-      if (p >= 30 && p <= 37) t->fg = (short)(p - 30);
-      else if (p >= 40 && p <= 47) t->bg = (short)(p - 40);
-      else if (p >= 90 && p <= 97) t->fg = (short)(p - 90 + 8);
-      else if (p >= 100 && p <= 107) t->bg = (short)(p - 100 + 8);
+      if (p >= 30 && p <= 37) t->fg = p - 30;
+      else if (p >= 40 && p <= 47) t->bg = p - 40;
+      else if (p >= 90 && p <= 97) t->fg = p - 90 + 8;
+      else if (p >= 100 && p <= 107) t->bg = p - 100 + 8;
       /* 5 blink, 9 strike, 53 overline and the rest: not drawn. */
       break;
     }
@@ -579,7 +562,15 @@ static void set_mode(struct vt *t, int on) {
         }
         break;
       case 2004: t->bracketed_paste = on; break;
-      default: break;  /* mouse modes, focus events, blink: not here */
+      case 1000:
+      case 1002:
+      case 1003:
+        /* One level, the last asked for: turning off any of them turns off
+         * reporting, which is what programs that set one and reset it expect. */
+        t->mouse = on ? p : 0;
+        break;
+      case 1006: t->mouse_sgr = on; break;
+      default: break;  /* focus events, blink, the other mouse encodings */
       }
     } else if (t->priv == 0) {
       if (p == 4) t->insert = on;
@@ -927,6 +918,7 @@ static void reset(struct vt *t) {
   t->app_cursor = 0;
   t->app_keypad = 0;
   t->bracketed_paste = 0;
+  t->mouse = t->mouse_sgr = 0;
   t->g0_graphics = t->g1_graphics = t->shift_out = 0;
   memset(&t->saved_main, 0, sizeof(t->saved_main));
   memset(&t->saved_alt, 0, sizeof(t->saved_alt));
@@ -994,7 +986,7 @@ void vt_resize(struct vt *t, int rows, int cols) {
   t->rows = rows;
   t->cols = cols;
   {
-    short bg = t->bg;
+    int bg = t->bg;
     t->bg = -1;
     for (y = 0; y < rows; y++) {
       for (x = 0; x < cols; x++) {
@@ -1054,6 +1046,10 @@ int vt_rows(const struct vt *t) { return t->rows; }
 int vt_cols(const struct vt *t) { return t->cols; }
 int vt_scrollback(const struct vt *t) { return t->sbn; }
 
+/* How many lines have scrolled off the top, ever: what a line's index moves by,
+ * which the scrollback's length stops saying once the ring is full. */
+long vt_pushed(const struct vt *t) { return t->pushed; }
+
 /* Line `i` of what can be seen: 0 .. rows-1 is the screen, and -1, -2 and so
  * on are the scrollback, newest first. *n is how many cells the line has; a
  * scrollback line may have fewer than the screen is wide, and the rest of it is
@@ -1083,8 +1079,46 @@ int vt_mode(const struct vt *t, int mode) {
   case VT_MODE_APP_CURSOR: return t->app_cursor;
   case VT_MODE_BRACKETED_PASTE: return t->bracketed_paste;
   case VT_MODE_ALT_SCREEN: return t->alt_on;
+  case VT_MODE_MOUSE: return t->mouse;
+  case VT_MODE_MOUSE_SGR: return t->mouse_sgr;
   }
   return 0;
+}
+
+/* A mouse event at cell (x, y) of the screen, as the program asked to be told
+ * of it, into `out` (32 bytes is enough); 0 when it did not ask for this one.
+ *
+ * Button numbers are xterm's: 0-2 the buttons, 64 and 65 the wheel, plus 32 for
+ * a drag and 4, 8, 16 for Shift, Alt and Ctrl. The SGR form says which button
+ * was released; the old one says only 3, "a button", and cannot name a cell past
+ * column or row 223, where a click is dropped rather than sent mangled. */
+int vt_mouse(const struct vt *t, const struct mouse_event *ev, int x, int y, char *out) {
+  int b, release = 0;
+  if (t->mouse == 0 || x < 0 || y < 0 || x >= t->cols || y >= t->rows) return 0;
+  switch (ev->type) {
+  case MOUSE_WHEEL_UP: b = 64; break;
+  case MOUSE_WHEEL_DOWN: b = 65; break;
+  case MOUSE_RELEASE: b = ev->button; release = 1; break;
+  case MOUSE_DRAG:
+    if (t->mouse == 1000) return 0;
+    b = ev->button + 32;
+    break;
+  default: b = ev->button; break;
+  }
+  if (ev->mods & MOUSE_MOD_SHIFT) b |= 4;
+  if (ev->mods & MOUSE_MOD_ALT) b |= 8;
+  if (ev->mods & MOUSE_MOD_CTRL) b |= 16;
+  if (t->mouse_sgr)
+    return snprintf(out, 32, "\x1b[<%d;%d;%d%c", b, x + 1, y + 1, release ? 'm' : 'M');
+  if (x + 1 > 223 || y + 1 > 223) return 0;
+  if (release) b = (b & ~3) | 3;
+  out[0] = '\x1b';
+  out[1] = '[';
+  out[2] = 'M';
+  out[3] = (char)(32 + b);
+  out[4] = (char)(32 + x + 1);
+  out[5] = (char)(32 + y + 1);
+  return 6;
 }
 
 /* The title the program set, once: returns NULL when it has not changed since

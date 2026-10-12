@@ -14,11 +14,11 @@ gamma   ║  editor  insert spaces                                   off ║
 ~       ║  view    syntax                                           on ║
 ~       ║  view    italic                                           on ║
 ~       ║  view    soft wrap                                       off ║
-~       ║  input   mouse                                            on ║
-~       ║  shell   timeout                                          10 ║
-~       ║  shell   output limit                                   8192 ║
-~       ║  search  match case                                      off ║
-~       ║  search  regular expression                              off ║
+~       ║  view    whitespace                                      off ║
+~       ║  view    indent guides                                   off ║
+~       ║  view    current line                                    off ║
+~       ║  view    highlight word                                  off ║
+~       ║  view    ruler                                             0 ║
 ~       ║ [editor] columns a tab character occupies (1-16)             ║
 ~       ║ Space/←→ change  Enter keep  Ctrl-S save  Esc undo all       ║
 sample.t╚══════════════════════════════════════════════════════════════╝1, Col 1

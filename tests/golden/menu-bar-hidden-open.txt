@@ -1,15 +1,15 @@
 --- screen ---
  File  Edit  Search  View  Go  Window  Help
-┌─────────────────┐
-│  New            │
-│  Open…          │
-│  Save           │
-├─────────────────┤
-│  Close          │
-├─────────────────┤
-│  Quit           │
-└─────────────────┘
-~
+┌─────────────────────────┐
+│  New             Ctrl-N │
+│  Open…           Ctrl-O │
+│  Recent files…    Alt-O │
+│  Save            Ctrl-S │
+├─────────────────────────┤
+│  Close           Ctrl-W │
+├─────────────────────────┤
+│  Quit            Ctrl-Q │
+└─────────────────────────┘
 ~
 ~
 ~
@@ -17,34 +17,34 @@ sample.txt - 3 lines                                 Ln 1, Col 1
 Menu bar: off
 --- attrs ---
 gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-ggggggggggggggggggg
-ggggggggggggggggggggg
-ggggggggggggggggggggg
-ggggggggggggggggggggg
-ggggggggggggggggggggg
-ggggggggggggggggggggg
-ggggggggggggggggggggg
-ggggggggggggggggggggg
-ggggggggggggggggggggg
-g.ggggggggggggggggggg
-g
+ggggggggggggggggggggggggggg
+ggggggggggggggggggggggggggggg
+ggggggggggggggggggggggggggggg
+ggggggggggggggggggggggggggggg
+ggggggggggggggggggggggggggggg
+ggggggggggggggggggggggggggggg
+ggggggggggggggggggggggggggggg
+ggggggggggggggggggggggggggggg
+ggggggggggggggggggggggggggggg
+ggggggggggggggggggggggggggggg
+g.ggggggggggggggggggggggggggg
 g
 g
 RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 
 --- colors ---
 1: 0-5 15/4  6-63 7/0
-2: 0-18 7/8
-3: 0-0 7/8  1-17 15/4  18-18 7/8  19-20 8/0
-4: 0-0 7/8  1-17 15/8  18-18 7/8  19-20 8/0
-5: 0-0 7/8  1-17 15/8  18-18 7/8  19-20 8/0
-6: 0-18 7/8  19-20 8/0
-7: 0-0 7/8  1-17 15/8  18-18 7/8  19-20 8/0
-8: 0-18 7/8  19-20 8/0
-9: 0-0 7/8  1-17 15/8  18-18 7/8  19-20 8/0
-10: 0-18 7/8  19-20 8/0
-11: 0-0 8/-  2-20 8/0
-12: 0-0 8/-
+2: 0-26 7/8
+3: 0-0 7/8  1-25 15/4  26-26 7/8  27-28 8/0
+4: 0-0 7/8  1-25 15/8  26-26 7/8  27-28 8/0
+5: 0-0 7/8  1-25 15/8  26-26 7/8  27-28 8/0
+6: 0-0 7/8  1-25 15/8  26-26 7/8  27-28 8/0
+7: 0-26 7/8  27-28 8/0
+8: 0-0 7/8  1-25 15/8  26-26 7/8  27-28 8/0
+9: 0-26 7/8  27-28 8/0
+10: 0-0 7/8  1-25 15/8  26-26 7/8  27-28 8/0
+11: 0-26 7/8  27-28 8/0
+12: 0-0 8/-  2-28 8/0
 13: 0-0 8/-
 14: 0-0 8/-
 --- modifiers ---
@@ -52,7 +52,8 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 3: 3-3 u
 4: 3-3 u
 5: 3-3 u
-7: 3-3 u
-9: 3-3 u
+6: 3-3 u
+8: 3-3 u
+10: 3-3 u
 --- cursor ---
 row 1 col 1 visible 0

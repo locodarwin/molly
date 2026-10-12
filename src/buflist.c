@@ -138,6 +138,12 @@ static void buf_free(struct buffer *b) {
   b->filename = NULL;
   free(b->title);
   b->title = NULL;
+  free(b->folds);
+  b->folds = NULL;
+  free(b->gitmark);
+  b->gitmark = NULL;
+  free(b->git_dir);
+  b->git_dir = NULL;
   V.buf = (was == b) ? NULL : was;
   free(b);
 }

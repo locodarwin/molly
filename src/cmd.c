@@ -49,6 +49,11 @@ static int cmd_newline(void) {
     if (V.ncursors <= 1) lspui_problems_jump();
     return 0;
   }
+  /* And in git's history of a file, Enter is the commit. */
+  if (B.git_view) {
+    git_log_enter();
+    return 0;
+  }
   cursors_edit(MC_NEWLINE, 0);
   return 0;
 }
@@ -313,8 +318,47 @@ static int cmd_grep_next(void) { grep_jump(1); return 0; }
 static int cmd_grep_prev(void) { grep_jump(-1); return 0; }
 static int have_grep_results(void) { return grep_result_count() > 0; }
 static int cmd_goto_line(void) { editor_goto_line(); return 0; }
+#define VIEW_TOGGLE(fn, get, set) \
+  static int fn(void) { set(!get()); screen_force_repaint(); return 0; }
+VIEW_TOGGLE(cmd_whitespace, view_whitespace, view_set_whitespace)
+VIEW_TOGGLE(cmd_guides, view_guides, view_set_guides)
+VIEW_TOGGLE(cmd_curline, view_curline, view_set_curline)
+VIEW_TOGGLE(cmd_occurrences, view_occurrences, view_set_occurrences)
+#undef VIEW_TOGGLE
+static int cmd_recent(void) { editor_recent_dialog(); return 0; }
+static int cmd_fold(void) { fold_toggle(); return 0; }
+static int cmd_suspend(void) { term_suspend(); return 0; }
+static int cmd_blame(void) { git_blame_line(); return 0; }
+static int cmd_gitlog(void) { git_log_file(); return 0; }
+static int cmd_fold_all(void) { fold_all(); return 0; }
+static int cmd_unfold_all(void) { fold_none(); return 0; }
+static int cmd_macro_record(void) {
+  int n;
+  if (macro_playing()) return 0;
+  n = macro_toggle();
+  if (macro_recording()) editor_set_status_message("Recording a macro. Alt-( again stops.");
+  else editor_set_status_message("Macro recorded: %d key%s. Alt-) plays it.", n, n == 1 ? "" : "s");
+  return CMD_KEEP_SELECTION;
+}
+static int cmd_macro_play(void) {
+  if (macro_recording()) {
+    editor_set_status_message("Stop recording first: Alt-(.");
+    return 0;
+  }
+  if (!macro_play()) editor_set_status_message("No macro yet. Alt-( records one.");
+  return CMD_KEEP_SELECTION;
+}
+static int is_readonly(void) { return B.readonly; }
+static int cmd_readonly(void) {
+  if (B.tty != NULL || B.grep_results || B.problems) return 0;
+  B.readonly = !B.readonly;
+  editor_set_status_message(B.readonly ? "Read-only: nothing will change this file."
+                                       : "Editable again.");
+  return 0;
+}
 static int cmd_terminal(void) { return tty_toggle(); }
 static int cmd_terminal_new(void) { tty_open_here(); return 0; }
+static int cmd_terminal_find(void) { return tty_find(); }
 static int cmd_problem_next(void) { lspui_problem_jump(1); return 0; }
 static int cmd_problem_prev(void) { lspui_problem_jump(-1); return 0; }
 static int cmd_problems(void) { return lspui_problems(); }
@@ -966,7 +1010,7 @@ static const struct command commands[] = {
    .help = "Copy selection", .group = "CLIPBOARD", .run = cmd_copy, .enabled = have_selection},
   {.name = "edit.cut", .label = "Cut",
    .help = "Cut selection", .group = "CLIPBOARD", .flags = CMD_EDITS, .run = cmd_cut, .enabled = have_selection},
-  {.name = "edit.paste", .label = "Paste",
+  {.name = "edit.paste", .label = "Paste", .flags = CMD_EDITS,
    .help = "Paste at cursor", .group = "CLIPBOARD", .run = cmd_paste, .enabled = have_clipboard},
 
   {.name = "edit.undo", .label = "Undo",
@@ -987,6 +1031,31 @@ static const struct command commands[] = {
   {.name = "view.syntax", .label = "Syntax highlighting",
    .help = "Colour by filetype", .group = "VIEW", .run = cmd_syntax,
    .checked = syntax_on},
+  {.name = "view.whitespace", .label = "Whitespace",
+   .help = "Show whitespace", .group = "VIEW", .run = cmd_whitespace,
+   .checked = view_whitespace},
+  {.name = "view.indent-guides", .label = "Indent guides",
+   .run = cmd_guides, .checked = view_guides},
+  {.name = "view.current-line", .label = "Current line",
+   .run = cmd_curline, .checked = view_curline},
+  {.name = "view.highlight-word", .label = "Highlight word",
+   .run = cmd_occurrences, .checked = view_occurrences},
+  {.name = "view.read-only", .label = "Read only",
+   .run = cmd_readonly, .checked = is_readonly},
+  {.name = "macro.record", .label = "Record macro",
+   .help = "Record/stop macro", .group = "EDITING", .run = cmd_macro_record,
+   .checked = macro_recording},
+  {.name = "macro.play", .label = "Play macro",
+   .help = "Play macro", .group = "EDITING", .run = cmd_macro_play},
+  {.name = "app.suspend", .label = "Suspend to shell", .run = cmd_suspend},
+  {.name = "git.blame", .label = "Git blame line", .run = cmd_blame},
+  {.name = "git.log", .label = "Git file history", .run = cmd_gitlog},
+  {.name = "view.fold", .label = "Fold",
+   .help = "Fold / unfold", .group = "VIEW", .run = cmd_fold},
+  {.name = "view.fold-all", .label = "Fold all", .run = cmd_fold_all},
+  {.name = "view.unfold-all", .label = "Unfold all", .run = cmd_unfold_all},
+  {.name = "file.recent", .label = "Recent files…",
+   .help = "Recent files", .group = "FILES", .run = cmd_recent},
   {.name = "view.tab-bar", .label = "Tab bar",
    .help = "Show a tab per file", .group = "VIEW", .run = cmd_tab_bar,
    .checked = tabbar_on},
@@ -1063,6 +1132,8 @@ static const struct command commands[] = {
    .help = "Terminal, and back", .group = "WINDOWS", .run = cmd_terminal},
   {.name = "terminal.new", .label = "New terminal",
    .run = cmd_terminal_new},
+  {.name = "terminal.find", .label = "Find in terminal…",
+   .run = cmd_terminal_find},
   {.name = "app.palette", .label = "Command palette…", .flags = CMD_HIDDEN,
    .help = "Command palette", .group = "MENUS", .run = cmd_palette},
 
@@ -1527,6 +1598,15 @@ static const struct binding default_bindings[] = {
    * table that a user is likely to arrive already knowing. W would have been
    * the mnemonic and the Window menu has it. */
   {"alt-z",  "view.soft-wrap"},
+  /* Alt-. for whitespace, a dot being what a blank is drawn as. Alt-O for
+   * recent files: O for open, as Ctrl-O is. */
+  {"alt-.",  "view.whitespace"},
+  {"alt-o",  "file.recent"},
+  /* Emacs's C-x ( and C-x ), without the C-x. */
+  /* Alt-minus: the minus a fold marker shows in editors that draw one. */
+  {"alt--",  "view.fold"},
+  {"alt-(",  "macro.record"},
+  {"alt-)",  "macro.play"},
 
   /* Windows, on the function keys from F6 up. F6 is where Turbo Vision put
    * "next window" and where molly's model for all of this came from, and the
@@ -1786,8 +1866,15 @@ int cmd_shortcut(const char *name, char *dst, size_t n) {
  * terminal it is typing, and editor_paste sends it there. */
 int cmd_run(const struct command *c) {
   if (c == NULL || c->run == NULL) return 0;
-  if (V.buf->tty != NULL && (c->flags & CMD_EDITS)) {
+  /* Paste is an edit everywhere but a terminal, where it is typing. */
+  if (V.buf->tty != NULL && (c->flags & CMD_EDITS) && c->run != cmd_paste) {
     editor_set_status_message("A terminal is not text to edit.");
+    return 0;
+  }
+  /* Enter in a list of places is a jump, not an edit, read-only or not. */
+  if (V.buf->readonly && (c->flags & CMD_EDITS) &&
+      !(c->run == cmd_newline && (V.buf->git_view || V.buf->problems))) {
+    editor_set_status_message("This file is read-only. View > Read only turns that off.");
     return 0;
   }
   return c->run();
@@ -1831,6 +1918,8 @@ void editor_process_key(int c) {
 
   if (cmd != NULL) {
     res = cmd_run(cmd);
+  } else if ((c == '\t' || (c < 256 && !iscntrl(c))) && B.readonly) {
+    editor_set_status_message("This file is read-only. View > Read only turns that off.");
   } else if (c == '\t' || (c < 256 && !iscntrl(c))) {
     /* Unbound and printable: it is text. Tab is a control character, so testing
      * iscntrl() alone threw it away and a tab could not be typed at all; key
@@ -1872,6 +1961,9 @@ void editor_process_key(int c) {
    * character asks for one. After the key, because both are about what the
    * key did to the text. */
   lspui_after_key(c);
+
+  /* No cursor rests inside a fold: see fold.c. */
+  if (B.nfolds > 0) fold_fix_cursor(pre_cy);
 }
 
 /* ---- the help screen's data ---------------------------------------------- */
@@ -1884,6 +1976,7 @@ void editor_process_key(int c) {
 static const struct help_entry help_entries[] = {
   {"FILES", NULL, NULL, "file.save"},
   {NULL,    NULL, NULL, "file.open"},
+  {NULL,    NULL, NULL, "file.recent"},
   {NULL,    NULL, NULL, "file.new"},
   {NULL,    NULL, NULL, "file.close"},
   {NULL,    NULL, NULL, "file.quit"},
@@ -1944,6 +2037,8 @@ static const struct help_entry help_entries[] = {
   {NULL,         NULL,          NULL,           "edit.line-down"},
   {NULL,         NULL,          NULL,           "edit.join"},
   {NULL,         NULL,          NULL,           "edit.comment"},
+  {NULL,         NULL,          NULL,           "macro.record"},
+  {NULL,         NULL,          NULL,           "macro.play"},
   {NULL,         NULL,          NULL,           "edit.transpose"},
   {NULL,         NULL,          NULL,           "edit.filter"},
   {NULL,         NULL,          NULL,           "edit.insert-output"},
@@ -1989,6 +2084,8 @@ static const struct help_entry help_entries[] = {
   {NULL,        NULL, NULL, "view.tab-bar"},
   {NULL,        NULL, NULL, "view.syntax"},
   {NULL,        NULL, NULL, "view.soft-wrap"},
+  {NULL,        NULL, NULL, "view.whitespace"},
+  {NULL,        NULL, NULL, "view.fold"},
 
   /* Last, so that adding it moved nothing above it: the soft-wrap check finds
    * VIEW by paging down to it. */

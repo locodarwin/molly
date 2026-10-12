@@ -1,7 +1,7 @@
 --- screen ---
  F E S V G W H
 alph╔═══════ Options ════════╗
-beta║  view    soft wrap off ║
+beta║  view    git gutter on ║
 gamm║  input   mouse      on ║
 ~   ║  shell   timeout    10 ║
 ~   ║  shell   output l 8192 ║

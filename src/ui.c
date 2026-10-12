@@ -643,6 +643,8 @@ void editor_open_in_new_buffer(char *path) {
     buf_show(buf_index_of(buf_new()));
 
   editor_open(path);
+  recent_note(path);
+  git_refresh(V.buf);
   cursors_collapse();
   memset(&CUR, 0, sizeof CUR);
   V.drowoff = 0;

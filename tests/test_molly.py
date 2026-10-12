@@ -56,7 +56,8 @@ def run_interleaved(argv, before_keys, touch, after_keys, rows=24, cols=80):
     it open, which is not expressible as a single flat key list."""
     pid, fd = pty.fork()
     if pid == 0:
-        os.execve(argv[0], argv, dict(os.environ, TERM="xterm", MOLLY_LSP="off"))
+        os.execve(argv[0], argv, dict(os.environ, TERM="xterm", MOLLY_LSP="off",
+                                      MOLLY_STATE=""))
 
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
     out = b""
@@ -4466,7 +4467,7 @@ def test_options(tmpdir):
     joined = "\n".join(text)
     check("View > Options opens it", "Options" in joined, True)
     check("with every setting, by section",
-          ("editor  tab width" in joined, "shell   timeout" in joined),
+          ("editor  tab width" in joined, "view    line numbers" in joined),
           (True, True))
     check("and says what the selected one does",
           "[editor] columns a tab character occupies" in joined, True)
@@ -5332,6 +5333,104 @@ def test_terminal(tmpdir):
         os.chdir(here)
 
 
+def test_terminal_extras(tmpdir):
+    """The terminal's mouse and its scrollback search.
+
+    A program that asks for the mouse gets it -- what it read is written to a
+    file, so the check is of the bytes, not of how od lays them out. Shift takes
+    the mouse back; a drag otherwise selects and copies; the wheel on the
+    alternate screen is arrow keys. New terminal opens it in the only window,
+    so its first row is screen row 3 (1-based) under the menu and tab bars.
+    """
+    print("\nterminal: the mouse and finding in the scrollback")
+
+    work = os.path.join(tmpdir, "termxwork")
+    os.makedirs(work, exist_ok=True)
+    F3 = "\x1bOR"
+    SH_PGUP = "\x1b[5;2~"
+    PALETTE = "\x00"
+    WAIT = 0.6
+    OPEN = [PALETTE, "new terminal", "\r", WAIT]
+    def READ(n):
+        return "stty raw -echo; dd bs=1 count=%d 2>/dev/null > got; stty sane\r" % n
+    READ9 = READ(9)
+    BACK = "\x1b[5;5~"     # Ctrl-PgUp, to the file
+
+    def session(keys, text="hello\n"):
+        with open("f.txt", "w") as fh:
+            fh.write(text)
+        e = {"SHELL": "/bin/sh", "PS1": "$ ", "ENV": ""}
+        scr = Screen(16, 60)
+        scr.feed(run([MOLLY, "f.txt"], OPEN + keys,
+                     rows=16, cols=60, env=e))
+        return scr
+
+    def got():
+        try:
+            with open("got", "rb") as fh:
+                return fh.read()
+        except OSError:
+            return b""
+
+    here = os.getcwd()
+    os.chdir(work)
+    try:
+        session(["printf '\\033[?1000h\\033[?1006h'; " + READ9, WAIT,
+                 "\x1b[<0;5;4M", WAIT])
+        check("a program that asks for the mouse is sent a click", got(),
+              b"\x1b[<0;5;2M")
+        os.remove("got")
+        session(["printf '\\033[?1000h'; " + READ(12), WAIT,
+                 "\x1b[<0;5;4M", "\x1b[<0;5;4m", WAIT])
+        check("in the old encoding when it did not ask for SGR", got(),
+              b"\x1b[M %\"\x1b[M#%\"")
+        os.remove("got")
+        session(["printf '\\033[?1049h'; " + READ9, WAIT, "\x1b[<64;5;4M", WAIT])
+        check("the wheel on the alternate screen is arrow keys", got(), b"\x1b[A" * 3)
+        os.remove("got")
+
+        scr = session(["printf '\\033[?1000h'; echo hello world\r", WAIT,
+                       "\x1b[<4;1;4M", "\x1b[<36;5;4M", "\x1b[<4;5;4m", 0.3])
+        check("Shift takes the mouse back from a program that asked",
+              "Copied 5 bytes" in scr.text()[15], True)
+        DRAG = ["\x1b[<0;7;4M", "\x1b[<32;11;4M", "\x1b[<0;11;4m", 0.3]
+        scr = session(["echo hello world\r", WAIT] + DRAG)
+        check("a drag selects and letting go copies",
+              "Copied 5 bytes" in scr.text()[15], True)
+        scr = session(["echo hello world\r", WAIT] + DRAG + [BACK, "\x16", "\x13", 0.3])
+        with open("f.txt") as fh:
+            check("and it pastes into a file", fh.read(), "worldhello\n")
+        scr = session(["echo a; echo b\r", WAIT,
+                       "\x1b[<0;1;4M", "\x1b[<32;1;5M", "\x1b[<0;1;5m", 0.3,
+                       BACK, "\x16", "\x13", 0.3])
+        with open("f.txt") as fh:
+            check("over two lines it is two lines", fh.read(), "a\nbhello\n")
+
+        LINES = "seq 1 200 | sed 's/^/n/'\r"
+        scr = session([LINES, WAIT, SH_PGUP, "\x06", "n42", "\r", 0.3])
+        text = [r.strip() for r in scr.text()]
+        check("Ctrl-F scrolled back finds in the scrollback", "n42" in text, True)
+        row = text.index("n42") if "n42" in text else 0
+        check("and shows the match selected", scr.colors[row][0][1] != -1, True)
+        check("the status bar says how to go on", "F3 older" in scr.text()[14], True)
+        scr = session([LINES, WAIT, SH_PGUP, "\x06", "n42", "\r", 0.3, F3, 0.3])
+        check("F3 past the oldest says so", 'No older "n42"' in scr.text()[15], True)
+        scr = session([LINES, WAIT, SH_PGUP, "\x06", "n42", "\r", 0.3, "\x1b", 0.5])
+        check("Esc comes back down",
+              any("lines back" in r for r in scr.text()), False)
+        scr = session([LINES, WAIT, PALETTE, "find in terminal", "\r", "n7", "\r", 0.3])
+        text = [r.strip() for r in scr.text()]
+        check("Find in terminal from the palette finds the newest first",
+              "n79" in text and "n200" not in text, True)
+        scr = session([LINES, WAIT, PALETTE, "find in terminal", "\r", "n7", "\r", 0.3,
+                       F3, 0.3])
+        text = [r.strip() for r in scr.text()]
+        check("and F3 the next older", scr.colors[text.index("n78")][0][1] != -1
+              if "n78" in text else False, True)
+    finally:
+        os.chdir(here)
+
+
 def test_lsp_rename(tmpdir):
     """Alt-N: rename what is under the cursor, everywhere the server says.
 
@@ -5766,6 +5865,202 @@ def test_nav(tmpdir):
           edit(["\x07", "5", "\r", "\x1b[1;3D", "!"]), "!f(a,\n  b) + 1;\nx\ny\nz\n")
 
 
+def test_view_aids(tmpdir):
+    """Whitespace marks, indent guides, the current line, the ruler and the
+    word under the cursor: drawn, not written. Each is a [view] setting."""
+    print("\nview: the aids")
+    path = os.path.join(tmpdir, "aids.c")
+    rc = os.path.join(tmpdir, "aidsrc")
+
+    def screen(conf, keys=(), text="\tint x;  \n        foo(x, x);\n"):
+        with open(path, "w") as fh:
+            fh.write(text)
+        with open(rc, "w") as fh:
+            fh.write("[view]\n" + conf)
+        scr = Screen(10, 40)
+        scr.feed(run([MOLLY, path], list(keys), rows=10, cols=40,
+                     env={"MOLLY_CONFIG": rc, "TERM": "xterm-256color"}))
+        return scr
+
+    scr = screen("whitespace = on\n")
+    check("a tab is an arrow", scr.text()[1][0], "→")
+    check("trailing blanks are dots", scr.text()[1][14:16], "··")
+    with open(path) as fh:
+        check("and the file is untouched", fh.read(), "\tint x;  \n        foo(x, x);\n")
+    scr = screen("indent guides = on\n", text="\t\tdeep\n")
+    check("indent guides inside two tabs of indentation", scr.text()[1][8], "│")
+    scr = screen("current line = on\n")
+    check("the cursor's line is tinted, to the edge",
+          (scr.colors[1][30][1], scr.colors[2][30][1]), (235, None))
+    scr = screen("ruler = 20\n")
+    check("the ruler's column is tinted on every line",
+          (scr.colors[1][19][1], scr.colors[2][19][1], scr.colors[3][19][1]), (236, 236, None))
+    scr = screen("highlight word = on\n", keys=["\x1b[C"],
+                 text="alpha beta alphabet alpha\n")
+    tinted = [x for x in range(40) if scr.colors[1][x][1] == 239]
+    check("the word under the cursor is tinted where it appears, whole words only",
+          tinted, list(range(0, 5)) + list(range(20, 25)))
+    scr = screen("")
+    check("none of them is on unless asked for",
+          scr.text()[1][0] == " " and scr.colors[1][30] == (None, None), True)
+
+
+def test_files(tmpdir):
+    """Recent files (Alt-O) and read-only buffers."""
+    print("\nfiles: recent, and read-only")
+    state = os.path.join(tmpdir, "state")
+    os.makedirs(state, exist_ok=True)
+    a = os.path.join(tmpdir, "ra.txt")
+    b = os.path.join(tmpdir, "rb.txt")
+    for p, t in ((a, "alpha\n"), (b, "beta\n")):
+        with open(p, "w") as fh:
+            fh.write(t)
+    env = {"MOLLY_STATE": state}
+    run([MOLLY, a], [], env=env)
+    run([MOLLY, b], [], env=env)
+    with open(os.path.join(state, "recent")) as fh:
+        check("opening files lists them, newest first",
+              fh.read().split(), [b, a])
+    scr = Screen(24, 80)
+    scr.feed(run([MOLLY], ["\x1bo", 0.3], env=env))
+    text = "\n".join(scr.text())
+    check("Alt-O shows them", "Recent files" in text and "rb.txt" in text, True)
+    scr = Screen(24, 80)
+    scr.feed(run([MOLLY], ["\x1bo", 0.3, "\x1b[B", "\r", 0.3], env=env))
+    check("and Enter opens one", "ra.txt - 1 lines" in "\n".join(scr.text()), True)
+
+    ro = os.path.join(tmpdir, "ro.txt")
+    with open(ro, "w") as fh:
+        fh.write("keep\n")
+    os.chmod(ro, 0o444)
+    scr = Screen(24, 80)
+    scr.feed(run([MOLLY, ro], ["x", 0.2]))
+    text = scr.text()
+    check("a file that cannot be written opens read-only", "[read-only]" in text[22], True)
+    check("and typing into it is refused", "This file is read-only." in text[23], True)
+    check("so the text is as it was", text[1].rstrip(), "keep")
+    os.chmod(ro, 0o644)
+    rw = os.path.join(tmpdir, "rw.txt")
+    with open(rw, "w") as fh:
+        fh.write("edit\n")
+    run([MOLLY, rw], ["\x00", "read only", "\r", "x", SAVE])
+    with open(rw) as fh:
+        check("View > Read only makes any file read-only", fh.read(), "edit\n")
+
+
+def test_macros(tmpdir):
+    """Alt-( records the keys, Alt-) plays them back -- prompts included."""
+    print("\nmacros: record and play")
+    path = os.path.join(tmpdir, "macro.txt")
+
+    def edit(keys, text="one\ntwo\nthree\nfour\n"):
+        with open(path, "w") as fh:
+            fh.write(text)
+        scr = Screen(24, 80)
+        scr.feed(run([MOLLY, path], keys))
+        run([MOLLY, path], [])
+        with open(path) as fh:
+            return scr, fh.read()
+
+    HOME, DOWN, REC, PLAY = "\x1b[H", "\x1b[B", "\x1b(", "\x1b)"
+    scr, _ = edit([REC, 0.2])
+    check("recording says so on the status bar", "REC" in scr.text()[22], True)
+    _, got = edit([REC, HOME, "- ", DOWN, REC, PLAY, PLAY, SAVE])
+    check("a macro plays back what was typed and how the cursor moved",
+          got, "- one\n- two\n- three\nfour\n")
+    _, got = edit([REC, "\x07", "4", "\r", "!", REC, HOME, PLAY, SAVE])
+    check("a prompt's answer is part of it", got, "one\ntwo\nthree\n!!four\n")
+    scr, _ = edit([PLAY, 0.2])
+    check("with nothing recorded, it says so",
+          "No macro yet." in scr.text()[23], True)
+
+
+def test_folding(tmpdir):
+    """Alt--: fold the block, by indentation; the cursor stays out of it."""
+    print("\nfolding: indentation, and the cursor")
+    path = os.path.join(tmpdir, "fold.c")
+    TEXT = "int f(void) {\n  int a;\n  if (a) {\n    b();\n  }\n  return 0;\n}\nint g;\n"
+
+    def screen(keys, save=False):
+        with open(path, "w") as fh:
+            fh.write(TEXT)
+        scr = Screen(12, 50)
+        scr.feed(run([MOLLY, path], keys + ([SAVE] if save else [])))
+        with open(path) as fh:
+            return [r.rstrip() for r in scr.text()], fh.read()
+
+    FOLD, DOWN, UP = "\x1b-", "\x1b[B", "\x1b[A"
+    rows, _ = screen([FOLD, 0.2])
+    check("Alt-- hides the block behind its first row, saying how much",
+          rows[1:4], ["int f(void) { ⋯ 5 lines", "}", "int g;"])
+    _, text = screen([FOLD, DOWN, "X"], save=True)
+    check("Down steps over the fold", text, TEXT.replace("\n}\n", "\nX}\n"))
+    _, text = screen([FOLD, DOWN, UP, "Y"], save=True)
+    check("Up from below lands on the fold's first row, not inside it",
+          text, "Yint f(void) {" + TEXT[len("int f(void) {"):])
+    rows, _ = screen([FOLD, FOLD, 0.2])
+    check("Alt-- again opens it", rows[2], "  int a;")
+    rows, _ = screen([DOWN, DOWN, DOWN, FOLD, 0.2])
+    check("from inside a block, the block is folded",
+          rows[3], "  if (a) { ⋯ 1 line")
+    rows, _ = screen([FOLD, "\x06", "return", "\r", 0.3])
+    check("a search that lands inside a fold opens it",
+          "  return 0;" in rows, True)
+    rows, _ = screen(["\x00", "fold all", "\r", 0.2])
+    check("Fold all folds every outermost block", rows[1:3],
+          ["int f(void) { ⋯ 5 lines", "}"])
+    rows, _ = screen(["\x00", "fold all", "\r", "\x00", "unfold all", "\r", 0.2])
+    check("and Unfold all opens them", rows[2], "  int a;")
+
+
+def test_git(tmpdir):
+    """The sign column, blame and history, against a real repository."""
+    print("\ngit: marks, blame and history")
+    repo = os.path.join(tmpdir, "repo")
+    os.makedirs(repo, exist_ok=True)
+    g = ["git", "-C", repo, "-c", "user.name=T", "-c", "user.email=t@t"]
+    if subprocess.run(g + ["init", "-q"], capture_output=True).returncode != 0:
+        print("  skip  no git here")
+        return
+    path = os.path.join(repo, "f.txt")
+    with open(path, "w") as fh:
+        fh.write("one\ntwo\nthree\nfour\n")
+    subprocess.run(g + ["add", "f.txt"], check=True)
+    subprocess.run(g + ["commit", "-qm", "the first one"], check=True)
+    with open(path, "w") as fh:
+        fh.write("one\nTWO\nthree\nfour\nfive\n")
+
+    def screen(keys):
+        scr = Screen(14, 50)
+        scr.feed(run([MOLLY, path], keys, rows=14, cols=50, env={"TERM": "xterm-256color"}))
+        return scr
+
+    scr = screen([0.5])
+    marks = [scr.text()[i][0] for i in range(1, 6)]
+    check("a tracked file has a sign column: changed and added lines marked",
+          marks, [" ", "▎", " ", " ", "▎"])
+    check("changed in amber, added in green",
+          (scr.colors[2][0][0], scr.colors[5][0][0]), (179, 71))
+    scr = screen(["\x1b[A" * 0, "\x1b[B", "\x00", "blame", "\r", 0.5])
+    check("blame on a changed line says it is not committed yet",
+          "not committed yet" in scr.text()[13], True)
+    scr = screen(["\x00", "blame", "\r", 0.5])
+    check("and on a committed one, who and why", "T, " in scr.text()[13] and
+          "the first one" in scr.text()[13], True)
+    scr = screen(["\x00", "file history", "\r", 0.5])
+    check("history lists the file's commits",
+          any("the first one" in r and "T" in r for r in scr.text()), True)
+    scr = screen(["\x00", "file history", "\r", 0.5, "\r", 0.5])
+    check("Enter on one shows that commit",
+          any(r.startswith("commit ") for r in scr.text()), True)
+    outside = os.path.join(tmpdir, "loose.txt")
+    with open(outside, "w") as fh:
+        fh.write("x\n")
+    scr = Screen(14, 50)
+    scr.feed(run([MOLLY, outside], [0.3], rows=14, cols=50))
+    check("a file git does not track has no sign column", scr.text()[1][0], "x")
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -5836,6 +6131,7 @@ def main():
         test_lsp_questions(tmpdir)
         test_lsp_complete(tmpdir)
         test_terminal(tmpdir)
+        test_terminal_extras(tmpdir)
         test_lsp_rename(tmpdir)
         test_lsp_references(tmpdir)
         test_lsp_signature(tmpdir)
@@ -5845,6 +6141,11 @@ def main():
         test_lines(tmpdir)
         test_smart(tmpdir)
         test_nav(tmpdir)
+        test_view_aids(tmpdir)
+        test_files(tmpdir)
+        test_macros(tmpdir)
+        test_folding(tmpdir)
+        test_git(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

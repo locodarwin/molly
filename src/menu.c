@@ -42,7 +42,7 @@ struct menu {
  * menu, and the conventional alternative where it is not: Cut takes its 't' because
  * Copy has the 'C', exactly as every CUA menu since Windows 3 has done. */
 static const struct menu_item file_items[] = {
-  {"file.new", 0}, {"file.open", 0}, {"file.save", 0},
+  {"file.new", 0}, {"file.open", 0}, {"file.recent", 0}, {"file.save", 0},
   SEP, {"file.close", 0}, SEP, {"file.quit", 0},
 };
 static const struct menu_item edit_items[] = {
@@ -85,6 +85,10 @@ static const struct menu_item view_items[] = {
   /* W of "Soft wrap", for the same reason, and beside the other three toggles
    * that change how the text is drawn rather than what is in it. */
   {"view.soft-wrap", 5},
+  /* H, I, U and G: what each has that the menu has not spent. Read only
+   * on D, after its O and N went to Options and nothing. */
+  {"view.whitespace", 1}, {"view.indent-guides", 0}, {"view.current-line", 1},
+  {"view.highlight-word", 2}, {"view.read-only", 3},
   SEP, {"view.repaint", 0},
   SEP, {"app.options", 0}, {"app.save-settings", 0},
 };

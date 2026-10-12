@@ -8,12 +8,12 @@ gamma               ├───────────────────
 ~                   │✓ Tab bar                    Alt-B │
 ~                   │✓ Syntax highlighting        Alt-Y │
 ~                   │  Soft wrap                  Alt-Z │
-~                   ├───────────────────────────────────┤
-~                   │  Redraw                        F5 │
-~                   ├───────────────────────────────────┤
-~                   │  Options…                         │
-~                   │  Save settings                    │
-~                   └───────────────────────────────────┘
+~                   │  Whitespace                 Alt-. │
+~                   │  Indent guides                    │
+~                   │  Current line                     │
+~                   │  Highlight word                   │
+~                   │  Read only                        │
+~                   └──────────────────────────────────▾┘
 ~
 sample.txt - 3 lines                                 Ln 1, Col 1
 HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | F3 = next
@@ -46,9 +46,9 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 7: 0-0 8/-  20-20 7/8  21-55 15/8  56-56 7/8  57-58 8/0
 8: 0-0 8/-  20-20 7/8  21-55 15/8  56-56 7/8  57-58 8/0
 9: 0-0 8/-  20-20 7/8  21-55 15/8  56-56 7/8  57-58 8/0
-10: 0-0 8/-  20-56 7/8  57-58 8/0
+10: 0-0 8/-  20-20 7/8  21-55 15/8  56-56 7/8  57-58 8/0
 11: 0-0 8/-  20-20 7/8  21-55 15/8  56-56 7/8  57-58 8/0
-12: 0-0 8/-  20-56 7/8  57-58 8/0
+12: 0-0 8/-  20-20 7/8  21-55 15/8  56-56 7/8  57-58 8/0
 13: 0-0 8/-  20-20 7/8  21-55 15/8  56-56 7/8  57-58 8/0
 14: 0-0 8/-  20-20 7/8  21-55 15/8  56-56 7/8  57-58 8/0
 15: 0-0 8/-  20-56 7/8  57-58 8/0
@@ -61,8 +61,10 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 7: 23-23 u
 8: 24-24 u
 9: 28-28 u
+10: 24-24 u
 11: 23-23 u
-13: 23-23 u
-14: 23-23 u
+12: 24-24 u
+13: 25-25 u
+14: 26-26 u
 --- cursor ---
 row 2 col 1 visible 0

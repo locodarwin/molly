@@ -50,6 +50,11 @@ def check(name, keys, rows=24, cols=80, files=None, args=None, settle=0.5,
     """
     global passed
 
+    # GOLDEN_ONLY="a b" runs just those cases, for a rerun of one that failed.
+    only = os.environ.get("GOLDEN_ONLY", "").split()
+    if only and name not in only:
+        return
+
     # A fixed filename, because it is drawn in the status bar: a temp path would
     # put a different string in the snapshot on every run.
     for fname, content in (files or {}).items():

@@ -12,6 +12,7 @@ void editor_cleanup(void) {
   lsp_cleanup();
   /* And every terminal's shell, for the same reason. */
   tty_cleanup();
+  recent_cleanup();
   free(E.clipboard);
   E.clipboard = NULL;
   E.clipsize = 0;

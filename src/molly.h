@@ -321,6 +321,25 @@ struct buffer {
   /* This is the problems list. See lspui.c. */
   int problems;
 
+  /* Not to be edited: set by the user, or because the file cannot be
+   * written. Every command that changes text refuses, as on a terminal. */
+  int readonly;
+
+  /* What git says: tracked at all, and a mark a row against HEAD (GIT_*),
+   * as of `git_edits`. git_view is a buffer of git's own output: 1 a file's
+   * history, 2 a commit. See git.c. */
+  int git_tracked;
+  unsigned git_edits;
+  unsigned char *gitmark;
+  int ngitmark;
+  int git_view;
+  char *git_dir;       /* where a git_view's commands are run */
+
+  /* Folded blocks: rows start+1 .. end are hidden behind row start. See
+   * fold.c, and wrap.c, which counts a hidden row as no display rows. */
+  struct fold { int start, end; } *folds;
+  int nfolds;
+
   /* Bookmarks 0-9: a place each, moved with the text. See nav.c. */
   struct { int y, x; unsigned char set; } marks[10];
 
@@ -717,10 +736,14 @@ struct diag_span {
 #define VT_DIM       0x20
 #define VT_INVISIBLE 0x40
 
+/* A colour that is red, green and blue rather than a palette index: the bit
+ * above the 24 they take. */
+#define COLOR_RGB 0x1000000
+
 struct vt_cell {
   uint32_t cp;
   uint32_t comb;        /* one combining mark, or 0 */
-  short fg, bg;         /* palette indices, -1 for the default */
+  int fg, bg;           /* palette indices or COLOR_RGB | rgb; -1 the default */
   unsigned char w;
   unsigned char attrs;
 };
@@ -728,6 +751,8 @@ struct vt_cell {
 #define VT_MODE_APP_CURSOR      1
 #define VT_MODE_BRACKETED_PASTE 2
 #define VT_MODE_ALT_SCREEN      3
+#define VT_MODE_MOUSE           4   /* 0, or 1000, 1002 or 1003: what it reports */
+#define VT_MODE_MOUSE_SGR       5
 
 struct vt;
 struct tty;
@@ -874,6 +899,19 @@ enum cell_role {
    * a fourth colour in the text for "consider" would shout as loud as "wrong". */
   ROLE_DIAG_ERROR,
   ROLE_DIAG_WARNING,
+
+  /* The view's aids. Three are tints -- only their background is used, laid
+   * under whatever the cell's own role says (see grid_tint) -- and one is the
+   * dim ink that whitespace markers and indent guides are drawn in. */
+  ROLE_CURRENT_LINE,
+  ROLE_OCCURRENCE,
+  ROLE_RULER,
+  ROLE_WHITESPACE,
+
+  /* The sign column's marks against the last commit. */
+  ROLE_GIT_ADDED,
+  ROLE_GIT_CHANGED,
+  ROLE_GIT_DELETED,
   ROLE_COUNT
 };
 
@@ -898,12 +936,15 @@ enum cell_role {
 #define ATTR_ITALIC    0x04
 #define ATTR_REVERSE   0x08
 #define ATTR_RAW       0x10
+/* The cell's background comes from another role -- a tint -- whose index is
+ * kept where a raw cell keeps its background colour. See grid_tint(). */
+#define ATTR_TINT      0x20
 
 /* A resolved style: palette indices, or -1 for the terminal's own default, which
  * is not the same as black -- a light-background user wants their background. */
 struct style {
-  short fg;
-  short bg;
+  int fg;
+  int bg;
   unsigned char reverse;
   unsigned char bold;
   unsigned char underline;
@@ -1067,6 +1108,7 @@ int grid_puts(int y, int x, const char *s, int len);
 int grid_rows(void);
 void grid_attrs(unsigned char attrs);
 void grid_color(int fg, int bg, unsigned char attrs);
+void grid_tint(int role);
 void grid_begin(void);
 void grid_cleanup(void);
 void grid_cursor_claim(int y, int x);
@@ -1087,6 +1129,10 @@ int input_last_key_had_shift(void);
 int ui_wait_key(void);
 void input_last_mouse(struct mouse_event *out);
 void ui_request_redraw(void);
+int macro_play(void);
+int macro_playing(void);
+int macro_recording(void);
+int macro_toggle(void);
 
 /* json.c */
 const struct json *json_at(const struct json *arr, int i);
@@ -1136,6 +1182,37 @@ int smart_insert(int c, int *adjust);
 int smart_surround(int c);
 void smart_set_auto_close(int on);
 void smart_set_home(int on);
+
+/* recent.c */
+const char *recent_at(int i);
+int recent_count(void);
+void editor_recent_dialog(void);
+void recent_cleanup(void);
+void recent_note(const char *filename);
+
+/* git.c */
+#define GIT_ADDED   1
+#define GIT_CHANGED 2
+#define GIT_DELETED 3
+int git_gutter_on(void);
+int git_log_enter(void);
+int git_mark(const struct buffer *b, int y);
+int git_signs(void);
+void git_blame_line(void);
+void git_idle(void);
+void git_log_file(void);
+void git_refresh(struct buffer *b);
+void git_set_gutter(int on);
+
+/* fold.c */
+int fold_at(const struct buffer *b, int y);
+int fold_hidden(const struct buffer *b, int y);
+int fold_size(const struct buffer *b, int i);
+void fold_all(void);
+void fold_fix_cursor(int prev_cy);
+void fold_none(void);
+void fold_rows_moved(struct buffer *b, int at, int delta);
+void fold_toggle(void);
 
 /* nav.c */
 int nav_back(void);
@@ -1219,6 +1296,7 @@ void tty_draw(void);
 void tty_free(struct tty *t);
 void tty_layout(void);
 void tty_mouse(const struct mouse_event *ev);
+int tty_find(void);
 void tty_paste(const char *s, int len);
 void tty_status(char *dst, size_t n);
 void tty_tidy(void);
@@ -1283,6 +1361,18 @@ void screen_force_repaint(void);
 void screen_init_layers(void);
 void screen_init_size(void);
 void screen_sync_size(void);
+
+/* screen.c: the view's aids */
+int view_curline(void);
+int view_guides(void);
+int view_occurrences(void);
+int view_ruler(void);
+int view_whitespace(void);
+void view_set_curline(int on);
+void view_set_guides(int on);
+void view_set_occurrences(int on);
+void view_set_ruler(int col);
+void view_set_whitespace(int on);
 
 /* search.c */
 int search_case_is_on(void);
@@ -1358,6 +1448,7 @@ int get_window_size(int *rows, int *cols);
 int read_byte(unsigned char *c);
 int term_mouse_is_on(void);
 int term_take_winch(void);
+void term_suspend(void);
 void term_mouse_set(int on);
 void disable_raw_mode(void);
 void enable_raw_mode(void);
@@ -1367,6 +1458,8 @@ int style_eq(const struct style *a, const struct style *b);
 int style_is_default(const struct style *s);
 int theme_depth(void);
 int theme_fit_color(int c);
+int theme_rgb_to_256(int r, int g, int b);
+int theme_truecolor(void);
 void theme_index_rgb(int c, int *r, int *g, int *b);
 int theme_detect_depth(const char *term, const char *colorterm);
 int theme_detect_italic(const char *term);
@@ -1430,8 +1523,10 @@ const struct vt_cell *vt_line(const struct vt *t, int i, int *n);
 int vt_cols(const struct vt *t);
 int vt_key(const struct vt *t, int key, int mods, char *out);
 int vt_mode(const struct vt *t, int mode);
+int vt_mouse(const struct vt *t, const struct mouse_event *ev, int x, int y, char *out);
 int vt_rows(const struct vt *t);
 int vt_scrollback(const struct vt *t);
+long vt_pushed(const struct vt *t);
 int vt_take_bell(struct vt *t);
 struct vt *vt_new(int rows, int cols, int scrollback);
 void vt_cursor(const struct vt *t, int *y, int *x, int *visible);

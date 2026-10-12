@@ -177,6 +177,17 @@ class Screen:
         """Handle the escape sequence at text[i]. Returns bytes consumed, or 0."""
         if i + 1 >= len(text):
             return 0
+        if text[i + 1] == "]":
+            # An OSC -- the clipboard's OSC 52 -- runs to BEL or ESC \ and
+            # draws nothing.
+            j = i + 2
+            while j < len(text):
+                if text[j] == "\x07":
+                    return j - i + 1
+                if text[j] == "\x1b" and j + 1 < len(text) and text[j + 1] == "\\":
+                    return j - i + 2
+                j += 1
+            return 0
         if text[i + 1] != "[":
             # molly emits no non-CSI escapes to the screen; skip ESC + one byte.
             return 2
@@ -289,6 +300,15 @@ class Screen:
                     else:
                         self.bg = nums[i + 2]
                     i += 2
+                elif v in (38, 48) and i + 4 < len(nums) and nums[i + 1] == 2:
+                    # 24-bit, which molly sends only where COLORTERM says the
+                    # terminal takes it: kept as "#rrggbb".
+                    rgb = "#%02x%02x%02x" % tuple(nums[i + 2:i + 5])
+                    if v == 38:
+                        self.fg = rgb
+                    else:
+                        self.bg = rgb
+                    i += 4
                 else:
                     self.unhandled.append("SGR %d" % v)
                 i += 1

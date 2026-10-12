@@ -13,8 +13,8 @@ gamm║ › li                                                         ║
 ~   ║ Go to line…                                           Ctrl-G ║
 ~   ║ Insert line                                            Enter ║
 ~   ║ Select line                                           Ctrl-L ║
+~   ║ Current line                                                 ║
 ~   ║ Duplicate line                                         Alt-C ║
-~   ║ Delete to line end                                    Ctrl-K ║
 ~   ║ ↑↓ choose   Enter run   Esc cancel                           ║
 ~   ╚══════════════════════════════════════════════════════════════╝
 sample.txt - 3 lines                                         Ln 1, Col 1

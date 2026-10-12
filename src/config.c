@@ -209,6 +209,12 @@ static void apply_undo_steps(int v) { undo_set_max_steps(v); }
 static int live_undo_steps(void) { return undo_max_steps(); }
 static void apply_lsp(int v) { lsp_set_enabled(v); }
 static void apply_smart_home(int v) { smart_set_home(v); }
+static void apply_whitespace(int v) { view_set_whitespace(v); screen_force_repaint(); }
+static void apply_guides(int v) { view_set_guides(v); screen_force_repaint(); }
+static void apply_curline(int v) { view_set_curline(v); screen_force_repaint(); }
+static void apply_occ(int v) { view_set_occurrences(v); screen_force_repaint(); }
+static void apply_ruler(int v) { view_set_ruler(v); screen_force_repaint(); }
+static void apply_git_gutter(int v) { git_set_gutter(v); }
 static void apply_auto_close(int v) { smart_set_auto_close(v); }
 
 /* The shell filter's two limits. Settings rather than constants because what
@@ -285,6 +291,29 @@ static struct setting settings[] = {
   {"view", "soft wrap", SET_BOOL, 0, 0, 0, 0,
    "wrap long lines at the window edge instead of scrolling sideways",
    apply_wrap, live_wrap},
+
+  /* The view's aids, all off: each changes how every line looks, and which of
+   * them help is a matter of taste nobody else can settle. */
+  {"view", "whitespace", SET_BOOL, 0, 0, 0, 0,
+   "draw tabs as arrows and trailing blanks as dots",
+   apply_whitespace, view_whitespace},
+  {"view", "indent guides", SET_BOOL, 0, 0, 0, 0,
+   "a faint bar at each tab stop inside a line's indentation",
+   apply_guides, view_guides},
+  {"view", "current line", SET_BOOL, 0, 0, 0, 0,
+   "tint the line the cursor is on",
+   apply_curline, view_curline},
+  {"view", "highlight word", SET_BOOL, 0, 0, 0, 0,
+   "tint the word under the cursor wherever else it appears on screen",
+   apply_occ, view_occurrences},
+  {"view", "ruler", SET_INT, 0, 999, 0, 0,
+   "tint this column, to show a line length (0 for none)",
+   apply_ruler, view_ruler},
+  /* On: it costs a `git` when a file opens and after it is edited, and only
+   * for files git tracks. */
+  {"view", "git gutter", SET_BOOL, 0, 0, 1, 0,
+   "mark lines changed since the last commit, for files git tracks",
+   apply_git_gutter, git_gutter_on},
 
   {"input", "mouse", SET_BOOL, 0, 0, 1, 0,
    "report the mouse to molly rather than leaving it to the terminal",

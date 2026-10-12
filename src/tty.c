@@ -18,7 +18,17 @@
  * switches, the menu bar, the palette, Quit, and Alt-T itself -- found by the
  * command they are bound to, so rebinding one moves it here too. Shift-PgUp and
  * Shift-PgDn page through the scrollback, which is what every terminal
- * emulator does with them.
+ * emulator does with them. Scrolled back, the keys are molly's again: Ctrl-F
+ * finds in the scrollback (as does Find in terminal, from the palette, at any
+ * time), F3 and Shift-F3 go on to older and newer matches, and Esc comes back
+ * down.
+ *
+ * The mouse: a program that asks for it (less, vim, htop) is sent it, in the
+ * encoding it asked for, and Shift held takes it back for molly, as it does in
+ * xterm. Otherwise a drag selects, and letting go copies what was selected;
+ * the wheel scrolls the scrollback, or on the alternate screen, where there is
+ * no scrollback, sends the program arrow keys -- which is how a pager that
+ * never asked for the mouse still scrolls under it.
  *
  * When the shell exits, its terminal closes: the buffer, and the window it was
  * opened in if there are others. A terminal with nothing in it is not worth a
@@ -43,6 +53,16 @@ struct tty {
   int scroll;            /* lines back into the scrollback the view shows */
   int rows, cols;        /* the size the program has been told */
   char shell[64];
+
+  /* Lines are numbered as vt_line numbers them: 0 the top of the screen,
+   * negative the scrollback. A line scrolling off moves every number down by
+   * one, and on_output moves these with it. */
+  int sel;               /* 0 none, 1 pressed, 2 dragged: a selection to show */
+  int say, sax, sby, sbx;   /* where the press landed, and where it is now */
+  int found;             /* a match is shown */
+  int fy, fx0, fx1;      /* its line and cells, fx1 exclusive */
+  char query[256];
+  long pushed;           /* vt_pushed() when these were last moved */
 };
 
 /* ---- the process --------------------------------------------------------- */
@@ -127,6 +147,13 @@ static void on_output(void *user) {
     const char *r = vt_reply(t->vt, &len);
     if (len > 0) tty_write(t, r, len);
     vt_reply_done(t->vt);
+  }
+  {
+    int moved = (int)(vt_pushed(t->vt) - t->pushed);
+    t->pushed = vt_pushed(t->vt);
+    t->say -= moved;
+    t->sby -= moved;
+    t->fy -= moved;
   }
   /* Scrolled back, the view stays on the lines it was showing rather than
    * sliding as new ones arrive underneath. */
@@ -216,7 +243,10 @@ static struct tty *tty_start(int rows, int cols) {
      * better. MOLLY_LSP and MOLLY_CONFIG are the editor's, not the shell's. */
     setenv("TERM", "xterm-256color", 1);
     setenv("TERM_PROGRAM", "molly", 1);
-    unsetenv("COLORTERM");
+    /* 24-bit colour is passed through where the terminal molly is in takes
+     * it, and brought down to 256 where it does not; the shell is told which. */
+    if (theme_truecolor()) setenv("COLORTERM", "truecolor", 1);
+    else unsetenv("COLORTERM");
     unsetenv("LINES");
     unsetenv("COLUMNS");
     unsetenv("MOLLY_LSP");
@@ -394,6 +424,102 @@ static void scroll_by(struct tty *t, int n) {
   if (t->scroll < 0) t->scroll = 0;
 }
 
+/* ---- finding in the scrollback --------------------------------------------- */
+
+/* Line `i` as text, lower-cased, with the cell each byte came from. */
+static int line_text(const struct tty *t, int i, char *s, int *cellx, int cap) {
+  int n = 0, x, len = 0;
+  const struct vt_cell *line = vt_line(t->vt, i, &n);
+  for (x = 0; line != NULL && x < n; x++) {
+    char ch[12];
+    int k, nb;
+    if (line[x].w == 0) continue;
+    nb = line[x].cp >= 0x20 ? utf8_encode(line[x].cp, ch) : (ch[0] = ' ', 1);
+    if (len + nb >= cap) break;
+    for (k = 0; k < nb; k++) {
+      s[len] = (char)tolower((unsigned char)ch[k]);
+      cellx[len++] = x;
+    }
+  }
+  s[len] = '\0';
+  cellx[len] = x;
+  return len;
+}
+
+/* Puts line `i` in sight, a third of the way down when it has to move. */
+static void show_line(struct tty *t, int i) {
+  int y = i + t->scroll;
+  if (y >= 0 && y < t->rows) return;
+  t->scroll = t->rows / 3 - i;
+  if (t->scroll > vt_scrollback(t->vt)) t->scroll = vt_scrollback(t->vt);
+  if (t->scroll < 0) t->scroll = 0;
+}
+
+/* The next match older (dir -1) or newer (+1) than the one shown, or than the
+ * bottom of the view when none is. 1 when there was one. */
+static int find_step(struct tty *t, int dir) {
+  char s[4096], q[256];
+  int cellx[4097], i, qlen = (int)strlen(t->query), k;
+  int first = vt_scrollback(t->vt), last = t->rows - 1;
+  int from = t->found ? t->fy : t->rows - 1 - t->scroll;
+
+  if (qlen == 0) return 0;
+  for (k = 0; k <= qlen; k++) q[k] = (char)tolower((unsigned char)t->query[k]);
+  for (i = from; i >= -first && i <= last; i += dir) {
+    int len = line_text(t, i, s, cellx, (int)sizeof(s) - 1), at, best = -1;
+    for (at = 0; at + qlen <= len; at++) {
+      if (memcmp(s + at, q, (size_t)qlen) != 0) continue;
+      if (t->found && i == t->fy) {
+        /* On the line already showing one: only past it. */
+        if (dir < 0 && cellx[at] >= t->fx0) break;
+        if (dir > 0 && cellx[at] <= t->fx0) continue;
+      }
+      best = at;
+      if (dir > 0) break;       /* the first on the line, going newer */
+    }
+    if (best >= 0) {
+      t->found = 1;
+      t->fy = i;
+      t->fx0 = cellx[best];
+      t->fx1 = cellx[best + qlen - 1] + 1;
+      show_line(t, i);
+      return 1;
+    }
+  }
+  return 0;
+}
+
+static void find_next(struct tty *t, int dir) {
+  if (t->query[0] == '\0') {
+    editor_set_status_message("Nothing to find yet: Ctrl-F, scrolled back");
+    return;
+  }
+  if (!find_step(t, dir))
+    editor_set_status_message("No %s \"%s\"", dir < 0 ? "older" : "newer", t->query);
+}
+
+/* Find in terminal: asks, then shows the newest match above the bottom of the
+ * view. */
+int tty_find(void) {
+  struct tty *t = V.buf->tty;
+  char *q;
+  if (t == NULL) {
+    editor_set_status_message("Find in terminal is for a terminal");
+    return 0;
+  }
+  q = editor_prompt("Find in terminal: %s (ESC to cancel)", NULL);
+  if (q == NULL) return 0;
+  snprintf(t->query, sizeof(t->query), "%s", q);
+  free(q);
+  t->found = 0;
+  t->sel = 0;
+  if (!find_step(t, -1))
+    editor_set_status_message("No \"%s\" in the terminal", t->query);
+  return 0;
+}
+
+/* ---- keys ------------------------------------------------------------------ */
+
 /* A key arrived while the current buffer is a terminal. Returns 1 when the
  * terminal has used it; 0 sends it on to molly's own dispatch. */
 int tty_key(int c) {
@@ -414,7 +540,29 @@ int tty_key(int c) {
   if (shift && !ctrl && !alt && (c == PAGE_UP || c == PAGE_DOWN)) {
     int page = t->rows > 2 ? t->rows - 1 : 1;
     scroll_by(t, c == PAGE_UP ? page : -page);
+    if (t->scroll == 0) t->found = 0;
     return 1;
+  }
+  /* Scrolled back, or with a match showing, the find keys and Esc are molly's:
+   * nothing typed there would reach a prompt that is out of sight. */
+  if (t->scroll > 0 || t->found) {
+    if (cmd != NULL && strcmp(cmd->name, "search.find") == 0) {
+      tty_find();
+      return 1;
+    }
+    if (cmd != NULL && strcmp(cmd->name, "search.next") == 0) {
+      find_next(t, -1);
+      return 1;
+    }
+    if (cmd != NULL && strcmp(cmd->name, "search.prev") == 0) {
+      find_next(t, 1);
+      return 1;
+    }
+    if (c == '\x1b' && !alt) {
+      t->scroll = 0;
+      t->found = 0;
+      return 1;
+    }
   }
   /* A dead terminal is about to close (tty_tidy); a key in between is not
    * text for an empty buffer. */
@@ -423,6 +571,8 @@ int tty_key(int c) {
   n = vt_key(t->vt, c, c < 256 ? 0 : (shift ? 1 : 0) | (alt ? 2 : 0) | (ctrl ? 4 : 0), out);
   if (n > 0) {
     t->scroll = 0;
+    t->found = 0;
+    t->sel = 0;
     tty_write(t, out, n);
   }
   return 1;
@@ -439,13 +589,96 @@ void tty_paste(const char *s, int len) {
   if (vt_mode(t->vt, VT_MODE_BRACKETED_PASTE)) tty_write(t, "\x1b[201~", 6);
 }
 
-/* The wheel scrolls the scrollback; nothing else in the text area is the
- * terminal's business. */
+/* The selected text, a line to a row with its trailing blanks dropped. */
+static char *sel_text(const struct tty *t, int *outlen) {
+  struct abuf ab = ABUF_INIT;
+  int ay = t->say, ax = t->sax, by = t->sby, bx = t->sbx, i;
+  if (by < ay || (by == ay && bx < ax)) {
+    ay = t->sby, ax = t->sbx;
+    by = t->say, bx = t->sax;
+  }
+  for (i = ay; i <= by; i++) {
+    int n = 0, x, x0 = i == ay ? ax : 0, x1 = i == by ? bx : t->cols - 1, start = ab.len;
+    const struct vt_cell *line = vt_line(t->vt, i, &n);
+    for (x = x0; line != NULL && x <= x1 && x < n; x++) {
+      char ch[12];
+      int nb;
+      if (line[x].w == 0) continue;
+      nb = line[x].cp >= 0x20 ? utf8_encode(line[x].cp, ch) : (ch[0] = ' ', 1);
+      if (line[x].comb) nb += utf8_encode(line[x].comb, ch + nb);
+      ab_append(&ab, ch, nb);
+    }
+    while (ab.len > start && ab.b[ab.len - 1] == ' ') ab.len--;
+    if (i < by) ab_append(&ab, "\n", 1);
+  }
+  *outlen = ab.len;
+  if (ab.b == NULL) return xstrdup("");
+  return ab.b;
+}
+
+static int selected(const struct tty *t, int i, int x) {
+  int ay = t->say, ax = t->sax, by = t->sby, bx = t->sbx;
+  if (t->found && i == t->fy && x >= t->fx0 && x < t->fx1) return 1;
+  if (t->sel != 2) return 0;
+  if (by < ay || (by == ay && bx < ax)) {
+    ay = t->sby, ax = t->sbx;
+    by = t->say, bx = t->sax;
+  }
+  if (i < ay || i > by) return 0;
+  if (i == ay && x < ax) return 0;
+  if (i == by && x > bx) return 0;
+  return 1;
+}
+
+/* The mouse in the text area, at screen cell (ev->x, ev->y). */
 void tty_mouse(const struct mouse_event *ev) {
   struct tty *t = V.buf->tty;
+  int x, y, n;
+  char out[32];
   if (t == NULL) return;
-  if (ev->type == MOUSE_WHEEL_UP) scroll_by(t, 3);
-  else if (ev->type == MOUSE_WHEEL_DOWN) scroll_by(t, -3);
+  x = ev->x - V.screenx;
+  y = ev->y - V.screeny;
+
+  /* The program's, when it asked and the view is where it is drawing. */
+  if (!(ev->mods & MOUSE_MOD_SHIFT) && t->scroll == 0 && !t->exited &&
+      vt_mode(t->vt, VT_MODE_MOUSE)) {
+    n = vt_mouse(t->vt, ev, x, y, out);
+    if (n > 0) tty_write(t, out, n);
+    return;
+  }
+
+  if (ev->type == MOUSE_WHEEL_UP || ev->type == MOUSE_WHEEL_DOWN) {
+    if (vt_mode(t->vt, VT_MODE_ALT_SCREEN)) {
+      int i, k = vt_key(t->vt, ev->type == MOUSE_WHEEL_UP ? ARROW_UP : ARROW_DOWN, 0, out);
+      for (i = 0; i < 3 && !t->exited; i++) tty_write(t, out, k);
+      return;
+    }
+    scroll_by(t, ev->type == MOUSE_WHEEL_UP ? 3 : -3);
+    return;
+  }
+  if (ev->button != MOUSE_BUTTON_LEFT) return;
+  if (y < 0) y = 0;
+  if (y >= V.screenrows) y = V.screenrows - 1;
+  if (x < 0) x = 0;
+  if (x >= t->cols) x = t->cols - 1;
+  if (ev->type == MOUSE_PRESS) {
+    t->sel = 1;
+    t->found = 0;
+    t->say = t->sby = y - t->scroll;
+    t->sax = t->sbx = x;
+  } else if (ev->type == MOUSE_DRAG && t->sel) {
+    t->sel = 2;
+    t->sby = y - t->scroll;
+    t->sbx = x;
+  } else if (ev->type == MOUSE_RELEASE && t->sel == 2) {
+    char *s = sel_text(t, &n);
+    clipboard_set(s, n);
+    free(s);
+    clipboard_sync_system();
+    editor_set_status_message("Copied %d bytes", n);
+  } else if (ev->type == MOUSE_RELEASE) {
+    t->sel = 0;
+  }
 }
 
 /* ---- drawing ------------------------------------------------------------- */
@@ -498,8 +731,11 @@ void tty_draw(void) {
       if (line != NULL && x < n) {
         const struct vt_cell *c = &line[x];
         if (c->w == 0) continue;   /* drawn with its left half */
-        grid_color(c->fg, c->bg,
-                   c->attrs & (VT_BOLD | VT_UNDERLINE | VT_ITALIC | VT_REVERSE));
+        if (selected(t, y - t->scroll, x))
+          grid_role(ROLE_SELECTION);
+        else
+          grid_color(c->fg, c->bg,
+                     c->attrs & (VT_BOLD | VT_UNDERLINE | VT_ITALIC | VT_REVERSE));
         if (c->cp == 0 || c->cp < 0x20 || (c->attrs & VT_INVISIBLE)) {
           ch[0] = ' ';
         } else {
@@ -509,7 +745,7 @@ void tty_draw(void) {
         grid_put_char(V.screeny + y, V.screenx + x, ch, nb,
                       c->w == 2 && x + 1 < cols ? 2 : 1);
       } else {
-        grid_role(ROLE_TEXT);
+        grid_role(line != NULL && selected(t, y - t->scroll, x) ? ROLE_SELECTION : ROLE_TEXT);
         grid_put_char(V.screeny + y, V.screenx + x, " ", 1, 1);
       }
     }
@@ -536,6 +772,8 @@ void tty_status(char *dst, size_t n) {
   struct tty *t = V.buf->tty;
   if (t == NULL) {
     dst[0] = '\0';
+  } else if (t->found) {
+    snprintf(dst, n, "%d lines back  F3 older  Esc", t->scroll);
   } else if (t->scroll > 0) {
     snprintf(dst, n, "%d lines back  Shift-PgDn", t->scroll);
   } else if (tty_busy(t)) {

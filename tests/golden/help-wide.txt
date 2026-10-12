@@ -5,19 +5,19 @@ be╔═════════════════════════
 ga║ FILES                                 EDITING                            ║
 ~ ║   Ctrl-S         Save file              Enter          Insert new line   ║
 ~ ║   Ctrl-O         Open a file            Tab            Indent the lines  ║
-~ ║   Ctrl-N         New buffer             Shift-Tab      Dedent the lines  ║
-~ ║   Ctrl-W         Close this buffer      Bksp/Ctrl-H    Delete before     ║
-~ ║   Ctrl-Q         Quit                   Del            Delete at cursor  ║
-~ ║   F1             This help screen       Alt-Backspace  Delete prev word  ║
-~ ║                                         Ctrl-Del       Delete next word  ║
-~ ║ BUFFERS                                 Ctrl-K         Delete to end     ║
-~ ║   Ctrl-PgDn      Next buffer            Alt-C          Duplicate line    ║
-~ ║   Ctrl-PgUp      Previous buffer        Alt-Up         Move line up      ║
-~ ║                                         Alt-Down       Move line down    ║
-~ ║ MENUS                                   Ctrl-J         Join lines        ║
-~ ║   F10            Open the menu bar      Alt-;          Toggle comment    ║
-~ ║   Alt-letter     Open that menu         Ctrl-T         Swap characters   ║
-~ ║   Ctrl-Space     Command palette        Alt-|          Filter through sh ║
+~ ║   Alt-O          Recent files           Shift-Tab      Dedent the lines  ║
+~ ║   Ctrl-N         New buffer             Bksp/Ctrl-H    Delete before     ║
+~ ║   Ctrl-W         Close this buffer      Del            Delete at cursor  ║
+~ ║   Ctrl-Q         Quit                   Alt-Backspace  Delete prev word  ║
+~ ║   F1             This help screen       Ctrl-Del       Delete next word  ║
+~ ║                                         Ctrl-K         Delete to end     ║
+~ ║ BUFFERS                                 Alt-C          Duplicate line    ║
+~ ║   Ctrl-PgDn      Next buffer            Alt-Up         Move line up      ║
+~ ║   Ctrl-PgUp      Previous buffer        Alt-Down       Move line down    ║
+~ ║                                         Ctrl-J         Join lines        ║
+~ ║ MENUS                                   Alt-;          Toggle comment    ║
+~ ║   F10            Open the menu bar      Alt-(          Record/stop macro ║
+~ ║   Alt-letter     Open that menu         Alt-)          Play macro        ║
 ~ ║ In prompts: Enter accepts   Esc cancels                                  ║
 ~ ║ PgUp/PgDn scroll   any other key returns                                 ║
 ~ ╚══════════════════════════════════════════════════════════════════════════╝

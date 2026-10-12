@@ -94,6 +94,17 @@ static const struct theme_entry theme_256[ROLE_COUNT] = {
    * read as a link. */
   /* ROLE_DIAG_ERROR       */ {203, DEFAULT_COLOR, 0, 0, 0},
   /* ROLE_DIAG_WARNING     */ {178, DEFAULT_COLOR, 0, 0, 0},
+
+  /* Tints a shade or two off the darkest grey, so the text on them keeps
+   * its own colours; the ruler between the line's and the word's. Whitespace
+   * is drawn darker than a comment, because it is not there to be read. */
+  /* ROLE_CURRENT_LINE     */ {DEFAULT_COLOR, 235, 0, 0, 0},
+  /* ROLE_OCCURRENCE       */ {DEFAULT_COLOR, 239, 0, 0, 0},
+  /* ROLE_RULER            */ {DEFAULT_COLOR, 236, 0, 0, 0},
+  /* ROLE_WHITESPACE       */ {239, DEFAULT_COLOR, 0, 0, 0},
+  /* ROLE_GIT_ADDED        */ {71,  DEFAULT_COLOR, 0, 0, 0},
+  /* ROLE_GIT_CHANGED      */ {179, DEFAULT_COLOR, 0, 0, 0},
+  /* ROLE_GIT_DELETED      */ {167, DEFAULT_COLOR, 0, 0, 0},
 };
 
 /* The sixteen-color theme, for terminals that cannot do better. */
@@ -146,12 +157,24 @@ static const struct theme_entry theme_16[ROLE_COUNT] = {
    * unreadable on a light background. */
   /* ROLE_DIAG_ERROR       */ {9, DEFAULT_COLOR, 0, 0, 0},
   /* ROLE_DIAG_WARNING     */ {3, DEFAULT_COLOR, 0, 0, 0},
+
+  /* Sixteen colours have no shade quiet enough to lie under a whole line,
+   * so the current line goes untinted there; the word and the ruler take the
+   * one dim background there is. */
+  /* ROLE_CURRENT_LINE     */ {DEFAULT_COLOR, DEFAULT_COLOR, 0, 0, 0},
+  /* ROLE_OCCURRENCE       */ {DEFAULT_COLOR, 8, 0, 0, 0},
+  /* ROLE_RULER            */ {DEFAULT_COLOR, 8, 0, 0, 0},
+  /* ROLE_WHITESPACE       */ {8, DEFAULT_COLOR, 0, 0, 0},
+  /* ROLE_GIT_ADDED        */ {2, DEFAULT_COLOR, 0, 0, 0},
+  /* ROLE_GIT_CHANGED      */ {3, DEFAULT_COLOR, 0, 0, 0},
+  /* ROLE_GIT_DELETED      */ {1, DEFAULT_COLOR, 0, 0, 0},
 };
 
 static const struct theme_entry *active = theme_16;
 static int active_depth = 16;
 static int italic_wanted = 1;   /* the [view] italic setting */
 static int italic_able = 1;     /* what TERM says the terminal can do */
+static int truecolor = 0;       /* COLORTERM says 24-bit colour is welcome */
 
 /* How many colors the terminal claims.
  *
@@ -198,7 +221,13 @@ void theme_init(void) {
   active_depth = theme_detect_depth(term, getenv("COLORTERM"));
   active = (active_depth >= 256) ? theme_256 : theme_16;
   italic_able = theme_detect_italic(term);
+  {
+    const char *ct = getenv("COLORTERM");
+    truecolor = ct != NULL && (strstr(ct, "truecolor") != NULL || strstr(ct, "24bit") != NULL);
+  }
 }
+
+int theme_truecolor(void) { return truecolor; }
 
 /* The setting is what the user asked for, which is what gets saved; whether
  * italic is drawn is that and the terminal both. */
@@ -240,12 +269,45 @@ void theme_index_rgb(int c, int *r, int *g, int *b) {
   }
 }
 
+/* A 24-bit colour as the nearest of the 256: the cube's nearest step on each
+ * axis, or the grey ramp when the colour is close to grey. */
+int theme_rgb_to_256(int r, int g, int b) {
+  static const int level[6] = {0, 95, 135, 175, 215, 255};
+  int ri, gi, bi, best, cube, grey, gidx, cr, cg, cb;
+  long dc, dg;
+  #define NEAREST(v) ((v) < 48 ? 0 : (v) < 115 ? 1 : ((v) - 35) / 40)
+  ri = NEAREST(r);
+  gi = NEAREST(g);
+  bi = NEAREST(b);
+  #undef NEAREST
+  cube = 16 + 36 * ri + 6 * gi + bi;
+  cr = level[ri];
+  cg = level[gi];
+  cb = level[bi];
+  grey = (r + g + b) / 3;
+  gidx = grey > 238 ? 23 : (grey - 3) / 10;
+  if (gidx < 0) gidx = 0;
+  {
+    int gv = 8 + gidx * 10;
+    dc = (long)(r - cr) * (r - cr) + (long)(g - cg) * (g - cg) + (long)(b - cb) * (b - cb);
+    dg = (long)(r - gv) * (r - gv) + (long)(g - gv) * (g - gv) + (long)(b - gv) * (b - gv);
+  }
+  best = dg < dc ? 232 + gidx : cube;
+  return best;
+}
+
 /* A colour a program in the integrated terminal asked for, as one this terminal
- * can show: itself where there are 256, the nearest of the sixteen where there
- * are not. -1, the terminal's default, is always showable. */
+ * can show: a 24-bit colour as itself where the terminal says it takes them
+ * (COLORTERM), else as the nearest of the 256; an index as itself where there
+ * are 256, else the nearest of the sixteen. -1, the terminal's default, is
+ * always showable. */
 int theme_fit_color(int c) {
   int r, g, b, i, best = 0;
   long bestd = -1;
+  if (c >= 0 && (c & COLOR_RGB)) {
+    if (truecolor) return c;
+    c = theme_rgb_to_256((c >> 16) & 255, (c >> 8) & 255, c & 255);
+  }
   if (c < 0 || c > 255) return -1;
   if (active_depth >= 256 || c < 16) return c;
   theme_index_rgb(c, &r, &g, &b);
@@ -297,9 +359,15 @@ int style_is_default(const struct style *s) {
  * shorter and what every terminal has understood since before the 256-color cube
  * existed -- so a gray gutter is still "ESC[90m" whichever theme is loaded. */
 void style_emit_color(struct abuf *ab, int color, int is_bg) {
-  char buf[24];
+  char buf[32];
   int n;
   if (color < 0) return;
+  if (color & COLOR_RGB) {
+    n = snprintf(buf, sizeof(buf), "\x1b[%d;2;%d;%d;%dm", is_bg ? 48 : 38,
+                 (color >> 16) & 255, (color >> 8) & 255, color & 255);
+    ab_append(ab, buf, n);
+    return;
+  }
   if (color < 8)
     n = snprintf(buf, sizeof(buf), "\x1b[%dm", (is_bg ? 40 : 30) + color);
   else if (color < 16)

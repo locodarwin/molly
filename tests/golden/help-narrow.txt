@@ -5,6 +5,7 @@ be╔════════════ Keyboard Reference ══════�
 ga║ FILES                                      ║
 ~ ║   Ctrl-S         Save file                 ║
 ~ ║   Ctrl-O         Open a file               ║
+~ ║   Alt-O          Recent files              ║
 ~ ║   Ctrl-N         New buffer                ║
 ~ ║   Ctrl-W         Close this buffer         ║
 ~ ║   Ctrl-Q         Quit                      ║
@@ -17,7 +18,6 @@ ga║ FILES                                      ║
 ~ ║ MENUS                                      ║
 ~ ║   F10            Open the menu bar         ║
 ~ ║   Alt-letter     Open that menu            ║
-~ ║   Ctrl-Space     Command palette           ║
 ~ ║ In prompts: Enter accepts   Esc cancels    ║
 ~ ║ PgUp/PgDn scroll   any other key returns   ║
 ~ ╚════════════════════════════════════════════╝

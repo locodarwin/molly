@@ -376,6 +376,7 @@ void editor_insert_row(int at, char *s, size_t len) {
   syntax_invalidate_from(at);
   lsp_rows_moved(V.buf, at, 1);
   nav_rows_moved(V.buf, at, 1);
+  fold_rows_moved(V.buf, at, 1);
 
   B.dirty++;
 }
@@ -395,6 +396,7 @@ void editor_delete_row(int at) {
   B.edits++;
   lsp_rows_moved(V.buf, at, -1);
   nav_rows_moved(V.buf, at, -1);
+  fold_rows_moved(V.buf, at, -1);
   /* Deleting shifts every row below up one, so their stored entry states belong
    * to the wrong rows now -- and the deleted row may have opened a comment. */
   syntax_invalidate_from(at);
@@ -528,6 +530,10 @@ void editor_save(void) {
     editor_set_status_message("A terminal is not a file to save.");
     return;
   }
+  if (B.readonly) {
+    editor_set_status_message("This file is read-only. View > Read only turns that off.");
+    return;
+  }
   if (B.filename == NULL) {
     char *name = editor_prompt("Save as: %s (ESC to cancel)", NULL);
     if (name == NULL) {
@@ -632,6 +638,7 @@ void editor_save(void) {
     if (have_after) B.on_disk_mtime = st_after.st_mtim;
     if (B.recovery_path[0] != '\0') unlink(B.recovery_path);
     lsp_buffer_saved(V.buf);
+    git_refresh(V.buf);
     return;
   }
 
@@ -682,6 +689,7 @@ void editor_save(void) {
   if (have_after) B.on_disk_mtime = st_after.st_mtim;
   if (B.recovery_path[0] != '\0') unlink(B.recovery_path);
   lsp_buffer_saved(V.buf);
+  git_refresh(V.buf);
 }
 
 /* All of fp, in one allocation with a byte to spare past the end. NULL if the
@@ -849,6 +857,10 @@ void editor_open(char *filename) {
   fclose(fp);
   /* The rows are the snapshot already: they were read into it. */
   B.dirty = 0;
+  /* A file molly could not write back is opened read-only, so the edits
+   * that a save would then throw away are refused as they are made, rather
+   * than at the end. */
+  B.readonly = access(filename, W_OK) != 0;
 }
 
 /* Startup recovery UX: when the file being opened has a recovery file left by

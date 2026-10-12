@@ -42,8 +42,11 @@ def run(argv, keys, rows=24, cols=80, settle=0.4, env=None, status=False):
         # tests, and on a machine with clangd installed each would start one --
         # and draw its diagnostics into screens that a machine without it
         # does not have. A test of the client asks for it back through `env`.
+        # MOLLY_STATE likewise: the recent-files list is state molly writes as
+        # it works, and a test run must neither read a person's list nor add
+        # to it.
         environ = dict(os.environ, TERM="xterm", COLORTERM="", MOLLY_CONFIG="",
-                       MOLLY_LSP="off")
+                       MOLLY_LSP="off", MOLLY_STATE="")
         if env:
             environ.update(env)
         os.execve(argv[0], argv, environ)
@@ -218,7 +221,7 @@ def run_until_signal(argv, sig, rows=24, cols=80, startup=0.5, keys=()):
             if slave > 2:
                 os.close(slave)
             os.execve(argv[0], argv, dict(os.environ, TERM="xterm", COLORTERM="",
-                                          MOLLY_LSP="off"))
+                                          MOLLY_LSP="off", MOLLY_STATE=""))
         finally:
             os._exit(127)
 

@@ -87,6 +87,13 @@ static const struct theme_entry theme_256[ROLE_COUNT] = {
   /* ROLE_SYN_PREPROC      */ {140, DEFAULT_COLOR, 0, 0, 0},
   /* ROLE_SYN_HEADING      */ {110, DEFAULT_COLOR, 0, 1, 0},
   /* ROLE_SYN_EMPHASIS     */ {186, DEFAULT_COLOR, 0, 0, 0},
+
+  /* A soft red and an amber, on the terminal's background like the rest of the
+   * text. Underlined where they are drawn, not here: the message bar uses the
+   * same two for the word "error" or "warning", and an underline there would
+   * read as a link. */
+  /* ROLE_DIAG_ERROR       */ {203, DEFAULT_COLOR, 0, 0, 0},
+  /* ROLE_DIAG_WARNING     */ {178, DEFAULT_COLOR, 0, 0, 0},
 };
 
 /* The sixteen-color theme, for terminals that cannot do better. */
@@ -134,6 +141,11 @@ static const struct theme_entry theme_16[ROLE_COUNT] = {
   /* ROLE_SYN_PREPROC      */ {13, DEFAULT_COLOR, 0, 0, 0},
   /* ROLE_SYN_HEADING      */ {12, DEFAULT_COLOR, 0, 1, 0},
   /* ROLE_SYN_EMPHASIS     */ {14, DEFAULT_COLOR, 0, 0, 0},
+
+  /* Bright red, and the plain yellow rather than the bright one, which is
+   * unreadable on a light background. */
+  /* ROLE_DIAG_ERROR       */ {9, DEFAULT_COLOR, 0, 0, 0},
+  /* ROLE_DIAG_WARNING     */ {3, DEFAULT_COLOR, 0, 0, 0},
 };
 
 static const struct theme_entry *active = theme_16;

@@ -38,7 +38,12 @@ def run(argv, keys, rows=24, cols=80, settle=0.4, env=None, status=False):
         # with `line numbers = on` would see three dozen failures that nobody
         # else could reproduce. Empty means "read no configuration file"; a test
         # that wants one points MOLLY_CONFIG at it through `env`.
-        environ = dict(os.environ, TERM="xterm", COLORTERM="", MOLLY_CONFIG="")
+        # MOLLY_LSP is pinned off for the same reason: C files open in dozens of
+        # tests, and on a machine with clangd installed each would start one --
+        # and draw its diagnostics into screens that a machine without it
+        # does not have. A test of the client asks for it back through `env`.
+        environ = dict(os.environ, TERM="xterm", COLORTERM="", MOLLY_CONFIG="",
+                       MOLLY_LSP="off")
         if env:
             environ.update(env)
         os.execve(argv[0], argv, environ)
@@ -212,7 +217,8 @@ def run_until_signal(argv, sig, rows=24, cols=80, startup=0.5, keys=()):
                 os.dup2(slave, fd)
             if slave > 2:
                 os.close(slave)
-            os.execve(argv[0], argv, dict(os.environ, TERM="xterm", COLORTERM=""))
+            os.execve(argv[0], argv, dict(os.environ, TERM="xterm", COLORTERM="",
+                                          MOLLY_LSP="off"))
         finally:
             os._exit(127)
 

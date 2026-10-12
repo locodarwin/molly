@@ -6,6 +6,7 @@ gamma   ║  editor  tab width                                         8 ║
 ~       ║  editor  insert spaces                                   off ║
 ~       ║  editor  auto indent                                      on ║
 ~       ║  editor  undo steps                                    32768 ║
+~       ║  editor  language servers                                 on ║
 ~       ║  view    line numbers                                    off ║
 ~       ║  view    menu bar                                         on ║
 ~       ║  view    tab bar                                          on ║
@@ -20,7 +21,6 @@ gamma   ║  editor  tab width                                         8 ║
 ~       ║ [editor] columns a tab character occupies (1-16)             ║
 ~       ║ Space/←→ change  Enter keep  Ctrl-S save  Esc undo all       ║
 ~       ╚══════════════════════════════════════════════════════════════╝
-~
 sample.txt - 3 lines                                                 Ln 1, Col 1
 HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | F3 = next | F1 = help
 --- attrs ---
@@ -45,8 +45,8 @@ g.......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 g.......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 g.......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 g.......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-g.........gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+g.......gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+RRRRRRRRRRggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggRRRRRR
 
 --- colors ---
 1: 0-79 7/0
@@ -68,8 +68,9 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 18: 0-0 8/-  8-8 7/8  9-70 15/8  71-71 7/8  72-73 8/0
 19: 0-0 8/-  8-8 7/8  9-70 15/8  71-71 7/8  72-73 8/0
 20: 0-0 8/-  8-8 7/8  9-70 15/8  71-71 7/8  72-73 8/0
-21: 0-0 8/-  8-71 7/8  72-73 8/0
-22: 0-0 8/-  10-73 8/0
+21: 0-0 8/-  8-8 7/8  9-70 15/8  71-71 7/8  72-73 8/0
+22: 0-0 8/-  8-71 7/8  72-73 8/0
+23: 10-73 8/0
 --- modifiers ---
 1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u  39-39 u
 3: 36-42 b

@@ -86,6 +86,8 @@ static const struct menu_item view_items[] = {
 };
 static const struct menu_item go_items[] = {
   {"goto.line", 0}, SEP,
+  /* X and V, as Search's pair of results have them: N and P are the buffers'. */
+  {"goto.next-problem", 2}, {"goto.prev-problem", 3}, SEP,
   /* N and P, since Go has nothing else competing for either. */
   {"buffer.next", 0}, {"buffer.prev", 0}, {"buffer.list", 0},
 };

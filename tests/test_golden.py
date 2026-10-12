@@ -653,6 +653,30 @@ def main():
     check("cursors-narrow", ["\x04", "\x04"], rows=8, cols=24,
           files={"sample.txt": MATCHES})
 
+    # A language server's diagnostics, from tests/fake_lsp.py named in a
+    # mollyrc: an error and a warning in their colours, a note in the text's
+    # own, all underlined, and the counts on the status bar. The pause is for
+    # the interpreter to start; the screen does not depend on how long it took.
+    # MOLLY_LSP back to empty, because the harness pins it off.
+    fake = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fake_lsp.py")
+    lsp_files = {"sample.c": "int a;\nint BAD = 1; /* WARN */\nNOTE\n",
+                 "lsprc": "[syntax c]\nlanguage server = python3 -I %s\n" % fake}
+    lsp_env = {"MOLLY_CONFIG": "lsprc", "MOLLY_LSP": ""}
+    check("lsp-diagnostics", [2.0], rows=10, cols=50, files=lsp_files,
+          args=["sample.c"], env=lsp_env)
+    check("lsp-diagnostics-256", [2.0], rows=10, cols=50, files=lsp_files,
+          args=["sample.c"], env=dict(lsp_env, TERM="xterm-256color"))
+    # Onto the error: the message bar says what it is, its severity coloured.
+    check("lsp-message", [2.0, "\x1b[B", "\x1b[C"], rows=10, cols=50,
+          files=lsp_files, args=["sample.c"], env=lsp_env)
+    check("lsp-message-256", [2.0, "\x1b[B", "\x1b[C"], rows=10, cols=50,
+          files=lsp_files, args=["sample.c"],
+          env=dict(lsp_env, TERM="xterm-256color"))
+    # Narrow enough that the message is cut, and the counts are what the status
+    # bar keeps of its right-hand side or loses.
+    check("lsp-narrow", [2.0, "\x1b[B", "\x1b[C"], rows=8, cols=24,
+          files=lsp_files, args=["sample.c"], env=lsp_env)
+
     print()
     if failed:
         for name, detail in failed:

@@ -1140,6 +1140,11 @@ int lsp_enabled(void) {
   return env == NULL || strcmp(env, "off") != 0;
 }
 
+/* The setting as the user left it, which is what the Options dialog shows and
+ * what Save Settings writes. Not lsp_enabled(): a test harness's MOLLY_LSP=off
+ * must not end up in someone's mollyrc as their choice. */
+int lsp_setting(void) { return enabled; }
+
 void lsp_set_enabled(int on) {
   enabled = on ? 1 : 0;
   if (!enabled) lsp_stop_all();

@@ -1,15 +1,15 @@
 --- screen ---
  File  Edit  Search  View  Go  Window  Help
- sample.txt  second.txt   ┌──────────────────────────────┐
-alpha                     │  Go to line…          Ctrl-G │
-beta                      ├──────────────────────────────┤
-gamma                     │  Next buffer       Ctrl-PgDn │
-~                         │  Previous buffer   Ctrl-PgUp │
-~                         │  Buffers…             Ctrl-B │
-~                         └──────────────────────────────┘
-~
-~
-~
+ sample.txt  second.txt   ┌───────────────────────────────┐
+alpha                     │  Go to line…           Ctrl-G │
+beta                      ├───────────────────────────────┤
+gamma                     │  Next problem              F2 │
+~                         │  Previous problem    Shift-F2 │
+~                         ├───────────────────────────────┤
+~                         │  Next buffer        Ctrl-PgDn │
+~                         │  Previous buffer    Ctrl-PgUp │
+~                         │  Buffers…              Ctrl-B │
+~                         └───────────────────────────────┘
 ~
 ~
 ~
@@ -18,41 +18,41 @@ gamma                     │  Next buffer       Ctrl-PgDn │
 --- attrs ---
 gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-..........................gggggggggggggggggggggggggggggggggg
-..........................gggggggggggggggggggggggggggggggggg
-..........................gggggggggggggggggggggggggggggggggg
-g.........................gggggggggggggggggggggggggggggggggg
-g.........................gggggggggggggggggggggggggggggggggg
-g.........................gggggggggggggggggggggggggggggggggg
-g...........................gggggggggggggggggggggggggggggggg
-g
-g
-g
+..........................ggggggggggggggggggggggggggggggggggg
+..........................ggggggggggggggggggggggggggggggggggg
+..........................ggggggggggggggggggggggggggggggggggg
+g.........................ggggggggggggggggggggggggggggggggggg
+g.........................ggggggggggggggggggggggggggggggggggg
+g.........................ggggggggggggggggggggggggggggggggggg
+g.........................ggggggggggggggggggggggggggggggggggg
+g.........................ggggggggggggggggggggggggggggggggggg
+g.........................ggggggggggggggggggggggggggggggggggg
+g...........................ggggggggggggggggggggggggggggggggg
 g
 g
 RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 
 --- colors ---
 1: 0-25 7/0  26-29 15/4  30-63 7/0
-2: 0-11 15/8  12-25 7/0  26-57 7/8  58-63 7/0
-3: 26-26 7/8  27-56 15/4  57-57 7/8  58-59 8/0
-4: 26-57 7/8  58-59 8/0
-5: 26-26 7/8  27-56 15/8  57-57 7/8  58-59 8/0
-6: 0-0 8/-  26-26 7/8  27-56 15/8  57-57 7/8  58-59 8/0
-7: 0-0 8/-  26-26 7/8  27-56 15/8  57-57 7/8  58-59 8/0
-8: 0-0 8/-  26-57 7/8  58-59 8/0
-9: 0-0 8/-  28-59 8/0
-10: 0-0 8/-
-11: 0-0 8/-
-12: 0-0 8/-
+2: 0-11 15/8  12-25 7/0  26-58 7/8  59-63 7/0
+3: 26-26 7/8  27-57 15/4  58-58 7/8  59-60 8/0
+4: 26-58 7/8  59-60 8/0
+5: 26-26 7/8  27-57 0/8  58-58 7/8  59-60 8/0
+6: 0-0 8/-  26-26 7/8  27-57 0/8  58-58 7/8  59-60 8/0
+7: 0-0 8/-  26-58 7/8  59-60 8/0
+8: 0-0 8/-  26-26 7/8  27-57 15/8  58-58 7/8  59-60 8/0
+9: 0-0 8/-  26-26 7/8  27-57 15/8  58-58 7/8  59-60 8/0
+10: 0-0 8/-  26-26 7/8  27-57 15/8  58-58 7/8  59-60 8/0
+11: 0-0 8/-  26-58 7/8  59-60 8/0
+12: 0-0 8/-  28-60 8/0
 13: 0-0 8/-
 14: 0-0 8/-
 --- modifiers ---
 1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u  39-39 u
 2: 0-11 b
 3: 29-29 u
-5: 29-29 u
-6: 29-29 u
-7: 29-29 u
+8: 29-29 u
+9: 29-29 u
+10: 29-29 u
 --- cursor ---
 row 3 col 1 visible 0

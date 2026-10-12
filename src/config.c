@@ -207,6 +207,7 @@ static int live_auto_indent(void) { return indent_auto_default(); }
 
 static void apply_undo_steps(int v) { undo_set_max_steps(v); }
 static int live_undo_steps(void) { return undo_max_steps(); }
+static void apply_lsp(int v) { lsp_set_enabled(v); }
 
 /* The shell filter's two limits. Settings rather than constants because what
  * counts as "too slow" is the difference between `sort` and `black`, and
@@ -244,6 +245,11 @@ static struct setting settings[] = {
   {"editor", "undo steps", SET_INT, 1, 1000000, 32768, 0,
    "how many undo steps to keep",
    apply_undo_steps, live_undo_steps},
+  /* On, because a server that is not installed costs one look along PATH and
+   * nothing else, and one that is installed is why someone installed it. */
+  {"editor", "language servers", SET_BOOL, 0, 0, 1, 0,
+   "start the language server a filetype names, where it is installed",
+   apply_lsp, lsp_setting},
 
   {"view", "line numbers", SET_BOOL, 0, 0, 0, 0,
    "show the line-number gutter",

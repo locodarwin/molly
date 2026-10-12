@@ -394,6 +394,10 @@ int syntax_set_line(const char *lang, const char *key, const char *value,
 static const struct { const char *lang, *key, *val; } builtin[] = {
   /* --- C */
   {"c", "extensions", "c h"},
+  /* The servers each language's own project ships or recommends. Each one is
+   * looked for on PATH before it is started, and a missing one is silence:
+   * see lsp.c. clangd serves C and C++ both, and one is started for the two. */
+  {"c", "language server", "clangd"},
   {"c", "line comment", "//"},
   {"c", "block comment", "/* */"},
   {"c", "strings", "\" '"},
@@ -412,6 +416,7 @@ static const struct { const char *lang, *key, *val; } builtin[] = {
 
   /* --- C++: C's rules with its own words. */
   {"cpp", "extensions", "cc cpp cxx hh hpp hxx ipp"},
+  {"cpp", "language server", "clangd"},
   {"cpp", "line comment", "//"},
   {"cpp", "block comment", "/* */"},
   {"cpp", "strings", "\" '"},
@@ -434,6 +439,10 @@ static const struct { const char *lang, *key, *val; } builtin[] = {
 
   /* --- C# */
   {"cs", "extensions", "cs"},
+  /* No server: C#'s is launched differently by every distribution of it, so
+   * there is no one command line to ship. The protocol's name for it is not
+   * molly's, though, which matters to whoever configures one. */
+  {"cs", "language id", "csharp"},
   {"cs", "line comment", "//"},
   {"cs", "block comment", "/* */"},
   {"cs", "strings", "\" '"},
@@ -455,6 +464,7 @@ static const struct { const char *lang, *key, *val; } builtin[] = {
 
   /* --- Rust */
   {"rust", "extensions", "rs"},
+  {"rust", "language server", "rust-analyzer"},
   {"rust", "line comment", "//"},
   {"rust", "block comment", "/* */"},
   {"rust", "strings", "\" '"},
@@ -470,6 +480,7 @@ static const struct { const char *lang, *key, *val; } builtin[] = {
 
   /* --- Python */
   {"python", "extensions", "py pyw pyi"},
+  {"python", "language server", "pylsp"},
   {"python", "line comment", "#"},
   /* Triple quotes are a region that spans rows, which is what makes them
    * different from the single-quote forms below. */

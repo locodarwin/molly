@@ -407,6 +407,11 @@ struct editorConfig {
   int clip_block;     /* it came from a block selection: a line per row */
   char statusmsg[128];
   time_t statusmsg_time;
+  /* Where the cursor was when the message was set. A diagnostic under the
+   * cursor takes the bar from a message once the cursor has moved off where
+   * it was said: see draw_message_bar. */
+  const struct buffer *statusmsg_buf;
+  int statusmsg_cx, statusmsg_cy;
   struct termios orig_termios;
 
   /* The open buffers. See buflist.c.
@@ -675,6 +680,12 @@ struct json_doc;
 #define LSP_REQ_COMPLETION 3
 #define LSP_REQ_SHUTDOWN   4
 
+/* A piece of a row that a diagnostic covers: bytes [x0, x1). See lspui.c. */
+struct diag_span {
+  int x0, x1;
+  int severity;
+};
+
 /* --- the event loop --------------------------------------------------------
  *
  * What loop_wait returns. The keyboard is reported; every other source is
@@ -808,6 +819,13 @@ enum cell_role {
   ROLE_SYN_PREPROC,
   ROLE_SYN_HEADING,
   ROLE_SYN_EMPHASIS,
+
+  /* What a language server says is wrong, underlined in the text. Two roles
+   * and not four: an error and a warning each have a colour, and information
+   * and hints are only underlined, in whatever colour the text already was --
+   * a fourth colour in the text for "consider" would shout as loud as "wrong". */
+  ROLE_DIAG_ERROR,
+  ROLE_DIAG_WARNING,
   ROLE_COUNT
 };
 
@@ -1054,7 +1072,18 @@ void lsp_diag_clear(struct buffer *b);
 void lsp_idle(void);
 void lsp_rows_moved(struct buffer *b, int at, int delta);
 void lsp_set_enabled(int on);
+int lsp_setting(void);
 void lsp_stop_all(void);
+
+/* lspui.c */
+int lspui_cursor_message(char *dst, size_t n);
+int lspui_problem_jump(int dir);
+int lspui_row_spans(const struct buffer *b, int filerow, const erow *row,
+                    struct diag_span *out, int max);
+unsigned char lspui_severity_role(int sev);
+void lspui_counts(const struct buffer *b, int *errors, int *warnings);
+void lspui_restart(void);
+void lspui_status(void);
 
 /* main.c */
 void editor_cleanup(void);

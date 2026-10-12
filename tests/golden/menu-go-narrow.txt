@@ -3,11 +3,11 @@
 ┌────────────────────────┐
 │  Go to lin      Ctrl-G │
 ├────────────────────────┤
+│  Next prob          F2 │
+│  Previous     Shift-F2 │
+├────────────────────────┤
 │  Next buff   Ctrl-PgDn │
-│  Previous    Ctrl-PgUp │
-│  Buffers…       Ctrl-B │
-└────────────────────────┘
-~
+└───────────────────────▾┘
 ~
 sample.txt - 3 lines
 HELP: Ctrl-S = save | Ctrl
@@ -20,8 +20,8 @@ gggggggggggggggggggggggggg
 gggggggggggggggggggggggggg
 gggggggggggggggggggggggggg
 gggggggggggggggggggggggggg
+gggggggggggggggggggggggggg
 g.gggggggggggggggggggggggg
-g
 RRRRRRRRRRRRRRRRRRRRRRRRRR
 
 --- colors ---
@@ -31,13 +31,12 @@ RRRRRRRRRRRRRRRRRRRRRRRRRR
 4: 0-25 7/8
 5: 0-0 7/8  1-24 0/8  25-25 7/8
 6: 0-0 7/8  1-24 0/8  25-25 7/8
-7: 0-0 7/8  1-24 15/8  25-25 7/8
-8: 0-25 7/8
-9: 0-0 8/-  2-25 8/0
-10: 0-0 8/-
+7: 0-25 7/8
+8: 0-0 7/8  1-24 0/8  25-25 7/8
+9: 0-25 7/8
+10: 0-0 8/-  2-25 8/0
 --- modifiers ---
 1: 1-1 u  3-3 u  5-5 u  7-7 u  9-9 u  12-12 u  14-14 u
 3: 3-3 u
-7: 3-3 u
 --- cursor ---
 row 2 col 1 visible 0

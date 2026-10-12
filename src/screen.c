@@ -143,6 +143,12 @@ void editor_draw_text_row(int y, erow *row, const struct drow *d,
   }
 
   int has_sel = (sel1 > sel0);
+  /* What a language server says is wrong on this row. A handful of spans, so
+   * each character asks each of them; a row with forty problems on it shows
+   * the first eight underlined and the status bar still counts them all. */
+  struct diag_span spans[8];
+  int nspans = (d->filerow < V.buf->numrows)
+      ? lspui_row_spans(V.buf, d->filerow, row, spans, 8) : 0;
   int gw = V.gutter_w;
   int text_cols = TEXT_COLS();
   /* Stop at the end of the slice as well as the edge of the screen. Unwrapped,
@@ -162,8 +168,20 @@ void editor_draw_text_row(int y, erow *row, const struct drow *d,
      * user is being told at that moment is "this is selected". Without a
      * filetype, or with highlighting off, there are no roles and this is the
      * line it always was. */
-    grid_role((has_sel && dcol >= sel0 && dcol < sel1) ? ROLE_SELECTION
+    int selected = has_sel && dcol >= sel0 && dcol < sel1;
+    int sev = 0, k;
+    for (k = 0; k < nspans; k++)
+      if (i >= spans[k].x0 && i < spans[k].x1 &&
+          (sev == 0 || spans[k].severity < sev))
+        sev = spans[k].severity;
+    /* An error or a warning takes its colour over the syntax's, and the other
+     * two keep the syntax's; all four are underlined. The selection outranks
+     * both, and keeps the underline, so selecting a problem does not hide
+     * where it is. */
+    grid_role(selected ? ROLE_SELECTION
+              : (sev == 1 || sev == 2) ? lspui_severity_role(sev)
               : roles ? roles[i] : ROLE_TEXT);
+    if (sev) grid_attrs(ATTR_UNDERLINE);
     if (r[i] == '\t')
       grid_put_char(y, x, " ", 1, 1);
     else
@@ -261,16 +279,27 @@ void screen_draw_status_bar(int focused) {
    * because with cursors scrolled off the top or bottom of the window the
    * number is the only way to know how many places the next keystroke lands
    * in -- and that is exactly the thing worth knowing before typing. */
+  /* Errors and warnings, when there are any: whether this file has something
+   * wrong with it anywhere, not only on screen. Information and hints are not
+   * counted, which is the same line the colours in the text draw. */
+  char probs[32] = "";
+  {
+    int ne, nw;
+    lspui_counts(V.buf, &ne, &nw);
+    if (ne && nw) snprintf(probs, sizeof(probs), "E:%d W:%d  ", ne, nw);
+    else if (ne) snprintf(probs, sizeof(probs), "E:%d  ", ne);
+    else if (nw) snprintf(probs, sizeof(probs), "W:%d  ", nw);
+  }
   int rlen;
   if (V.ncursors > 1)
-    rlen = snprintf(rstatus, sizeof(rstatus), "Ln %d, Col %d  %d cursors",
-        CUR.cy + 1, charcol + 1, V.ncursors);
+    rlen = snprintf(rstatus, sizeof(rstatus), "%sLn %d, Col %d  %d cursors",
+        probs, CUR.cy + 1, charcol + 1, V.ncursors);
   else if (CUR.sel_active)
-    rlen = snprintf(rstatus, sizeof(rstatus), "Ln %d, Col %d  Sel %d",
-        CUR.cy + 1, charcol + 1, selection_bytes());
+    rlen = snprintf(rstatus, sizeof(rstatus), "%sLn %d, Col %d  Sel %d",
+        probs, CUR.cy + 1, charcol + 1, selection_bytes());
   else
-    rlen = snprintf(rstatus, sizeof(rstatus), "Ln %d, Col %d",
-        CUR.cy + 1, charcol + 1);
+    rlen = snprintf(rstatus, sizeof(rstatus), "%sLn %d, Col %d",
+        probs, CUR.cy + 1, charcol + 1);
   if (len > w) len = w;
 
   /* The whole bar is reverse video, so it is filled first and written over.
@@ -289,10 +318,31 @@ void screen_draw_status_bar(int focused) {
 static void draw_message_bar(const struct layer *self) {
   int y = self->y;
   int msglen = strlen(E.statusmsg);
+  char diag[256];
+  int sev;
+  int fresh = msglen && time(NULL) - E.statusmsg_time < 5;
+  int moved = E.statusmsg_buf != V.buf || E.statusmsg_cx != CUR.cx ||
+              E.statusmsg_cy != CUR.cy;
   if (msglen > self->w) msglen = self->w;
   grid_role(ROLE_MESSAGE);
-  if (msglen && time(NULL) - E.statusmsg_time < 5)
+  sev = lspui_cursor_message(diag, sizeof(diag));
+  if (fresh && !(sev && moved)) {
     grid_puts(y, self->x, E.statusmsg, msglen);
+  } else if (sev) {
+    /* The bar says what is wrong where the cursor is -- the severity in its
+     * colour, the message in the bar's. A message the user was just shown
+     * keeps the bar for its five seconds while the cursor stays where it was
+     * said, because it is the answer to something they did; moving onto a
+     * problem is asking about that instead. */
+    int cols;
+    int wlen = (int)strcspn(diag, ":");
+    int dlen = utf8_fit_cols(diag, self->w, &cols);
+    if (wlen > dlen) wlen = dlen;
+    grid_role(lspui_severity_role(sev));
+    grid_puts(y, self->x, diag, wlen);
+    grid_role(ROLE_MESSAGE);
+    grid_puts(y, self->x + wlen, diag + wlen, dlen - wlen);
+  }
   grid_role(ROLE_TEXT);
 }
 
@@ -576,4 +626,9 @@ void editor_set_status_message(const char *fmt, ...) {
   vsnprintf(E.statusmsg, sizeof(E.statusmsg), fmt, ap);
   va_end(ap);
   E.statusmsg_time = time(NULL);
+  E.statusmsg_buf = V.buf;
+  if (V.buf != NULL && V.cursors != NULL) {
+    E.statusmsg_cx = CUR.cx;
+    E.statusmsg_cy = CUR.cy;
+  }
 }

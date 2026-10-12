@@ -56,7 +56,7 @@ def run_interleaved(argv, before_keys, touch, after_keys, rows=24, cols=80):
     it open, which is not expressible as a single flat key list."""
     pid, fd = pty.fork()
     if pid == 0:
-        os.execve(argv[0], argv, dict(os.environ, TERM="xterm"))
+        os.execve(argv[0], argv, dict(os.environ, TERM="xterm", MOLLY_LSP="off"))
 
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
     out = b""
@@ -4834,6 +4834,152 @@ def test_harness_startup(tmpdir):
               % delay, got, "X" + SAVE)
 
 
+FAKE_LSP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fake_lsp.py")
+
+
+def test_lsp(tmpdir):
+    """A language server's diagnostics, seen from the editor.
+
+    The client is unit-tested against tests/fake_lsp.py -- the framing, the
+    handshake, the sync, every way a server can fail. What is here is what a
+    user sees of it: underlines, the counts on the status bar, the message bar,
+    F2, and that a file which is fixed stops being marked. The same fake server,
+    named by a mollyrc; MOLLY_LSP is set back to empty because the harness pins
+    it off for every other test.
+    """
+    print("\nlanguage server: diagnostics on screen")
+
+    work = os.path.join(tmpdir, "lspwork")
+    os.makedirs(work, exist_ok=True)
+    rc = os.path.join(work, "lsprc")
+    log = os.path.join(work, "lsplog")
+    # Run from inside it, with a short name: the status bar drops its right
+    # half -- the counts -- when a long temporary path leaves it no room.
+    path = "p.c"
+    F2, SHIFT_F2 = "\x1bOQ", "\x1b[1;2Q"
+    DOWN, RIGHT, DEL = "\x1b[B", "\x1b[C", "\x1b[3~"
+    # Long enough for a Python interpreter to start and answer, on a loaded
+    # machine; the fake server itself answers at once.
+    WAIT = 2.0
+
+    def screen(keys, server="python3 -I %s" % FAKE_LSP, extra_rc="", env=None,
+               rows=12, cols=60):
+        with open(rc, "w") as fh:
+            fh.write("[syntax c]\nlanguage server = %s\n%s" % (server, extra_rc))
+        e = {"MOLLY_CONFIG": rc, "MOLLY_LSP": "", "FAKE_LSP_LOG": log}
+        e.update(env or {})
+        scr = Screen(rows, cols)
+        scr.feed(run([MOLLY, path], keys, rows=rows, cols=cols, env=e))
+        return scr
+
+    def fresh(text="int a;\nint BAD;\n  WARN here\nNOTE\n"):
+        with open(path, "w") as fh:
+            fh.write(text)
+        if os.path.exists(log):
+            os.remove(log)
+
+    def under(scr, row, n=12):
+        return "".join("u" if "u" in m else "." for m in scr.mods[row][:n])
+
+    def logged(needle):
+        if not os.path.exists(log):
+            return False
+        with open(log) as fh:
+            return needle in fh.read()
+
+    here = os.getcwd()
+    os.chdir(work)
+    try:
+        fresh()
+        scr = screen([WAIT])
+        text = scr.text()
+        check("the status bar counts the errors and the warnings",
+              "E:1 W:1  Ln 1, Col 1" in text[10], True)
+        check("an error is underlined, and only the word", under(scr, 2), "....uuu.....")
+        check("in the error colour", scr.colors[2][4][0], 9)
+        check("a warning is underlined", under(scr, 3), "..uuuu......")
+        check("in its own colour", scr.colors[3][2][0], 3)
+        check("information is underlined", under(scr, 4), "uuuu........")
+        check("in the colour the text already had", scr.colors[4][0][0], None)
+        check("text with nothing wrong is not", under(scr, 1), "." * 12)
+
+        scr = screen([WAIT, F2])
+        check("F2 goes to the first problem", scr.cy * 100 + scr.cx, 204)
+        check("and says what it is", "1 of 3: error: BAD is not allowed here" in scr.text()[11],
+              True)
+        scr = screen([WAIT, F2, F2, F2])
+        check("F2 again goes on to the next", "3 of 3: info: NOTE" in scr.text()[11], True)
+        scr = screen([WAIT, F2, F2, F2, F2])
+        check("and round the end to the first", "1 of 3: error" in scr.text()[11], True)
+        scr = screen([WAIT, SHIFT_F2])
+        check("Shift-F2 goes back, round the start to the last",
+              scr.cy * 100 + scr.cx, 400)
+
+        # Moving onto a problem shows it on the message bar -- over the startup
+        # message, which is still within its five seconds.
+        scr = screen([WAIT, DOWN, RIGHT, RIGHT, RIGHT, RIGHT, RIGHT])
+        check("the cursor on a problem puts it on the message bar",
+              scr.text()[11].rstrip(), "error: BAD is not allowed here")
+        check("its severity in its colour", scr.colors[11][0][0], 9)
+        scr = screen([WAIT])
+        check("but not before the cursor has moved there", "HELP" in scr.text()[11], True)
+
+        # Fixing it is what a server is for: delete the word, pause, and the
+        # server's next opinion takes the mark away.
+        scr = screen([WAIT, F2, DEL, DEL, DEL, 1.5])
+        text = scr.text()
+        check("a fixed problem stops being counted",
+              "W:1  Ln" in text[10] and "E:" not in text[10], True)
+        check("and stops being underlined", under(scr, 2), "." * 12)
+        check("the server was sent the text as it is now",
+              logged('"text": "int a;\\nint ;\\n  WARN here\\nNOTE\\n"'), True)
+
+        fresh()
+        screen([WAIT, SAVE, 0.5])
+        check("a save is told to the server", logged("textDocument/didSave"), True)
+
+        fresh()
+        out = run([MOLLY, path], [WAIT, "\x11", 1.0],
+                  env={"MOLLY_CONFIG": rc, "MOLLY_LSP": "", "FAKE_LSP_LOG": log},
+                  status=True)
+        check("quitting asks the server to shut down", logged('"shutdown"'), True)
+        check("and to exit", logged('"exit"'), True)
+
+        fresh()
+        scr = screen([WAIT, "\x00", "language server status", "\r"])
+        check("the palette's status command names the server and its count",
+              "python3 is running: 3 problems here." in scr.text()[11], True)
+
+        fresh()
+        scr = screen([WAIT], extra_rc="[editor]\nlanguage servers = off\n")
+        check("the setting turns it off", "E:" in scr.text()[10], False)
+        check("so nothing is underlined", under(scr, 2), "." * 12)
+
+        fresh()
+        scr = screen([WAIT], server="molly-no-such-server")
+        check("a server that is not installed is not mentioned",
+              "HELP" in scr.text()[11], True)
+        scr = screen([WAIT, "\x00", "language server status", "\r"],
+                     server="molly-no-such-server")
+        check("until asked about",
+              "molly-no-such-server is not installed." in scr.text()[11], True)
+
+        fresh()
+        scr = screen([WAIT], env={"FAKE_LSP_CRASH": "1"})
+        check("a server that dies says so, with its last words",
+              scr.text()[11].rstrip(), "python3 exited: fake_lsp: badly wrong")
+
+        # And the file that started it all -- a C file, opened with no mollyrc --
+        # starts nothing while MOLLY_LSP is off, which is what every other test in
+        # this suite depends on.
+        fresh()
+        scr = Screen(12, 60)
+        scr.feed(run([MOLLY, path], [WAIT], rows=12, cols=60))
+        check("MOLLY_LSP=off starts no server, even for C", "E:" in scr.text()[10], False)
+    finally:
+        os.chdir(here)
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -4900,6 +5046,7 @@ def main():
         test_multicursor(tmpdir)
         test_block(tmpdir)
         test_soft_wrap(tmpdir)
+        test_lsp(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

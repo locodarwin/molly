@@ -284,6 +284,11 @@ static int cmd_grep_next(void) { grep_jump(1); return 0; }
 static int cmd_grep_prev(void) { grep_jump(-1); return 0; }
 static int have_grep_results(void) { return grep_result_count() > 0; }
 static int cmd_goto_line(void) { editor_goto_line(); return 0; }
+static int cmd_problem_next(void) { lspui_problem_jump(1); return 0; }
+static int cmd_problem_prev(void) { lspui_problem_jump(-1); return 0; }
+static int have_problems(void) { return B.ndiag > 0; }
+static int cmd_lsp_status(void) { lspui_status(); return 0; }
+static int cmd_lsp_restart(void) { lspui_restart(); return 0; }
 static int cmd_help(void) { editor_help(); return 0; }
 
 /* Each cursor to its own row's edge, which is the point of a column of them:
@@ -695,6 +700,20 @@ static const struct command commands[] = {
    .flags = CMD_MOVEMENT, .run = cmd_line_end},
   {.name = "goto.line", .label = "Go to line…",
    .help = "Go to line", .group = "MOVEMENT", .run = cmd_goto_line},
+
+  /* What a language server knows. The two problem commands are greyed in a
+   * file with none rather than hidden, so the menu says where they would be;
+   * F2 itself still answers, with why there is nothing to go to. */
+  {.name = "goto.next-problem", .label = "Next problem",
+   .help = "Next problem", .group = "CODE", .run = cmd_problem_next,
+   .enabled = have_problems},
+  {.name = "goto.prev-problem", .label = "Previous problem",
+   .help = "Previous problem", .group = "CODE", .run = cmd_problem_prev,
+   .enabled = have_problems},
+  {.name = "lsp.status", .label = "Language server status",
+   .run = cmd_lsp_status},
+  {.name = "lsp.restart", .label = "Restart language servers",
+   .run = cmd_lsp_restart},
 
   {.name = "edit.newline", .label = "Insert line",
    .help = "Insert new line", .group = "EDITING", .run = cmd_newline},
@@ -1251,6 +1270,10 @@ static const struct binding default_bindings[] = {
   {"f4",       "search.next-result"},
   {"shift-f4", "search.prev-result"},
   {"ctrl-g", "goto.line"},
+  /* F2 and Shift-F2, a pair like F3's and F4's. VS Code's F8 is a split here,
+   * and F2 is free until molly renames anything. */
+  {"f2",       "goto.next-problem"},
+  {"shift-f2", "goto.prev-problem"},
 
   {"left",   "move.left"},
   {"right",  "move.right"},
@@ -1697,6 +1720,11 @@ static const struct help_entry help_entries[] = {
   {NULL,        NULL, NULL, "view.tab-bar"},
   {NULL,        NULL, NULL, "view.syntax"},
   {NULL,        NULL, NULL, "view.soft-wrap"},
+
+  /* Last, so that adding it moved nothing above it: the soft-wrap check finds
+   * VIEW by paging down to it. */
+  {"CODE",      NULL, NULL, "goto.next-problem"},
+  {NULL,        NULL, NULL, "goto.prev-problem"},
 };
 
 int help_entry_count(void) {

@@ -208,6 +208,9 @@ static struct {
   int nfiles;
   char *refuse;           /* rename: why it will not be done, when it will not */
 
+  struct fedit *refs;     /* references: sl/sc used, text holding the path */
+  int nrefs;
+
   struct citem *items;    /* completion: what could go here */
   int nitems;
   int incomplete;         /* the server would say more given more to go on */
@@ -267,6 +270,11 @@ static void box_clear(void) {
   free(box.text);
   items_free(box.items, box.nitems);
   files_free(box.files, box.nfiles);
+  {
+    int i;
+    for (i = 0; i < box.nrefs; i++) free(box.refs[i].text);
+    free(box.refs);
+  }
   free(box.refuse);
   memset(&box, 0, sizeof(box));
 }
@@ -446,6 +454,20 @@ void lsp_answer(int kind, struct buffer *b, unsigned edits, int cy, int cx,
     box.text = ab.b;
   } else if (kind == LSP_REQ_COMPLETION) {
     read_completions(result);
+  } else if (kind == LSP_REQ_REFERENCES) {
+    const struct json *k;
+    if (result != NULL && result->type == JSON_ARRAY && result->n > 0) {
+      box.refs = xmalloc(sizeof(*box.refs) * (size_t)result->n);
+      for (k = result->kid; k != NULL; k = k->next) {
+        char *path = lsp_uri_to_path(json_str(json_get(k, "uri")));
+        const struct json *st = json_get(json_get(k, "range"), "start");
+        if (path == NULL) continue;
+        box.refs[box.nrefs].text = path;
+        box.refs[box.nrefs].sl = json_int(json_get(st, "line"), 0);
+        box.refs[box.nrefs].sc = json_int(json_get(st, "character"), 0);
+        box.nrefs++;
+      }
+    }
   } else if (kind == LSP_REQ_RENAME) {
     if (result != NULL && result->type == JSON_OBJECT) read_workspace_edit(result);
     else box.refuse = xstrdup("The language server cannot rename that.");
@@ -668,13 +690,145 @@ static void deliver_rename(void) {
                               changes == 1 ? "" : "s");
 }
 
+/* The name under the cursor, or "" -- letters, digits, underscores and
+ * anything past ASCII, which is what an identifier is in every language molly
+ * has a server for. */
+static void cursor_word(char *word, size_t n) {
+  int a, b;
+  erow *r;
+  word[0] = '\0';
+  if (CUR.cy >= row_count()) return;
+  r = row_at(CUR.cy);
+  a = b = CUR.cx;
+  while (a > 0 && (isalnum((unsigned char)r->chars[a - 1]) || r->chars[a - 1] == '_' ||
+                   (unsigned char)r->chars[a - 1] >= 0x80)) a--;
+  while (b < r->size && (isalnum((unsigned char)r->chars[b]) || r->chars[b] == '_' ||
+                         (unsigned char)r->chars[b] >= 0x80)) b++;
+  if (b - a > 0 && b - a < (int)n) {
+    memcpy(word, r->chars + a, (size_t)(b - a));
+    word[b - a] = '\0';
+  }
+}
+
+/* ---- references ---------------------------------------------------------- */
+
+static void ask(int kind, const char *what);
+
+static char refs_of[64];   /* the name asked about */
+
+static int ref_cmp(const void *a, const void *b) {
+  const struct fedit *p = a, *q = b;
+  int c = strcmp(p->text, q->text);
+  if (c != 0) return c;
+  return p->sl != q->sl ? (p->sl < q->sl ? -1 : 1) : 0;
+}
+
+/* Line `n` of a file on disk, into dst; "" when there is no such line. The
+ * whole file is read for each distinct file, once: references come sorted by
+ * file, so `cache` holds the one being read. */
+static void disk_line(const char *path, int n, char *dst, size_t dsz,
+                      char **cache, char **cached_path) {
+  const char *p;
+  int line = 0;
+  dst[0] = '\0';
+  if (*cached_path == NULL || strcmp(*cached_path, path) != 0) {
+    FILE *fp = fopen(path, "r");
+    free(*cache);
+    free(*cached_path);
+    *cache = NULL;
+    *cached_path = xstrdup(path);
+    if (fp != NULL) {
+      size_t len = 0, cap = 0, got;
+      char buf[8192];
+      while ((got = fread(buf, 1, sizeof(buf), fp)) > 0) {
+        if (len + got + 1 > cap) {
+          cap = (len + got + 1) * 2;
+          *cache = xrealloc(*cache, cap);
+        }
+        memcpy(*cache + len, buf, got);
+        len += got;
+      }
+      fclose(fp);
+      if (*cache != NULL) (*cache)[len] = '\0';
+    }
+  }
+  if (*cache == NULL) return;
+  for (p = *cache; *p != '\0' && line < n; p++)
+    if (*p == '\n') line++;
+  if (line == n) {
+    size_t k = strcspn(p, "\r\n");
+    if (k >= dsz) k = dsz - 1;
+    memcpy(dst, p, k);
+    dst[k] = '\0';
+  }
+}
+
+/* The references, as find-in-files results: a `path:line:text` row each,
+ * sorted by file and line, in the same buffer -- so Enter opens one and F4
+ * walks them, and nothing about a list of places had to be built twice. A
+ * file that is open is read from its buffer, which is what the server was
+ * told about; one that is not, from disk. */
+static void deliver_references(void) {
+  struct abuf ab = ABUF_INIT;
+  char cwd[4096], line[512], title[96];
+  char *cache = NULL, *cached = NULL;
+  size_t cl = 0;
+  int i, files, n = box.nrefs, *cols;
+
+  if (n == 0) {
+    editor_set_status_message("No references to %s found.", refs_of);
+    return;
+  }
+  if (getcwd(cwd, sizeof(cwd)) != NULL) cl = strlen(cwd);
+  qsort(box.refs, (size_t)n, sizeof(*box.refs), ref_cmp);
+  cols = xmalloc(sizeof(*cols) * (size_t)n);
+  for (i = 0; i < n; i++) {
+    const struct fedit *r = &box.refs[i];
+    const char *shown = r->text;
+    int at = buffer_on(r->text);
+    if (cl > 1 && strncmp(r->text, cwd, cl) == 0 && r->text[cl] == '/')
+      shown = r->text + cl + 1;
+    if (at >= 0) {
+      struct buffer *b = buf_at(at);
+      line[0] = '\0';
+      if (r->sl < b->numrows) {
+        erow *row = buf_row(b, r->sl);
+        snprintf(line, sizeof(line), "%.*s", row->size, row->chars);
+      }
+    } else {
+      disk_line(r->text, r->sl, line, sizeof(line), &cache, &cached);
+    }
+    cols[i] = lsp_units_to_col(line, (int)strlen(line), r->sc, box.utf8);
+    json_putf(&ab, "%.300s:%d:", shown, r->sl + 1);
+    ab_append(&ab, line, (int)strlen(line));
+    ab_append(&ab, "\n", 1);
+  }
+  free(cache);
+  free(cached);
+  snprintf(title, sizeof(title), "references: %s", refs_of);
+  files = grep_show_list(title, ab.b, ab.len, refs_of, cols, n);
+  free(cols);
+  free(ab.b);
+  editor_set_status_message("%d reference%s to %.40s in %d file%s -- Enter opens one, F4 the next",
+                            n, n == 1 ? "" : "s", refs_of, files, files == 1 ? "" : "s");
+}
+
+/* Shift-F12: where the name under the cursor is used. */
+int lspui_references(void) {
+  cursor_word(refs_of, sizeof(refs_of));
+  if (refs_of[0] == '\0') {
+    editor_set_status_message("Put the cursor on a name to find where it is used.");
+    return 0;
+  }
+  ask(LSP_REQ_REFERENCES, "find references");
+  return 0;
+}
+
 /* Alt-N: ask for the new name of what is under the cursor, then ask the
  * server what that means everywhere. */
 int lspui_rename(void) {
   char prompt[200], word[64];
   char *name;
-  int a, b;
-  erow *r;
 
   if (!lsp_can(V.buf, LSP_REQ_RENAME)) {
     char why[160];
@@ -686,19 +840,7 @@ int lspui_rename(void) {
     }
     return 0;
   }
-  word[0] = '\0';
-  if (CUR.cy < row_count()) {
-    r = row_at(CUR.cy);
-    a = b = CUR.cx;
-    while (a > 0 && (isalnum((unsigned char)r->chars[a - 1]) || r->chars[a - 1] == '_' ||
-                     (unsigned char)r->chars[a - 1] >= 0x80)) a--;
-    while (b < r->size && (isalnum((unsigned char)r->chars[b]) || r->chars[b] == '_' ||
-                           (unsigned char)r->chars[b] >= 0x80)) b++;
-    if (b - a > 0 && b - a < (int)sizeof(word)) {
-      memcpy(word, r->chars + a, (size_t)(b - a));
-      word[b - a] = '\0';
-    }
-  }
+  cursor_word(word, sizeof(word));
   if (word[0] == '\0') {
     editor_set_status_message("Put the cursor on a name to rename it.");
     return 0;
@@ -1252,6 +1394,8 @@ void lspui_deliver(void) {
   }
   if (box.kind == LSP_REQ_RENAME) {
     deliver_rename();
+  } else if (box.kind == LSP_REQ_REFERENCES) {
+    deliver_references();
   } else if (box.kind == LSP_REQ_DEFINITION) {
     if (box.path != NULL) deliver_definition();
     else if (box.text != NULL) editor_set_status_message("%s", box.text);

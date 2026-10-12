@@ -5413,6 +5413,64 @@ def test_lsp_rename(tmpdir):
         os.chdir(here)
 
 
+def test_lsp_references(tmpdir):
+    """Shift-F12: where the name under the cursor is used.
+
+    The answer goes into the find-in-files results buffer, so what is checked
+    is the list -- sorted, with each line's text, from open files and from
+    disk -- and that F4 and Enter land on each reference's own column, which
+    find in files cannot do for two matches on one line.
+    """
+    print("\nlanguage server: references")
+
+    work = os.path.join(tmpdir, "lsprefs")
+    os.makedirs(work, exist_ok=True)
+    rc = os.path.join(work, "lsprc")
+    with open(rc, "w") as fh:
+        fh.write("[syntax c]\nlanguage server = python3 -I %s\n" % FAKE_LSP)
+    REFS, F4, DOWN, RIGHT = "\x1b[24;2~", "\x1bOS", "\x1b[B", "\x1b[C"
+    WAIT = 2.0
+    to_word = [WAIT, DOWN] + [RIGHT] * 9
+
+    def session(keys):
+        scr = Screen(20, 72)
+        scr.feed(run([MOLLY, "main.c"], keys, rows=20, cols=72,
+                     env={"MOLLY_CONFIG": rc, "MOLLY_LSP": ""}))
+        return scr
+
+    here = os.getcwd()
+    os.chdir(work)
+    try:
+        with open("main.c", "w") as fh:
+            fh.write("int widget = 1;\nint y = widget + widget;\n")
+        with open("other.c", "w") as fh:
+            fh.write("extern int widget;\nint z(void) { return widget; }\n")
+
+        scr = session(to_word + [REFS, 1.0])
+        text = [r.rstrip() for r in scr.text()]
+        first = next(i for i, r in enumerate(text) if r.startswith("main.c:"))
+        check("Shift-F12 lists the references, sorted, with their lines",
+              text[first:first + 5], ["main.c:1:int widget = 1;", "main.c:2:int y = widget + widget;",
+                           "main.c:2:int y = widget + widget;", "other.c:1:extern int widget;",
+                           "other.c:2:int z(void) { return widget; }"])
+        check("in the results buffer, named for what was asked",
+              any("references: widget - 5 lines" in r for r in text), True)
+        check("and counts them", "5 references to widget in 2 files" in text[19], True)
+        scr = session(to_word + [REFS, 1.0, F4, F4, F4, 0.3])
+        check("F4 lands on each reference's own column, two on one line apart",
+              any(r.startswith("[1/2] main.c") and "Ln 2, Col 18" in r
+                  for r in scr.text()), True)
+        scr = session(to_word + [REFS, 1.0, DOWN, DOWN, DOWN, DOWN, "\r", 0.5])
+        check("Enter opens a file that was not open, on the reference",
+              "other.c - 2 lines" in "".join(scr.text())
+              and "Ln 2, Col 22" in "".join(scr.text()), True)
+        scr = session([WAIT, DOWN, DOWN, REFS, 0.5])
+        check("off a name, it says to put the cursor on one",
+              "Put the cursor on a name" in scr.text()[19], True)
+    finally:
+        os.chdir(here)
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -5484,6 +5542,7 @@ def main():
         test_lsp_complete(tmpdir)
         test_terminal(tmpdir)
         test_lsp_rename(tmpdir)
+        test_lsp_references(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

@@ -684,6 +684,7 @@ struct json_doc;
 #define LSP_REQ_COMPLETION 3
 #define LSP_REQ_SHUTDOWN   4
 #define LSP_REQ_RENAME     5
+#define LSP_REQ_REFERENCES 6
 
 /* A piece of a row that a diagnostic covers: bytes [x0, x1). See lspui.c. */
 struct diag_span {
@@ -1134,6 +1135,7 @@ int lspui_can_back(void);
 int lspui_cursor_message(char *dst, size_t n);
 int lspui_complete(void);
 int lspui_definition(void);
+int lspui_references(void);
 int lspui_rename(void);
 int lspui_hover(void);
 int lspui_key(int c);
@@ -1218,6 +1220,8 @@ char *grep_command(const char *pat, int icase, int regex);
 int grep_parse_line(const char *s, int len, int *path0, int *pathlen, int *line);
 int grep_result_count(void);
 int grep_jump(int delta);
+int grep_show_list(const char *title, const char *text, int len, const char *query,
+                   const int *cols, int ncols);
 void editor_grep(void);
 void grep_cleanup(void);
 void editor_set_status_message(const char *fmt, ...);

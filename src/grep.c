@@ -116,6 +116,14 @@ int grep_parse_line(const char *s, int len, int *path0, int *pathlen, int *line)
 static char *grep_query;
 static int grep_cur = -1;
 
+/* The column each row's match is at, when whoever filled the list knew it --
+ * the language server's references do, and two on one line would otherwise
+ * both land on the first. NULL for find in files, which searches the line for
+ * the query instead. Only trusted while the list has as many rows as it was
+ * given, because a list the user has edited no longer lines up. */
+static int *result_cols;
+static int nresult_cols;
+
 static struct buffer *results_buffer(void) {
   int i;
   for (i = 0; i < buf_count(); i++)
@@ -191,7 +199,6 @@ static void show_results(struct buffer *b) {
 void editor_grep(void) {
   static char last[256];
   struct filter_io io;
-  struct buffer *b;
   char *input, *cmd;
   char pat[256];
   int result, files, n;
@@ -244,28 +251,51 @@ void editor_grep(void) {
   }
   snprintf(last, sizeof(last), "%s", pat);
 
-  b = results_buffer();
+  n = (int)strlen(pat) + 16;
+  {
+    char *title = xmalloc((size_t)n);
+    snprintf(title, (size_t)n, "grep: %s", pat);
+    files = grep_show_list(title, io.out, io.outlen, pat, NULL, 0);
+    free(title);
+  }
+  filter_free(&io);
+  editor_set_status_message("%d match%s in %d file%s for %.40s -- Enter opens one, F4 the next",
+                            row_count(), row_count() == 1 ? "" : "es",
+                            files, files == 1 ? "" : "s", pat);
+}
+
+/* Put `path:line:text` rows in the results buffer, titled `title`, and show
+ * it -- whoever found them. Find in files is one finder and the language
+ * server's references are another; Enter and F4 do not care which. `query`
+ * is what the cursor looks for on the line it lands on. Returns how many
+ * files the rows name. */
+int grep_show_list(const char *title, const char *text, int len, const char *query,
+                   const int *cols, int ncols) {
+  struct buffer *b = results_buffer();
+  int files;
   if (b == NULL) {
     b = buf_new();
     b->grep_results = 1;
   }
   free(b->title);
-  n = (int)strlen(pat) + 16;
-  b->title = xmalloc((size_t)n);
-  snprintf(b->title, (size_t)n, "grep: %s", pat);
+  b->title = xstrdup(title);
   free(grep_query);
-  grep_query = xstrdup(pat);
+  grep_query = xstrdup(query);
   grep_cur = -1;
+  free(result_cols);
+  result_cols = NULL;
+  nresult_cols = 0;
+  if (cols != NULL && ncols > 0) {
+    result_cols = xmalloc(sizeof(*result_cols) * (size_t)ncols);
+    memcpy(result_cols, cols, sizeof(*result_cols) * (size_t)ncols);
+    nresult_cols = ncols;
+  }
 
   show_results(b);
-  fill(io.out, io.outlen);
-  filter_free(&io);
-
+  fill(text, len);
   files = count_files();
   screen_force_repaint();
-  editor_set_status_message("%d match%s in %d file%s for %.40s -- Enter opens one, F4 the next",
-                            row_count(), row_count() == 1 ? "" : "es",
-                            files, files == 1 ? "" : "s", pat);
+  return files;
 }
 
 /* Go to a match. `delta` 0 is the row the cursor is on in the results (Enter);
@@ -344,7 +374,10 @@ int grep_jump(int delta) {
   editor_open_in_new_buffer(path);
 
   CUR.cy = (ln - 1 < row_count()) ? ln - 1 : (row_count() > 0 ? row_count() - 1 : 0);
-  col = search_find_in_row(CUR.cy, grep_query);
+  if (result_cols != NULL && nresult_cols == total && CUR.cy < row_count())
+    col = result_cols[at] <= row_at(CUR.cy)->size ? result_cols[at] : -1;
+  else
+    col = search_find_in_row(CUR.cy, grep_query);
   CUR.cx = col >= 0 ? col : 0;
   CUR.sel_active = 0;
   editor_set_status_message("Match %d of %d: %.*s:%d", at + 1, total,
@@ -355,5 +388,8 @@ int grep_jump(int delta) {
 void grep_cleanup(void) {
   free(grep_query);
   grep_query = NULL;
+  free(result_cols);
+  result_cols = NULL;
+  nresult_cols = 0;
   grep_cur = -1;
 }

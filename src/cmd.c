@@ -321,6 +321,8 @@ static int can_define(void) { return lspui_can(LSP_REQ_DEFINITION); }
 static int can_hover(void) { return lspui_can(LSP_REQ_HOVER); }
 static int cmd_complete(void) { return lspui_complete(); }
 static int cmd_rename(void) { return lspui_rename(); }
+static int cmd_references(void) { return lspui_references(); }
+static int can_references(void) { return lspui_can(LSP_REQ_REFERENCES); }
 static int can_rename(void) { return lspui_can(LSP_REQ_RENAME); }
 static int can_complete(void) { return lspui_can(LSP_REQ_COMPLETION); }
 static int cmd_help(void) { editor_help(); return 0; }
@@ -753,6 +755,9 @@ static const struct command commands[] = {
   {.name = "code.hover", .label = "Info at cursor",
    .help = "Info at cursor", .group = "CODE", .run = cmd_hover,
    .enabled = can_hover},
+  {.name = "code.references", .label = "Find references",
+   .help = "Find references", .group = "CODE", .run = cmd_references,
+   .enabled = can_references},
   {.name = "code.rename", .label = "Rename symbol…",
    .help = "Rename symbol", .group = "CODE", .flags = CMD_EDITS,
    .run = cmd_rename, .enabled = can_rename},
@@ -1341,6 +1346,8 @@ static const struct binding default_bindings[] = {
   {"alt-/",    "code.complete"},
   /* N for name. F2, VS Code's, is the problems' here. */
   {"alt-n",    "code.rename"},
+  /* VS Code's, beside F12 as definition is. */
+  {"shift-f12", "code.references"},
 
   {"left",   "move.left"},
   {"right",  "move.right"},
@@ -1822,6 +1829,7 @@ static const struct help_entry help_entries[] = {
   {NULL,        NULL, NULL, "goto.prev-problem"},
   {NULL,        NULL, NULL, "goto.definition"},
   {NULL,        NULL, NULL, "goto.back"},
+  {NULL,        NULL, NULL, "code.references"},
   {NULL,        NULL, NULL, "code.hover"},
   {NULL,        NULL, NULL, "code.complete"},
   {NULL,        NULL, NULL, "code.rename"},

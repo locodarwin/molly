@@ -96,7 +96,7 @@ struct server {
   int utf8;                /* columns are bytes, not UTF-16 units */
   int sync;                /* 0 none, 1 full, 2 incremental */
   int save;                /* wants didSave */
-  int hover, definition, completion, rename;
+  int hover, definition, completion, rename, references;
   char triggers[16];       /* completion trigger characters, the one-byte ones */
 
   char lasterr[160];       /* the last line it wrote to standard error */
@@ -516,7 +516,8 @@ static void send_initialize(struct server *s) {
           "\"definition\":{\"linkSupport\":true},"
           "\"completion\":{\"completionItem\":{\"snippetSupport\":false},"
                          "\"contextSupport\":true},"
-          "\"rename\":{\"prepareSupport\":false}"
+          "\"rename\":{\"prepareSupport\":false},"
+          "\"references\":{}"
         "},"
         /* Edits to text only: a rename that wants to create, move or delete
          * files is declined rather than half done. */
@@ -927,6 +928,7 @@ static void on_initialized(struct server *s, const struct json *result) {
   s->definition = provided(json_get(caps, "definitionProvider"));
   s->completion = provided(json_get(caps, "completionProvider"));
   s->rename = provided(json_get(caps, "renameProvider"));
+  s->references = provided(json_get(caps, "referencesProvider"));
   t = json_get(json_get(caps, "completionProvider"), "triggerCharacters");
   if (t != NULL && t->type == JSON_ARRAY) {
     const struct json *k;
@@ -1122,6 +1124,7 @@ int lsp_can(struct buffer *b, int kind) {
   case LSP_REQ_HOVER: return s->hover;
   case LSP_REQ_COMPLETION: return s->completion;
   case LSP_REQ_RENAME: return s->rename;
+  case LSP_REQ_REFERENCES: return s->references;
   }
   return 0;
 }
@@ -1146,6 +1149,7 @@ int lsp_ask(struct buffer *b, int kind, int cy, int cx, int trigger,
     [LSP_REQ_HOVER] = "textDocument/hover",
     [LSP_REQ_COMPLETION] = "textDocument/completion",
     [LSP_REQ_RENAME] = "textDocument/rename",
+    [LSP_REQ_REFERENCES] = "textDocument/references",
   };
   struct server *s = ready_for(b);
   struct abuf ab = ABUF_INIT;
@@ -1169,6 +1173,10 @@ int lsp_ask(struct buffer *b, int kind, int cy, int cx, int trigger,
                 trigger);
     else
       ab_append(&ab, ",\"context\":{\"triggerKind\":1}", 28);
+  } else if (kind == LSP_REQ_REFERENCES) {
+    /* The declaration too: "where is this used" is a question about the name,
+     * and where it is declared is one of the answers. */
+    json_putf(&ab, ",\"context\":{\"includeDeclaration\":true}");
   } else if (kind == LSP_REQ_RENAME && arg != NULL) {
     ab_append(&ab, ",\"newName\":", 11);
     json_put_str(&ab, arg, (int)strlen(arg));

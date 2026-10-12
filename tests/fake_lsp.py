@@ -32,7 +32,7 @@ server the same way it asks for a working one:
   FAKE_LSP_MOVE=1         make a rename also move a file, which molly refuses
   FAKE_LSP_NORENAME=1     answer renames with an error
 
-Renames change every whole-word occurrence, in the open documents and in the
+References are every whole-word occurrence, as renames change them -- in the open documents and in the
 files in the working directory that are not open.
 """
 
@@ -205,6 +205,14 @@ def answer(msg):
             return [{"targetUri": loc["uri"], "targetRange": loc["range"],
                      "targetSelectionRange": loc["range"]}]
         return loc
+    if method == "textDocument/references":
+        if not word:
+            return []
+        out = []
+        for u, e in rename(word, word).get("changes", {}).items():
+            for ed in e:
+                out.append({"uri": u, "range": ed["range"]})
+        return out
     if method == "textDocument/rename":
         return rename(word, p["newName"]) if word else None
     if method == "textDocument/hover":
@@ -260,6 +268,7 @@ def main():
                     "definitionProvider": True,
                     "completionProvider": {"triggerCharacters": [".", "->"]},
                     "renameProvider": True,
+                    "referencesProvider": True,
                 },
                 "serverInfo": {"name": "fake"}}})
         elif method == "initialized":

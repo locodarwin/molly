@@ -2,8 +2,7 @@
  File  Edit  Search  View  Go  Window  Help
 alpha
 be╔═══════════════════════════ Keyboard Reference ═══════════════════════════╗
-ga║   Esc            Back to one curso    VIEW                               ║
-~ ║   Alt-Shift-←↑→↓ Block selection        F5             Redraw screen     ║
+ga║   Alt-Shift-←↑→↓ Block selection        F5             Redraw screen     ║
 ~ ║   Alt+drag       Block selection        Ctrl-U         Line numbers      ║
 ~ ║                                         Alt-M          Show the menu bar ║
 ~ ║                                         Alt-B          Show a tab per fi ║
@@ -15,6 +14,7 @@ ga║   Esc            Back to one curso    VIEW                               �
 ~ ║                                         Shift-F2       Previous problem  ║
 ~ ║                                         F12            Go to definition  ║
 ~ ║                                         Alt-Left       Back from there   ║
+~ ║                                         Shift-F12      Find references   ║
 ~ ║                                         Alt-K          Info at cursor    ║
 ~ ║                                         Alt-/          Complete word     ║
 ~ ║                                         Alt-N          Rename symbol     ║

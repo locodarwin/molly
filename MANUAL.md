@@ -1467,12 +1467,15 @@ shows you what it says.
     F2 / Shift-F2  Next / previous problem
     F12            Go to the definition of what is under the cursor
     Alt-Left       Back to where F12 jumped from
+    Shift-F12      Every place the name under the cursor is used
     Alt-K          What is under the cursor: its type, signature and docs
     Alt-/          Complete the word before the cursor
+    Alt-P          The signature of the call the cursor is in
+    Alt-N          Rename what is under the cursor, everywhere
 
-The first four are also in the **Go** menu, and all five are in the command
-palette, along with **Language server status** and **Restart language
-servers**.
+The navigation ones are also in the **Go** menu, and all of them are in the
+command palette, along with **Language server status** and **Restart
+language servers**.
 
 ### Which server, and when
 
@@ -1538,6 +1541,14 @@ another file if that is where it is, opening the file or switching to it if it
 is already open. `Alt-Left` goes back to where you were, and keeps going back
 through as many jumps as you have made, up to thirty-two.
 
+### Every place a name is used
+
+`Shift-F12` asks where the name under the cursor is used, its declaration
+included, and lists the answer the way [find in files](#finding-in-files)
+does — a `file:line:text` row each, sorted, in the same results buffer — so
+`Enter` opens one and `F4` and `Shift-F4` walk them from anywhere. Each lands
+on its own column, so two uses on one line are two stops.
+
 ### What is under the cursor
 
 `Alt-K` opens a box under the cursor with what the server knows about the name
@@ -1562,6 +1573,25 @@ Typing a character the server says starts a completion — `.` after a struct,
 `->` or `::` in C++ — opens the list without `Alt-/`. Taking a completion is
 one undo step, separate from the typing before it: `Ctrl-Z` takes the
 completion back and leaves the word as you typed it.
+
+### The signature of a call
+
+Typing the `(` of a call — or whatever characters the server says start one,
+`,` usually among them — opens a box above the line with the function's
+signature, the parameter you are typing picked out, and the first line of what
+the server says about it. It follows along as you type: after a comma the next
+parameter is picked out, and closing the call closes it, as do `Esc` and
+leaving the line. `Alt-P` opens it again. Where there is no room above, it goes
+below; where there is room for neither, it drops the note.
+
+### Renaming
+
+`Alt-N` asks for a new name for what is under the cursor, and the server says
+everywhere that changes — in this file and in others. Each file's changes are
+one undo step. A file that is not open is opened, changed and **left unsaved**,
+so nothing is written that you have not seen: the tabs with a `*` are the files
+it changed, and the message says how many. A rename that would create, move or
+delete a file is not done at all, rather than done in part.
 
 ### When a server goes wrong
 
@@ -1589,8 +1619,8 @@ completion back and leaves the word as you typed it.
   its name, not its name with placeholders for the arguments.
 - **One cursor.** Completion is offered at the main cursor only; with several,
   `Alt-/` says so.
-- **Not yet:** renaming, finding references, signature help as you type the
-  arguments, formatting, and a list of every problem in a buffer of its own.
+- **Not yet:** formatting, code actions, and a list of every problem in a
+  buffer of its own.
 
 ## Saving and Quitting
 
@@ -1696,6 +1726,9 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     Alt-Left Back to where F12 jumped from
     Alt-K    What is under the cursor, from the language server
     Alt-/    Complete the word before the cursor
+    Shift-F12  Every place the name under the cursor is used
+    Alt-P    The signature of the call the cursor is in
+    Alt-N    Rename what is under the cursor, everywhere
     Ctrl-A   Select everything
     Ctrl-L   Select the current line
     Ctrl-C   Copy the selection

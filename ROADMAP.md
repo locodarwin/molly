@@ -1141,9 +1141,18 @@ and is genuinely useful. Not core, and gated on panels.
   and pylsp as the built-in servers, and none for C#, whose server has no one
   command line; completion only on Alt-/ and trigger characters, never while
   a word is typed; the working directory as the project root.
-- **Left for later:** rename, find references, signature help, formatting, a
+- **Then, on 2026-10-12, the three Shawn queued after the terminal:**
+  rename (Alt-N: the WorkspaceEdit applied a file at a time as one undo step
+  each, files not open opened and left unsaved, a rename that moves files
+  refused whole), find references (Shift-F12: into the find-in-files results
+  buffer, through `grep_show_list()`, with a column per row so two uses on a
+  line are two stops) and signature help (opens on the server's trigger
+  characters, above the line, asked again after every key so the active
+  parameter follows; Alt-P asks by hand). F2, VS Code's rename, was already
+  the problems' here, hence Alt-N.
+- **Left for later:** formatting, code actions, a
   problems list in a buffer of its own (the grep results buffer is the
-  model), completion that opens as a word is typed, snippets, range edits for
+  model, and now has a second user), completion that opens as a word is typed, snippets, range edits for
   very large files, and finding the project root from a marker file rather
   than the working directory. None of them needs anything the client does not
   already have: each is a request, an answer and a way to show it.

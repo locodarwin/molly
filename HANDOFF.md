@@ -15,7 +15,23 @@ This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
 
-**Latest:** the integrated terminal, the first of four Shawn asked for in order
+**Latest:** the three language-server features Shawn queued after the
+terminal on 2026-10-12, in his order. `dc16047` is rename (Alt-N): the
+server's WorkspaceEdit applied a file at a time, last edit first, as one undo
+step per file; a file that is not open is opened and left unsaved; a rename
+that would move a file is refused whole. `d041369` is find references
+(Shift-F12): the answer goes into the find-in-files results buffer through
+`grep_show_list()`, which now takes a column per row. The signature-help
+commit opens a box above the line on the server's trigger characters and asks
+again after every key, with `sig_pending` so a key typed before the first
+answer still asks; Alt-P asks by hand. It also fixed `json_putf`, which
+formatted into 512 bytes and cut the client's capabilities short once they
+grew past that -- the fake server died on the invalid JSON, which is how it
+was found. Pty checks `test_lsp_rename`, `test_lsp_references`,
+`test_lsp_signature`; unit `test_lsp_rename_apply`; goldens `lsp-signature*`.
+All three checked against clangd. Next in Shawn's list: a problems list.
+
+**Before that:** the integrated terminal, the first of four Shawn asked for in order
 on 2026-10-12 ("the integrated terminal, then rename, find references, then
 signature help", with a problems list after). Three code commits. `4204fb4`
 lets a grid cell carry a colour a program chose (`grid_color`, `ATTR_RAW`),
@@ -214,8 +230,8 @@ views of the command table that had room for it, `bf35a8f` the documentation.
 drop-down item that was the best value-to-work ratio left. What is left is the
 smaller work under "Next by dependency", none of it confirmed as next — ask
 before starting any of it. The big-file rewrite and the language server are
-both done, and so is the integrated terminal; what is queued is rename, find
-references and signature help, then a problems list.
+both done, and so are the integrated terminal, rename, find references and
+signature help; what Shawn queued next is a problems list.
 
 ---
 
@@ -611,6 +627,12 @@ later.
   writing config nobody asked for.
 
 ### Gotchas
+
+- **A JSON literal's length is counted by the compiler, not by hand.** Two
+  hand-counted `ab_append` lengths and one fixed-size `json_putf` each sent a
+  server invalid JSON this session. Use `json_putf` for anything with a quote
+  in it; a script in the session that compared every literal append with its
+  string found the rest correct.
 
 - **Run commands through `cmd_run()`, never `cmd->run()`.** It is what refuses
   `CMD_EDITS` commands on a terminal. A new command that changes text needs

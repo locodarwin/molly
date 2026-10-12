@@ -244,10 +244,9 @@ static struct setting settings[] = {
   {"editor", "auto indent", SET_BOOL, 0, 0, 1, 0,
    "a new line starts at the indentation of the line above it",
    apply_auto_indent, live_auto_indent},
-  /* Smart Home on, because it moves the cursor and changes no text, and a
-   * second press still reaches column zero. Auto-close off, because it
-   * changes what typing a bracket puts in the file. */
-  {"editor", "smart home", SET_BOOL, 0, 0, 1, 0,
+  /* Both off: Home has always gone to column zero, and auto-close changes
+   * what typing a bracket puts in the file. */
+  {"editor", "smart home", SET_BOOL, 0, 0, 0, 0,
    "Home goes to where the line's text starts, then to column 0",
    apply_smart_home, smart_home_on},
   {"editor", "auto close", SET_BOOL, 0, 0, 0, 0,

@@ -5164,6 +5164,7 @@ static void type_keys(const char *s) {
 static void test_smart(void) {
   printf("\nsmart editing: Home, closing pairs, surrounding\n");
 
+  smart_set_home(1);
   mc_load("    indented");
   CUR.cx = 8;
   cursors_line_edge(0);
@@ -5176,7 +5177,6 @@ static void test_smart(void) {
   CUR.cx = 8;
   cursors_line_edge(0);
   check("turned off, Home is column 0", CUR.cx, 0);
-  smart_set_home(1);
 
   mc_load("");
   type_keys("f(");

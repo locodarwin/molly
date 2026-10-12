@@ -5723,10 +5723,12 @@ def test_smart(tmpdir):
             return fh.read()
 
     HOME, END = "\x1b[H", "\x1b[F"
-    check("Home goes to where the text starts", edit([END, HOME, "y"]), "    yx = 1;\n")
-    check("and Home again to column 0", edit([END, HOME, HOME, "y"]), "y    x = 1;\n")
-    check("[editor] smart home = off makes it column 0",
-          edit([END, HOME, "y"], conf="[editor]\nsmart home = off\n"), "y    x = 1;\n")
+    smart = "[editor]\nsmart home = on\n"
+    check("Home is column 0 unless asked otherwise", edit([END, HOME, "y"]), "y    x = 1;\n")
+    check("smart home = on: where the text starts",
+          edit([END, HOME, "y"], conf=smart), "    yx = 1;\n")
+    check("and Home again to column 0", edit([END, HOME, HOME, "y"], conf=smart),
+          "y    x = 1;\n")
     on = "[editor]\nauto close = on\n"
     check("auto close = on types a bracket's pair",
           edit([END, " f(", "a", ")", ";"], conf=on), "    x = 1; f(a);\n")

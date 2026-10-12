@@ -2,12 +2,12 @@
  * and wrapping a selection in them.
  *
  * Each is a setting, because each annoys somebody (the roadmap's words), and
- * they default differently for a reason. Smart Home is on: it changes where a
- * key takes the cursor and nothing else, and Home pressed twice still reaches
- * column zero. Auto-close is off: it changes what typing a bracket puts in the
- * file, which is the line between help and surprise for the people it
- * annoys, and surround comes with it -- a selection with auto-close off is
- * replaced by what is typed, as it always was.
+ * both are off: Home has always gone to column zero in molly, and a key that
+ * changes where it goes is a surprise to everyone who learnt it; and
+ * auto-close changes what typing a bracket puts in the file, which is the
+ * line between help and surprise for the people it annoys. Surround comes
+ * with auto-close -- a selection with it off is replaced by what is typed,
+ * as it always was.
  *
  * Nothing here edits a row directly. A pair is two ordinary inserts, a
  * surround two more, a step over a closer a cursor move, so undo and the
@@ -15,7 +15,7 @@
 
 #include "molly.h"
 
-static int smart_home = 1;
+static int smart_home = 0;
 static int auto_close = 0;
 
 int smart_home_on(void) { return smart_home; }

@@ -1914,15 +1914,15 @@ def test_menu(tmpdir):
     tail = screen(["\x1be", END], rows=12, cols=28)
     # "Insert" rather than its whole label: Shift-Tab is the widest shortcut in
     # this menu, so at 28 columns the label column is squeezed to "Insert outp".
+    # The last item is Trim whitespace, since the line operations joined the
+    # menu; at 28 columns its label is squeezed to "Trim whitesp".
     check("End scrolls the last item into the box",
-          "Insert" in tail.text()[7], True)
+          "Trim" in tail.text()[7], True)
     check("the arrow moves to the top border", "\u25b4" in tail.text()[1], True)
-    # And stays on the bottom one: End goes to the last item that can run,
-    # and Format, greyed without a language server, is still below it.
-    check("and stays on the bottom one, with Format greyed below",
-          "\u25be" in tail.text()[8], True)
+    check("and goes from the bottom one, which has nothing behind it",
+          "\u25be" in tail.text()[8], False)
     check("the item scrolled to is the one Enter runs",
-          any("Insert output of:" in l
+          any("Nothing to trim." in l
               for l in screen(["\x1be", END, "\r"], rows=12, cols=28).text()),
           True)
     # The arrows are clickable, and a click shows the row past the edge it
@@ -3553,9 +3553,11 @@ def test_block(tmpdir):
     check("which typing writes into", text,
           "al- one\nbe-\nga- three\ndelta four\n")
 
-    # Alt on an arrow without Shift is still the arrow: nothing binds it.
-    _, text = go([DOWN, "\x1b[1;3A", "!"], save=True)
-    check("Alt-Up with nothing bound to it is Up", text, "!" + BODY)
+    # Alt on a navigation key without Shift is still the key when nothing binds
+    # it. Alt-Home, now that Alt-Up and Alt-Down move lines.
+    _, text = go([DOWN, "\x1b[F", "\x1b[1;3H", "!"], save=True)
+    check("Alt-Home with nothing bound to it is Home", text,
+          BODY.replace("\nbeta", "\n!beta", 1))
 
 
 def test_multicursor(tmpdir):
@@ -4756,8 +4758,9 @@ def test_soft_wrap(tmpdir):
         scr.feed(run([MOLLY, path], keys, rows=24, cols=cols))
         return "\n".join(scr.text())
 
-    # F1, then two pages down: the VIEW group is at the bottom of the reference.
-    helped = whole_screen(["\x1f", "\x1b[6~", "\x1b[6~"])
+    # F1, then a page at a time: the VIEW group is near the bottom of the
+    # reference, and how many pages down depends on how long the rest is.
+    helped = "\n".join(whole_screen(["\x1f"] + ["\x1b[6~"] * n) for n in range(1, 5))
     check("the help screen lists it", "Wrap long lines" in helped, True)
     check("beside the chord that runs it", "Alt-Z" in helped, True)
     check("the palette finds it by name",

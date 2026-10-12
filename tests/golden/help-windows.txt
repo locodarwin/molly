@@ -2,8 +2,7 @@
  File  Edit  Search  View  Go  Window  Help
 alpha
 be╔═══════════════════════════ Keyboard Reference ═══════════════════════════╗
-ga║                                         Alt-M          Show the menu bar ║
-~ ║                                         Alt-B          Show a tab per fi ║
+ga║                                         Alt-B          Show a tab per fi ║
 ~ ║                                         Alt-Y          Colour by filetyp ║
 ~ ║                                         Alt-Z          Wrap long lines   ║
 ~ ║                                                                          ║
@@ -18,6 +17,7 @@ ga║                                         Alt-M          Show the menu bar �
 ~ ║                                         Alt-/          Complete word     ║
 ~ ║                                         Alt-N          Rename symbol     ║
 ~ ║                                         Alt-P          Show signature    ║
+~ ║                                         Alt-Q          Format file       ║
 ~ ║ In prompts: Enter accepts   Esc cancels                                  ║
 ~ ║ PgUp/PgDn scroll   any other key returns                                 ║
 ~ ╚══════════════════════════════════════════════════════════════════════════╝

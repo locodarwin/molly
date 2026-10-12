@@ -32,6 +32,10 @@ server the same way it asks for a working one:
   FAKE_LSP_MOVE=1         make a rename also move a file, which molly refuses
   FAKE_LSP_NORENAME=1     answer renames with an error
   FAKE_LSP_SIGOFFSETS=1   give signature parameters as offsets, not strings
+  FAKE_LSP_NORANGE=1      format whole documents only
+
+Formatting: every line in scope loses its trailing blanks, and with
+insertSpaces its leading tabs become tabSize spaces each -- a line per edit.
 
 Signature help: inside an unclosed `name(`, the signature `name(int a, int b,
 int c)` with the parameter the commas say is active.
@@ -225,6 +229,24 @@ def signature(text, line, ch):
             "activeSignature": 0, "activeParameter": min(active, 2)}
 
 
+def formatting(text, opts, first=0, last=None):
+    out = []
+    lines = text.split("\n")
+    if last is None:
+        last = len(lines) - 1
+    for n in range(first, min(last, len(lines) - 1) + 1):
+        s = lines[n]
+        new = s.rstrip(" \t")
+        if opts.get("insertSpaces"):
+            lead = len(new) - len(new.lstrip("\t"))
+            new = " " * (lead * opts.get("tabSize", 8)) + new[lead:]
+        if new != s:
+            out.append({"range": {"start": {"line": n, "character": 0},
+                                  "end": {"line": n, "character": units(s)}},
+                        "newText": new})
+    return out
+
+
 def answer(msg):
     method = msg["method"]
     p = msg.get("params", {})
@@ -243,6 +265,15 @@ def answer(msg):
             return [{"targetUri": loc["uri"], "targetRange": loc["range"],
                      "targetSelectionRange": loc["range"]}]
         return loc
+    if method == "textDocument/formatting":
+        return formatting(docs[uri], p.get("options", {}))
+    if method == "textDocument/rangeFormatting":
+        r = p["range"]
+        last = r["end"]["line"]
+        # A range that ends at the start of a line does not take that line in.
+        if r["end"]["character"] == 0 and last > r["start"]["line"]:
+            last -= 1
+        return formatting(docs[uri], p.get("options", {}), r["start"]["line"], last)
     if method == "textDocument/signatureHelp":
         return signature(docs[uri], pos.get("line", 0), pos.get("character", 0))
     if method == "textDocument/references":
@@ -310,6 +341,8 @@ def main():
                     "renameProvider": True,
                     "referencesProvider": True,
                     "signatureHelpProvider": {"triggerCharacters": ["(", ","]},
+                    "documentFormattingProvider": True,
+                    "documentRangeFormattingProvider": not os.environ.get("FAKE_LSP_NORANGE"),
                 },
                 "serverInfo": {"name": "fake"}}})
         elif method == "initialized":

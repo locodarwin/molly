@@ -1917,8 +1917,10 @@ def test_menu(tmpdir):
     check("End scrolls the last item into the box",
           "Insert" in tail.text()[7], True)
     check("the arrow moves to the top border", "\u25b4" in tail.text()[1], True)
-    check("and goes from the bottom one, which has nothing behind it",
-          "\u25be" in tail.text()[8], False)
+    # And stays on the bottom one: End goes to the last item that can run,
+    # and Format, greyed without a language server, is still below it.
+    check("and stays on the bottom one, with Format greyed below",
+          "\u25be" in tail.text()[8], True)
     check("the item scrolled to is the one Enter runs",
           any("Insert output of:" in l
               for l in screen(["\x1be", END, "\r"], rows=12, cols=28).text()),
@@ -5595,6 +5597,68 @@ def test_lsp_problems(tmpdir):
         os.chdir(here)
 
 
+def test_lsp_format(tmpdir):
+    """Alt-Q: the language server formats the file, or the selection.
+
+    The fake server trims trailing blanks and, told to insert spaces, turns
+    leading tabs into tabSize spaces: so what it does shows that molly sent the
+    file's own indentation settings. Checked: the whole file, a selection, a
+    server that only formats whole files, one undo step, a file that needs
+    nothing, and the cursor staying on its row.
+    """
+    print("\nlanguage server: formatting")
+
+    work = os.path.join(tmpdir, "lspfmt")
+    os.makedirs(work, exist_ok=True)
+    rc = os.path.join(work, "lsprc")
+    with open(rc, "w") as fh:
+        fh.write("[syntax c]\nlanguage server = python3 -I %s\n"
+                 "insert spaces = on\ntab width = 4\n" % FAKE_LSP)
+    FORMAT, DOWN, SH_DOWN = "\x1bq", "\x1b[B", "\x1b[1;2B"
+    WAIT = 2.0
+    MESSY = "int a;   \n\tint b;\t\n\t\tint c;\nint d;\n"
+
+    def session(keys, env=None, text=MESSY, save=True):
+        with open("main.c", "w") as fh:
+            fh.write(text)
+        e = {"MOLLY_CONFIG": rc, "MOLLY_LSP": ""}
+        e.update(env or {})
+        scr = Screen(12, 64)
+        scr.feed(run([MOLLY, "main.c"], keys + (["\x13", 0.3] if save else []),
+                     rows=12, cols=64, env=e))
+        with open("main.c") as fh:
+            return scr, fh.read()
+
+    here = os.getcwd()
+    os.chdir(work)
+    try:
+        scr, got = session([WAIT, FORMAT, 1.0])
+        check("Alt-Q formats the file, with its own tab width and spaces", got,
+              "int a;\n    int b;\n        int c;\nint d;\n")
+        scr, got = session([WAIT, FORMAT, 1.0], save=False)
+        check("and says how much changed",
+              "Formatted: 3 changes, one undo step." in scr.text()[11], True)
+        scr, got = session([WAIT, DOWN, DOWN, FORMAT, 1.0])
+        check("the cursor stays on its row", "Ln 3," in scr.text()[10], True)
+        scr, got = session([WAIT, FORMAT, 1.0, "\x1a", 0.3])
+        check("one Ctrl-Z takes it all back", got, MESSY)
+        scr, got = session([WAIT, DOWN, SH_DOWN, FORMAT, 1.0])
+        check("with a selection, only the selected rows",
+              got, "int a;   \n    int b;\n\t\tint c;\nint d;\n")
+        scr, got = session([WAIT, DOWN, SH_DOWN, FORMAT, 1.0], env={"FAKE_LSP_NORANGE": "1"})
+        check("a server that cannot do a range does the file",
+              got, "int a;\n    int b;\n        int c;\nint d;\n")
+        scr, got = session([WAIT, DOWN, SH_DOWN, FORMAT, 1.0], env={"FAKE_LSP_NORANGE": "1"},
+                           save=False)
+        check("and says so", "Formatted the whole file" in scr.text()[11], True)
+        scr, got = session([WAIT, FORMAT, 1.0], text="int a;\nint b;\n", save=False)
+        check("a tidy file is left as it was, and said to be",
+              "Already formatted." in scr.text()[11] and "(modified)" not in scr.text()[10],
+              True)
+    finally:
+        os.chdir(here)
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -5669,6 +5733,7 @@ def main():
         test_lsp_references(tmpdir)
         test_lsp_signature(tmpdir)
         test_lsp_problems(tmpdir)
+        test_lsp_format(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

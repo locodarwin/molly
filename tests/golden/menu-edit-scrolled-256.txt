@@ -7,7 +7,7 @@
 ├──────────────────────────┤
 │  Filter thro       Alt-| │
 │  Insert outp       Alt-! │
-└──────────────────────────┘
+└─────────────────────────▾┘
 ~
 sample.txt - 3 lines
 HELP: Ctrl-S = save | Ctrl-Q

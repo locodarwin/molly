@@ -330,6 +330,8 @@ static int cmd_complete(void) { return lspui_complete(); }
 static int cmd_rename(void) { return lspui_rename(); }
 static int cmd_references(void) { return lspui_references(); }
 static int cmd_signature(void) { return lspui_signature(); }
+static int cmd_format(void) { return lspui_format(); }
+static int can_format(void) { return lspui_can(LSP_REQ_FORMAT); }
 static int can_signature(void) { return lspui_can(LSP_REQ_SIGNATURE); }
 static int can_references(void) { return lspui_can(LSP_REQ_REFERENCES); }
 static int can_rename(void) { return lspui_can(LSP_REQ_RENAME); }
@@ -767,6 +769,9 @@ static const struct command commands[] = {
   {.name = "code.references", .label = "Find references",
    .help = "Find references", .group = "CODE", .run = cmd_references,
    .enabled = can_references},
+  {.name = "code.format", .label = "Format",
+   .help = "Format file", .group = "CODE", .flags = CMD_EDITS,
+   .run = cmd_format, .enabled = can_format},
   {.name = "code.signature", .label = "Show signature",
    .help = "Show signature", .group = "CODE", .run = cmd_signature,
    .enabled = can_signature},
@@ -1364,6 +1369,10 @@ static const struct binding default_bindings[] = {
   /* P for parameters. It opens by itself on `(` and `,`, so this is for
    * looking again. */
   {"alt-p",    "code.signature"},
+  /* Q, which Emacs fills a paragraph with: the nearest thing an editor
+   * that predates formatters had to one. Alt-F is the File menu's, and the
+   * Ctrl-Shift chords other editors use are not ones a terminal can send. */
+  {"alt-q",    "code.format"},
   /* VS Code's, beside F12 as definition is. */
   {"shift-f12", "code.references"},
 
@@ -1853,6 +1862,7 @@ static const struct help_entry help_entries[] = {
   {NULL,        NULL, NULL, "code.complete"},
   {NULL,        NULL, NULL, "code.rename"},
   {NULL,        NULL, NULL, "code.signature"},
+  {NULL,        NULL, NULL, "code.format"},
 };
 
 int help_entry_count(void) {

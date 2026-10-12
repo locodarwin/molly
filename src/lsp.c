@@ -97,6 +97,7 @@ struct server {
   int sync;                /* 0 none, 1 full, 2 incremental */
   int save;                /* wants didSave */
   int hover, definition, completion, rename, references, signature;
+  int format, format_range;
   char sig_triggers[16];   /* signature help's, trigger and retrigger both */
   char triggers[16];       /* completion trigger characters, the one-byte ones */
 
@@ -521,7 +522,8 @@ static void send_initialize(struct server *s) {
           "\"references\":{},"
           "\"signatureHelp\":{\"signatureInformation\":{"
             "\"documentationFormat\":[\"plaintext\",\"markdown\"],"
-            "\"parameterInformation\":{\"labelOffsetSupport\":true}}}"
+            "\"parameterInformation\":{\"labelOffsetSupport\":true}}},"
+          "\"formatting\":{},\"rangeFormatting\":{}"
         "},"
         /* Edits to text only: a rename that wants to create, move or delete
          * files is declined rather than half done. */
@@ -937,6 +939,8 @@ static void on_initialized(struct server *s, const struct json *result) {
   s->rename = provided(json_get(caps, "renameProvider"));
   s->references = provided(json_get(caps, "referencesProvider"));
   s->signature = provided(json_get(caps, "signatureHelpProvider"));
+  s->format = provided(json_get(caps, "documentFormattingProvider"));
+  s->format_range = provided(json_get(caps, "documentRangeFormattingProvider"));
   {
     /* Triggers open it and retriggers keep it current; molly asks again on
      * every key while it is open anyway, so the two are one list here. */
@@ -1151,6 +1155,7 @@ int lsp_can(struct buffer *b, int kind) {
   case LSP_REQ_RENAME: return s->rename;
   case LSP_REQ_REFERENCES: return s->references;
   case LSP_REQ_SIGNATURE: return s->signature;
+  case LSP_REQ_FORMAT: return s->format || s->format_range;
   }
   return 0;
 }
@@ -1162,6 +1167,51 @@ int lsp_is_trigger(struct buffer *b, int c) {
   if (b->lsp_srv <= 0 || c <= 0 || c > 127) return 0;
   s = &servers[b->lsp_srv - 1];
   return s->state == SRV_READY && s->completion && strchr(s->triggers, c) != NULL;
+}
+
+int lsp_can_format_range(struct buffer *b) {
+  struct server *s;
+  if (b->lsp_srv <= 0) return 0;
+  s = &servers[b->lsp_srv - 1];
+  return s->state == SRV_READY && s->format_range;
+}
+
+/* Ask for the buffer formatted: the whole of it, or with `range` the rows
+ * and byte columns given. The answer is a list of edits, through
+ * lsp_answer() like the rest, recorded with the cursor (cy, cx) so that an
+ * answer arriving after the user has moved on is dropped. `tab_size` and `spaces` are what molly would indent this
+ * file with, which every formatter takes as its starting point. */
+int lsp_format(struct buffer *b, int range, int y0, int x0, int y1, int x1,
+               int tab_size, int spaces, int cy, int cx) {
+  struct server *s = ready_for(b);
+  struct abuf ab = ABUF_INIT;
+  int k;
+  if (s == NULL || !(range ? s->format_range : s->format)) return 0;
+  for (k = 0; k < s->npend; k++)
+    if (s->pend[k].kind == LSP_REQ_FORMAT) s->pend[k].buf = NULL, s->pend[k].kind = -1;
+  text_document(&ab, b);
+  ab_append(&ab, "}", 1);
+  if (range) {
+    int u0 = 0, u1 = 0;
+    if (y0 < b->numrows) {
+      erow *r = buf_row(b, y0);
+      u0 = lsp_col_to_units(r->chars, r->size, x0, s->utf8);
+    }
+    if (y1 < b->numrows) {
+      erow *r = buf_row(b, y1);
+      u1 = lsp_col_to_units(r->chars, r->size, x1, s->utf8);
+    }
+    json_putf(&ab, ",\"range\":{\"start\":{\"line\":%d,\"character\":%d},"
+                   "\"end\":{\"line\":%d,\"character\":%d}}", y0, u0, y1, u1);
+  }
+  json_putf(&ab, ",\"options\":{\"tabSize\":%d,\"insertSpaces\":%s,"
+                 "\"trimTrailingWhitespace\":true}}", tab_size, spaces ? "true" : "false");
+  request(s, range ? "textDocument/rangeFormatting" : "textDocument/formatting",
+          &ab, LSP_REQ_FORMAT, b);
+  free(ab.b);
+  s->pend[s->npend - 1].cx = cx;
+  s->pend[s->npend - 1].cy = cy;
+  return 1;
 }
 
 /* Does typing `c` in this buffer ask for signature help? */

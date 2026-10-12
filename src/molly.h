@@ -689,6 +689,7 @@ struct json_doc;
 #define LSP_REQ_RENAME     5
 #define LSP_REQ_REFERENCES 6
 #define LSP_REQ_SIGNATURE  7
+#define LSP_REQ_FORMAT     8
 
 /* A piece of a row that a diagnostic covers: bytes [x0, x1). See lspui.c. */
 struct diag_span {
@@ -1118,6 +1119,9 @@ int lsp_ask(struct buffer *b, int kind, int cy, int cx, int trigger,
 int lsp_can(struct buffer *b, int kind);
 int lsp_is_trigger(struct buffer *b, int c);
 int lsp_is_sig_trigger(struct buffer *b, int c);
+int lsp_can_format_range(struct buffer *b);
+int lsp_format(struct buffer *b, int range, int y0, int x0, int y1, int x1,
+               int tab_size, int spaces, int cy, int cx);
 char *lsp_uri_to_path(const char *uri);
 int lsp_col_to_units(const char *s, int size, int col, int utf8);
 int lsp_enabled(void);
@@ -1141,6 +1145,7 @@ int lspui_cursor_message(char *dst, size_t n);
 int lspui_complete(void);
 int lspui_definition(void);
 int lspui_references(void);
+int lspui_format(void);
 int lspui_problems(void);
 int lspui_problems_jump(void);
 int lspui_rename(void);

@@ -383,9 +383,9 @@ static void read_completions(const struct json *r) {
 
 /* A list of TextEdits for one file. A file named twice -- the protocol does
  * not forbid it -- gets both lists. */
+static void read_text_edits(struct fchange *f, const struct json *list);
+
 static void add_edits(const char *uri, const struct json *list) {
-  const struct json *k;
-  struct fchange *f;
   char *path = lsp_uri_to_path(uri);
   int i;
   if (path == NULL) {
@@ -402,8 +402,13 @@ static void add_edits(const char *uri, const struct json *list) {
   } else {
     free(path);
   }
-  f = &box.files[i];
-  if (list == NULL || list->type != JSON_ARRAY) return;
+  read_text_edits(&box.files[i], list);
+}
+
+/* A list of TextEdits, onto the end of a file's. */
+static void read_text_edits(struct fchange *f, const struct json *list) {
+  const struct json *k;
+  if (list == NULL || list->type != JSON_ARRAY || list->n == 0) return;
   f->e = xrealloc(f->e, sizeof(*f->e) * (size_t)(f->n + list->n));
   for (k = list->kid; k != NULL; k = k->next) {
     const struct json *r = json_get(k, "range");
@@ -539,6 +544,14 @@ void lsp_answer(int kind, struct buffer *b, unsigned edits, int cy, int cx,
         box.nrefs++;
       }
     }
+  } else if (kind == LSP_REQ_FORMAT) {
+    /* The edits are to the buffer that asked, which has no need of a path. */
+    box.files = xmalloc(sizeof(*box.files));
+    memset(box.files, 0, sizeof(*box.files));
+    box.files[0].path = xstrdup("");
+    box.nfiles = 1;
+    if (result == NULL) box.refuse = xstrdup("The language server could not format this.");
+    else read_text_edits(&box.files[0], result);
   } else if (kind == LSP_REQ_RENAME) {
     if (result != NULL && result->type == JSON_OBJECT) read_workspace_edit(result);
     else box.refuse = xstrdup("The language server cannot rename that.");
@@ -843,10 +856,14 @@ static void edit_pos(int line, int ch, int utf8, int *y, int *x) {
   *x = lsp_units_to_col(r->chars, r->size, ch, utf8);
 }
 
-/* One file's edits, into the current buffer, as one undo step. `track` is a
- * column on row `track_y` to carry along: where the cursor was, moved by the
- * edits before it on its row, or to the start of the one it was inside. */
-static int apply_edits(struct fchange *f, int utf8, int track_y, int *track) {
+/* One file's edits, into the current buffer, as one undo step. `track_y` and
+ * `track` are a position to carry along -- where the cursor was -- moved down
+ * or up by the lines edits above it add or take away, and along its row by
+ * the edits before it there, or to the start of the one it was inside. Either
+ * may be NULL. An edit that would put back exactly what is there is skipped:
+ * a formatter returns a file's every line, and a file it did not change must
+ * not come back modified. */
+static int apply_edits(struct fchange *f, int utf8, int *track_y, int *track) {
   int k, n = 0;
   qsort(f->e, (size_t)f->n, sizeof(*f->e), fedit_cmp);
   cursors_collapse();
@@ -858,9 +875,20 @@ static int apply_edits(struct fchange *f, int utf8, int track_y, int *track) {
     edit_pos(e->sl, e->sc, utf8, &sy, &sx);
     edit_pos(e->el, e->ec, utf8, &ey, &ex);
     if (ey < sy || (ey == sy && ex < sx)) continue;
-    if (track != NULL && sy == track_y && ey == sy && strchr(e->text, '\n') == NULL) {
-      if (ex <= *track) *track += len - (ex - sx);
-      else if (sx <= *track) *track = sx;
+    if (sy == ey && sy < row_count() && ex - sx == len &&
+        memcmp(row_at(sy)->chars + sx, e->text, (size_t)len) == 0)
+      continue;
+    if (track_y != NULL) {
+      int lines = 0;
+      const char *p;
+      for (p = e->text; *p; p++)
+        if (*p == '\n') lines++;
+      if (ey < *track_y) {
+        *track_y += lines - (ey - sy);
+      } else if (track != NULL && sy == *track_y && ey == sy && lines == 0) {
+        if (ex <= *track) *track += len - (ex - sx);
+        else if (sx <= *track) *track = sx;
+      }
     }
     CUR.sy = sy;
     CUR.sx = sx;
@@ -911,7 +939,7 @@ static void deliver_rename(void) {
       opened++;
     }
     {
-      int n = apply_edits(f, box.utf8, V.buf == home ? hy : -1,
+      int n = apply_edits(f, box.utf8, V.buf == home ? &hy : NULL,
                           V.buf == home ? &hx : NULL);
       changes += n;
       if (V.buf == home) home_changes += n;
@@ -1063,6 +1091,45 @@ int lspui_references(void) {
     return 0;
   }
   ask(LSP_REQ_REFERENCES, "find references");
+  return 0;
+}
+
+/* ---- formatting ---------------------------------------------------------- */
+
+static int format_whole;   /* a selection was asked for and the file was sent */
+
+static void deliver_format(void) {
+  int y = CUR.cy, x = CUR.cx, n;
+  if (box.refuse != NULL) {
+    editor_set_status_message("%s", box.refuse);
+    return;
+  }
+  n = apply_edits(&box.files[0], box.utf8, &y, &x);
+  cursor_to(y, x);
+  if (n == 0)
+    editor_set_status_message("Already formatted.");
+  else
+    editor_set_status_message("Formatted%s: %d change%s, one undo step.",
+                              format_whole ? " the whole file" : "",
+                              n, n == 1 ? "" : "s");
+}
+
+/* Alt-Q: the language server's formatting -- of the selection when there is
+ * one and the server can format a range, of the file otherwise. */
+int lspui_format(void) {
+  int range = CUR.sel_active && lsp_can_format_range(V.buf);
+  int ay = 0, ax = 0, by = 0, bx = 0;
+  if (!lsp_can(V.buf, LSP_REQ_FORMAT)) {
+    ask(LSP_REQ_FORMAT, "format");
+    return 0;
+  }
+  if (range) selection_span(&ax, &ay, &bx, &by);
+  format_whole = CUR.sel_active && !range;
+  if (!lsp_format(V.buf, range, ay, ax, by, bx, tab_width(), indent_insert_spaces(),
+                  CUR.cy, CUR.cx))
+    editor_set_status_message("The language server is not ready yet.");
+  else if (format_whole)
+    editor_set_status_message("This file's server formats whole files only; formatting it all.");
   return 0;
 }
 
@@ -1804,6 +1871,8 @@ void lspui_deliver(void) {
   }
   if (box.kind == LSP_REQ_RENAME) {
     deliver_rename();
+  } else if (box.kind == LSP_REQ_FORMAT) {
+    deliver_format();
   } else if (box.kind == LSP_REQ_REFERENCES) {
     deliver_references();
   } else if (box.kind == LSP_REQ_DEFINITION) {

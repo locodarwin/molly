@@ -595,6 +595,11 @@ const char *syntax_name(const struct syntax *s) {
   return (s != NULL) ? s->name : NULL;
 }
 
+/* The first line-comment marker, or "" for a language with none. */
+const char *syntax_line_comment(const struct syntax *s) {
+  return (s != NULL && s->n_line_comment > 0) ? s->line_comment[0] : "";
+}
+
 /* The command that starts this language's server, or "" for none. */
 const char *syntax_lsp(const struct syntax *s) {
   return (s != NULL) ? s->lsp : "";

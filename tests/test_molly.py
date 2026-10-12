@@ -5682,6 +5682,28 @@ def test_words(tmpdir):
     check("and at the end of one, joins the next", edit([CR, "\x0b", "\x0b"]), "onenext\n")
 
 
+def test_lines(tmpdir):
+    """Line operations, by the keys a terminal sends for them. Unit-tested for
+    their rules; here for Alt-Up/Down, Alt-C, Ctrl-J and Alt-;."""
+    print("\nlines: the keys")
+    path = os.path.join(tmpdir, "lines.c")
+
+    def edit(keys, text="one\ntwo\nthree\n"):
+        with open(path, "w") as fh:
+            fh.write(text)
+        run([MOLLY, path], keys + [SAVE])
+        with open(path) as fh:
+            return fh.read()
+
+    DOWN = "\x1b[B"
+    check("Alt-Down moves the line down", edit(["\x1b[1;3B"]), "two\none\nthree\n")
+    check("Alt-Up moves it up", edit([DOWN, DOWN, "\x1b[1;3A"]), "one\nthree\ntwo\n")
+    check("Alt-C duplicates it", edit([DOWN, "\x1bc"]), "one\ntwo\ntwo\nthree\n")
+    check("Ctrl-J joins the next on", edit(["\n"]), "one two\nthree\n")
+    check("Alt-; comments it out", edit(["\x1b;"]), "// one\ntwo\nthree\n")
+    check("and back in", edit(["\x1b;", "\x1b;"]), "one\ntwo\nthree\n")
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -5758,6 +5780,7 @@ def main():
         test_lsp_problems(tmpdir)
         test_lsp_format(tmpdir)
         test_words(tmpdir)
+        test_lines(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

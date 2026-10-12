@@ -1115,6 +1115,15 @@ int loop_wait(int timeout_ms);
 void loop_cleanup(void);
 void loop_remove(int id);
 
+/* lines.c */
+void lines_case(int upper);
+void lines_comment(void);
+void lines_duplicate(void);
+void lines_join(void);
+void lines_move(int dir);
+void lines_sort(void);
+void lines_trim(void);
+
 /* lsp.c */
 char *lsp_path_to_uri(const char *path);
 int lsp_ask(struct buffer *b, int kind, int cy, int cx, int trigger,
@@ -1297,6 +1306,7 @@ void tabbar_draw(const struct layer *self);
 const char *syntax_lang_id(const struct syntax *s);
 const char *syntax_lang_name(int i);
 const char *syntax_lsp(const struct syntax *s);
+const char *syntax_line_comment(const struct syntax *s);
 const char *syntax_name(const struct syntax *s);
 const struct syntax *syntax_for_filename(const char *path);
 int syntax_lang_count(void);

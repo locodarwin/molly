@@ -11,13 +11,13 @@ ga║ FILES                                 EDITING                            �
 ~ ║   F1             This help screen       Alt-Backspace  Delete prev word  ║
 ~ ║                                         Ctrl-Del       Delete next word  ║
 ~ ║ BUFFERS                                 Ctrl-K         Delete to end     ║
-~ ║   Ctrl-PgDn      Next buffer            Ctrl-T         Swap characters   ║
-~ ║   Ctrl-PgUp      Previous buffer        Alt-|          Filter through sh ║
-~ ║                                         Alt-!          Insert sh output  ║
-~ ║ MENUS                                                                    ║
-~ ║   F10            Open the menu bar    FIND & REPLACE                     ║
-~ ║   Alt-letter     Open that menu         Ctrl-F         Find forward      ║
-~ ║   Ctrl-Space     Command palette        F3             Find next         ║
+~ ║   Ctrl-PgDn      Next buffer            Alt-C          Duplicate line    ║
+~ ║   Ctrl-PgUp      Previous buffer        Alt-Up         Move line up      ║
+~ ║                                         Alt-Down       Move line down    ║
+~ ║ MENUS                                   Ctrl-J         Join lines        ║
+~ ║   F10            Open the menu bar      Alt-;          Toggle comment    ║
+~ ║   Alt-letter     Open that menu         Ctrl-T         Swap characters   ║
+~ ║   Ctrl-Space     Command palette        Alt-|          Filter through sh ║
 ~ ║ In prompts: Enter accepts   Esc cancels                                  ║
 ~ ║ PgUp/PgDn scroll   any other key returns                                 ║
 ~ ╚══════════════════════════════════════════════════════════════════════════╝

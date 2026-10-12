@@ -5056,6 +5056,107 @@ static void test_words(void) {
   check_str("and undoes as one", mc_text(), "a bb\nc dd");
 }
 
+static void test_lines(void) {
+  printf("\nlines: duplicate, move, join, sort, trim, case, comment\n");
+
+  mc_load("a\nb\nc");
+  CUR.cy = 1;
+  CUR.cx = 1;
+  lines_duplicate();
+  check_str("duplicate puts a copy below", mc_text(), "a\nb\nb\nc");
+  check("and the cursor on the copy", CUR.cy * 100 + CUR.cx, 201);
+  editor_undo();
+  check_str("one undo takes it back", mc_text(), "a\nb\nc");
+
+  mc_load("a\nb\nc\nd");
+  CUR.cy = 1;
+  CUR.sy = 1;
+  CUR.sx = 0;
+  CUR.cy = 3;
+  CUR.cx = 0;
+  CUR.sel_active = 1;
+  lines_duplicate();
+  check_str("a selection ending at a row's start does not take that row",
+            mc_text(), "a\nb\nc\nb\nc\nd");
+  check("the selection moves to the copy", CUR.sy * 100 + CUR.cy, 305);
+
+  mc_load("one\ntwo\nthree");
+  CUR.cy = 1;
+  CUR.cx = 2;
+  lines_move(-1);
+  check_str("Alt-Up swaps with the row above", mc_text(), "two\none\nthree");
+  check("the cursor goes with it", CUR.cy * 100 + CUR.cx, 2);
+  lines_move(-1);
+  check_str("at the top, nothing", mc_text(), "two\none\nthree");
+  lines_move(1);
+  lines_move(1);
+  check_str("Alt-Down twice takes it to the bottom", mc_text(), "one\nthree\ntwo");
+  lines_move(1);
+  check_str("and no further", mc_text(), "one\nthree\ntwo");
+  check("with the cursor still on it", CUR.cy, 2);
+
+  mc_load("int x =\n    1 +\n\n  2;");
+  lines_join();
+  check_str("Ctrl-J joins the next row on, its indent a single space",
+            mc_text(), "int x = 1 +\n\n  2;");
+  check("the cursor at the join", CUR.cx, 7);
+  lines_join();
+  check_str("a blank row joins with no space", mc_text(), "int x = 1 +\n  2;");
+  CUR.sy = 0; CUR.sx = 0; CUR.cy = 1; CUR.cx = 3; CUR.sel_active = 1;
+  lines_join();
+  check_str("a selection joins all its rows", mc_text(), "int x = 1 + 2;");
+
+  mc_load("pear\nApple\napple\nfig");
+  CUR.sy = 0; CUR.sx = 0; CUR.cy = 3; CUR.cx = 3; CUR.sel_active = 1;
+  lines_sort();
+  check_str("sort is byte order", mc_text(), "Apple\napple\nfig\npear");
+  {
+    unsigned before = B.edits;
+    lines_sort();
+    check("sorting what is sorted changes nothing", B.edits == before, 1);
+  }
+  mc_load("x\ny");
+  lines_sort();
+  check_str("one row is not something to sort", E.statusmsg, "Select the lines to sort.");
+
+  mc_load("a  \nb\t\nc");
+  lines_trim();
+  check_str("trim takes trailing blanks off every row", mc_text(), "a\nb\nc");
+
+  mc_load("hello world_x caf\xc3\xa9");
+  CUR.cx = 8;
+  lines_case(1);
+  check_str("upper case: the word under the cursor", mc_text(),
+            "hello WORLD_X caf\xc3\xa9");
+  CUR.sy = 0; CUR.sx = 0; CUR.cy = 0; CUR.cx = row_at(0)->size; CUR.sel_active = 1;
+  lines_case(1);
+  check_str("ASCII letters only", mc_text(), "HELLO WORLD_X CAF\xc3\xa9");
+  lines_case(0);
+  check_str("lower case", mc_text(), "hello world_x caf\xc3\xa9");
+
+  mc_load("  if (a)\n    b();\n\n  c();");
+  free(B.filename);
+  B.filename = xstrdup("x.c");
+  syntax_retype();
+  CUR.sy = 0; CUR.sx = 0; CUR.cy = 3; CUR.cx = 2; CUR.sel_active = 1;
+  lines_comment();
+  check_str("comment out at the shallowest indent, blank rows left alone",
+            mc_text(), "  // if (a)\n  //   b();\n\n  // c();");
+  lines_comment();
+  check_str("and back in", mc_text(), "  if (a)\n    b();\n\n  c();");
+  CUR.sel_active = 0;
+  CUR.cy = 0;
+  CUR.cx = 4;
+  lines_comment();
+  check("the cursor moves with the text", CUR.cx, 7);
+  free(B.filename);
+  B.filename = xstrdup("x.txt");
+  syntax_retype();
+  lines_comment();
+  check_str("a file with no comment marker says so", E.statusmsg,
+            "No line comment is known for this file.");
+}
+
 int main(void) {
   test_loop_sources();
   test_wait_key_services_sources();
@@ -5083,6 +5184,7 @@ int main(void) {
   test_indent();
   test_cursors_list();
   test_words();
+  test_lines();
   test_cursors_edit();
   test_cursors_more();
   test_indent_block();

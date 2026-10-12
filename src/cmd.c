@@ -504,6 +504,15 @@ static int cmd_word_right(void) { cursors_word(1); return 0; }
 static int cmd_del_word_back(void) { cursors_edit(MC_DEL_WORD_BACK, 0); return 0; }
 static int cmd_del_word_fwd(void) { cursors_edit(MC_DEL_WORD_FWD, 0); return 0; }
 static int cmd_del_to_eol(void) { cursors_edit(MC_DEL_TO_EOL, 0); return 0; }
+static int cmd_duplicate(void) { lines_duplicate(); return CMD_KEEP_SELECTION; }
+static int cmd_line_up(void) { lines_move(-1); return CMD_KEEP_SELECTION; }
+static int cmd_line_down(void) { lines_move(1); return CMD_KEEP_SELECTION; }
+static int cmd_join(void) { lines_join(); return 0; }
+static int cmd_sort(void) { lines_sort(); return CMD_KEEP_SELECTION; }
+static int cmd_trim(void) { lines_trim(); return CMD_KEEP_SELECTION; }
+static int cmd_upper(void) { lines_case(1); return CMD_KEEP_SELECTION; }
+static int cmd_lower(void) { lines_case(0); return CMD_KEEP_SELECTION; }
+static int cmd_comment(void) { lines_comment(); return CMD_KEEP_SELECTION; }
 static int cmd_right(void) { cursors_move_all(ARROW_RIGHT); return 0; }
 static int cmd_up(void)    { cursors_move_all(ARROW_UP);    return 0; }
 static int cmd_down(void)  { cursors_move_all(ARROW_DOWN);  return 0; }
@@ -827,6 +836,26 @@ static const struct command commands[] = {
   {.name = "edit.delete-to-end", .label = "Delete to line end",
    .help = "Delete to end", .group = "EDITING", .flags = CMD_EDITS,
    .run = cmd_del_to_eol},
+  /* Whole lines. They keep the selection, so a block of lines can be moved
+   * three rows down with three presses. */
+  {.name = "edit.duplicate", .label = "Duplicate line",
+   .help = "Duplicate line", .group = "EDITING", .flags = CMD_EDITS, .run = cmd_duplicate},
+  {.name = "edit.line-up", .label = "Move line up",
+   .help = "Move line up", .group = "EDITING", .flags = CMD_EDITS, .run = cmd_line_up},
+  {.name = "edit.line-down", .label = "Move line down",
+   .help = "Move line down", .group = "EDITING", .flags = CMD_EDITS, .run = cmd_line_down},
+  {.name = "edit.join", .label = "Join lines",
+   .help = "Join lines", .group = "EDITING", .flags = CMD_EDITS, .run = cmd_join},
+  {.name = "edit.comment", .label = "Toggle comment",
+   .help = "Toggle comment", .group = "EDITING", .flags = CMD_EDITS, .run = cmd_comment},
+  {.name = "edit.sort", .label = "Sort lines",
+   .flags = CMD_EDITS, .run = cmd_sort},
+  {.name = "edit.trim", .label = "Trim whitespace",
+   .flags = CMD_EDITS, .run = cmd_trim},
+  {.name = "edit.upper", .label = "Upper case",
+   .flags = CMD_EDITS, .run = cmd_upper},
+  {.name = "edit.lower", .label = "Lower case",
+   .flags = CMD_EDITS, .run = cmd_lower},
   {.name = "edit.transpose", .label = "Transpose characters",
    /* The help column is 17 columns and truncates in silence, so this is written
     * to fit it. "Swap the two characters at the cursor" came out as "Swap the
@@ -1385,6 +1414,16 @@ static const struct binding default_bindings[] = {
   {"alt-backspace", "edit.delete-word-back"},
   {"ctrl-delete",   "edit.delete-word-forward"},
   {"ctrl-k",        "edit.delete-to-end"},
+  /* Alt-Up and Alt-Down are VS Code's; its Shift-Alt-Down for duplicate is
+   * block selection here, so duplicate is Alt-C, for copy. Ctrl-J is
+   * Sublime's join, and a terminal sends it as LF, apart from Enter's CR.
+   * Alt-; is Emacs's comment command: Ctrl-/ arrives as the same byte as
+   * Ctrl-?, which is help. */
+  {"alt-up",    "edit.line-up"},
+  {"alt-down",  "edit.line-down"},
+  {"alt-c",     "edit.duplicate"},
+  {"ctrl-j",    "edit.join"},
+  {"alt-;",     "edit.comment"},
   /* F2 and Shift-F2, a pair like F3's and F4's. VS Code's F8 is a split here,
    * and F2 is free until molly renames anything. */
   {"f2",       "goto.next-problem"},
@@ -1845,6 +1884,11 @@ static const struct help_entry help_entries[] = {
   {NULL,         NULL,          NULL,           "edit.delete-word-back"},
   {NULL,         NULL,          NULL,           "edit.delete-word-forward"},
   {NULL,         NULL,          NULL,           "edit.delete-to-end"},
+  {NULL,         NULL,          NULL,           "edit.duplicate"},
+  {NULL,         NULL,          NULL,           "edit.line-up"},
+  {NULL,         NULL,          NULL,           "edit.line-down"},
+  {NULL,         NULL,          NULL,           "edit.join"},
+  {NULL,         NULL,          NULL,           "edit.comment"},
   {NULL,         NULL,          NULL,           "edit.transpose"},
   {NULL,         NULL,          NULL,           "edit.filter"},
   {NULL,         NULL,          NULL,           "edit.insert-output"},

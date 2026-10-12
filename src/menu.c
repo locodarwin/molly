@@ -66,7 +66,9 @@ static const struct menu_item edit_items[] = {
    * of "output" for the same reason: I is Indent's. */
   {"edit.filter", 0}, {"edit.insert-output", 7},
   /* M, the first letter of "Format" this menu has not spent: F is Filter's. */
-  {"code.format", 3},
+  {"code.format", 3}, SEP,
+  /* G, N and W: the letters these have that nothing above has spent. */
+  {"edit.comment", 2}, {"edit.sort", 8}, {"edit.trim", 5},
 };
 static const struct menu_item search_items[] = {
   {"search.find", 0}, {"search.next", 5}, {"search.prev", 5},

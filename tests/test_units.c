@@ -5006,6 +5006,56 @@ static void test_lsp_rename_apply(void) {
   if (system(json) != 0) printf("  note  could not remove %s\n", tmpl);
 }
 
+static int word_at(int y, int x, int dir) {
+  word_step(&y, &x, dir);
+  return y * 100 + x;
+}
+
+static void test_words(void) {
+  printf("\nwords: moving and deleting by them\n");
+  mc_load("int  foo->bar_2 = 1;\n\xc3\xa9t\xc3\xa9 x\n\n  end");
+  check("right from the start: to the end of the first word", word_at(0, 0, 1), 3);
+  check("over blanks to the end of the next", word_at(0, 3, 1), 8);
+  check("punctuation is a word of its own", word_at(0, 8, 1), 10);
+  check("letters, digits and _ are one word", word_at(0, 10, 1), 15);
+  check("at the end of a row: the start of the next", word_at(0, 20, 1), 100);
+  check("past ASCII is part of a word", word_at(1, 0, 1), 105);
+  check("an empty row is a stop of its own", word_at(1, 7, 1), 200);
+  check("left: to the start of the word before", word_at(0, 15, -1), 10);
+  check("back over blanks to the word before them", word_at(0, 5, -1), 0);
+  check("at the start of a row: the end of the one above", word_at(3, 0, -1), 200);
+  check("over leading blanks, to the end of the row above", word_at(3, 2, -1), 300);
+  check("the end of the buffer stays put", word_at(3, 5, 1), 305);
+  check("the start of the buffer stays put", word_at(0, 0, -1), 0);
+
+  mc_load("one two three");
+  CUR.cx = 7;
+  cursors_edit(MC_DEL_WORD_BACK, 0);
+  check_str("Alt-Backspace deletes the word before", mc_text(), "one  three");
+  check("leaving the cursor where it began", CUR.cx, 4);
+  cursors_edit(MC_DEL_WORD_FWD, 0);
+  check_str("Ctrl-Delete the blanks and the word after", mc_text(), "one ");
+  editor_undo();
+  check_str("each is one undo step", mc_text(), "one  three");
+
+  mc_load("keep this\nnext");
+  CUR.cx = 4;
+  cursors_edit(MC_DEL_TO_EOL, 0);
+  check_str("Ctrl-K deletes to the end of the row", mc_text(), "keep\nnext");
+  cursors_edit(MC_DEL_TO_EOL, 0);
+  check_str("and at the end, joins the next row", mc_text(), "keepnext");
+
+  /* At every cursor, as one step. */
+  mc_load("a bb\nc dd\n");
+  CUR.cy = 0;
+  CUR.cx = 4;
+  cursors_add(1, 4);
+  cursors_edit(MC_DEL_WORD_BACK, 0);
+  check_str("a word delete reaches every cursor", mc_text(), "a \nc ");
+  editor_undo();
+  check_str("and undoes as one", mc_text(), "a bb\nc dd");
+}
+
 int main(void) {
   test_loop_sources();
   test_wait_key_services_sources();
@@ -5032,6 +5082,7 @@ int main(void) {
   test_syntax_misc();
   test_indent();
   test_cursors_list();
+  test_words();
   test_cursors_edit();
   test_cursors_more();
   test_indent_block();

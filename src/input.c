@@ -244,6 +244,10 @@ static int editor_read_key(void) {
   /* Alt + a printable character. Anything else following Esc -- a control byte,
    * say -- is consumed and reported as a plain Esc, as it always was. */
   if (b >= 0x20 && b <= 0x7e) return ALT_KEY(b);
+  /* Alt-Backspace, which a terminal sends as Esc and DEL: the one Alt chord on
+   * a key that is not printable, and the one readline and every shell already
+   * use for deleting a word. */
+  if (b == 0x7f) return ALT_KEY(0x7f);
 
   return '\x1b';
 }

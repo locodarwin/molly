@@ -5659,6 +5659,29 @@ def test_lsp_format(tmpdir):
         os.chdir(here)
 
 
+def test_words(tmpdir):
+    """Words: Ctrl-Left/Right, Alt-Backspace, Ctrl-Delete and Ctrl-K, as a
+    terminal sends them. The rules are unit-tested; this is the keys."""
+    print("\nwords: the keys")
+    path = os.path.join(tmpdir, "words.txt")
+
+    def edit(keys, text="one two three\nnext\n"):
+        with open(path, "w") as fh:
+            fh.write(text)
+        run([MOLLY, path], keys + [SAVE])
+        with open(path) as fh:
+            return fh.read()
+
+    CL, CR = "\x1b[1;5D", "\x1b[1;5C"
+    check("Ctrl-Right moves a word", edit([CR, "X"]), "oneX two three\nnext\n")
+    check("Ctrl-Left moves back one", edit([CR, CR, CL, "X"]), "one Xtwo three\nnext\n")
+    check("Alt-Backspace deletes the word before",
+          edit([CR, CR, "\x1b\x7f"]), "one  three\nnext\n")
+    check("Ctrl-Delete deletes the word after", edit(["\x1b[3;5~"]), " two three\nnext\n")
+    check("Ctrl-K deletes to the end of the line", edit([CR, "\x0b"]), "one\nnext\n")
+    check("and at the end of one, joins the next", edit([CR, "\x0b", "\x0b"]), "onenext\n")
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -5734,6 +5757,7 @@ def main():
         test_lsp_signature(tmpdir)
         test_lsp_problems(tmpdir)
         test_lsp_format(tmpdir)
+        test_words(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

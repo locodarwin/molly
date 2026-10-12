@@ -499,6 +499,11 @@ static int cmd_page_down(void) {
  * collapsed to one would make the gesture useless. cursors_move_all() is the
  * single-cursor call itself when there is one cursor. */
 static int cmd_left(void)  { cursors_move_all(ARROW_LEFT);  return 0; }
+static int cmd_word_left(void)  { cursors_word(-1); return 0; }
+static int cmd_word_right(void) { cursors_word(1); return 0; }
+static int cmd_del_word_back(void) { cursors_edit(MC_DEL_WORD_BACK, 0); return 0; }
+static int cmd_del_word_fwd(void) { cursors_edit(MC_DEL_WORD_FWD, 0); return 0; }
+static int cmd_del_to_eol(void) { cursors_edit(MC_DEL_TO_EOL, 0); return 0; }
 static int cmd_right(void) { cursors_move_all(ARROW_RIGHT); return 0; }
 static int cmd_up(void)    { cursors_move_all(ARROW_UP);    return 0; }
 static int cmd_down(void)  { cursors_move_all(ARROW_DOWN);  return 0; }
@@ -741,6 +746,10 @@ static const struct command commands[] = {
   {.name = "move.right", .label = "Right", .flags = CMD_MOVEMENT, .run = cmd_right},
   {.name = "move.up", .label = "Up", .flags = CMD_MOVEMENT, .run = cmd_up},
   {.name = "move.down", .label = "Down", .flags = CMD_MOVEMENT, .run = cmd_down},
+  {.name = "move.word-left", .label = "Word left",
+   .help = "Word left", .group = "MOVEMENT", .flags = CMD_MOVEMENT, .run = cmd_word_left},
+  {.name = "move.word-right", .label = "Word right",
+   .help = "Word right", .group = "MOVEMENT", .flags = CMD_MOVEMENT, .run = cmd_word_right},
   {.name = "move.line-start", .label = "Line start",
    .flags = CMD_MOVEMENT, .run = cmd_line_start},
   {.name = "move.line-end", .label = "Line end",
@@ -809,6 +818,15 @@ static const struct command commands[] = {
   {.name = "edit.to-tabs", .label = "Spaces to tabs",
    .help = "Indent to tabs", .group = "EDITING", .flags = CMD_EDITS, .run = cmd_to_tabs,
    .enabled = have_rows},
+  {.name = "edit.delete-word-back", .label = "Delete word before",
+   .help = "Delete prev word", .group = "EDITING", .flags = CMD_EDITS,
+   .run = cmd_del_word_back},
+  {.name = "edit.delete-word-forward", .label = "Delete word after",
+   .help = "Delete next word", .group = "EDITING", .flags = CMD_EDITS,
+   .run = cmd_del_word_fwd},
+  {.name = "edit.delete-to-end", .label = "Delete to line end",
+   .help = "Delete to end", .group = "EDITING", .flags = CMD_EDITS,
+   .run = cmd_del_to_eol},
   {.name = "edit.transpose", .label = "Transpose characters",
    /* The help column is 17 columns and truncates in silence, so this is written
     * to fit it. "Swap the two characters at the cursor" came out as "Swap the
@@ -1156,10 +1174,14 @@ int chord_parse(const char *s) {
        * which is what lets "alt-shift-up" draw a block selection. */
       mods |= KEY_ALT;
     } else {
-      if (s[1] != '\0' || (unsigned char)s[0] < 0x20 ||
-          (unsigned char)s[0] > 0x7e)
-        return -1;
-      key = ALT_KEY(s[0]);
+      if (key == BACKSPACE) {
+        key = ALT_KEY(0x7f);
+      } else {
+        if (s[1] != '\0' || (unsigned char)s[0] < 0x20 ||
+            (unsigned char)s[0] > 0x7e)
+          return -1;
+        key = ALT_KEY(s[0]);
+      }
     }
   }
   if (shift) {
@@ -1205,6 +1227,10 @@ void chord_name(int key, char *dst, size_t n) {
   }
   if (key >= F1_KEY && key <= F12_KEY) {
     snprintf(dst, n, "F%d", key - F1_KEY + 1);
+    return;
+  }
+  if (key == ALT_KEY(0x7f)) {
+    snprintf(dst, n, "Alt-Backspace");
     return;
   }
   if (IS_ALT_KEY(key)) {
@@ -1349,6 +1375,16 @@ static const struct binding default_bindings[] = {
   {"f4",       "search.next-result"},
   {"shift-f4", "search.prev-result"},
   {"ctrl-g", "goto.line"},
+  /* Word movement, as CUA has it. Ctrl-Shift is the window border's, so a
+   * word selection has no chord of its own; Shift-arrows still select. */
+  {"ctrl-left",  "move.word-left"},
+  {"ctrl-right", "move.word-right"},
+  /* Alt-Backspace is readline's word rubout, which every shell user's hands
+   * know; Ctrl-Delete is the CUA one forwards. Ctrl-K is Emacs's and nano's
+   * kill to the end of the line -- molly's deletes, and undo brings it back. */
+  {"alt-backspace", "edit.delete-word-back"},
+  {"ctrl-delete",   "edit.delete-word-forward"},
+  {"ctrl-k",        "edit.delete-to-end"},
   /* F2 and Shift-F2, a pair like F3's and F4's. VS Code's F8 is a split here,
    * and F2 is free until molly renames anything. */
   {"f2",       "goto.next-problem"},
@@ -1775,6 +1811,8 @@ static const struct help_entry help_entries[] = {
   {"MOVEMENT",   "Arrows",    "Move cursor",     NULL},
   {NULL,         "PgUp/PgDn", "Page up / down",  NULL},
   {NULL,         "Home/End",  "Line start / end", NULL},
+  {NULL,         NULL,        NULL,              "move.word-left"},
+  {NULL,         NULL,        NULL,              "move.word-right"},
   {NULL,         NULL,        NULL,              "goto.line"},
 
   {"SELECTION",  "Shift+Arrows",   "Extend selection", NULL},
@@ -1804,6 +1842,9 @@ static const struct help_entry help_entries[] = {
   {NULL,         NULL,          NULL,           "edit.dedent"},
   {NULL,         "Bksp/Ctrl-H", "Delete before", NULL},
   {NULL,         NULL,          NULL,           "edit.delete-forward"},
+  {NULL,         NULL,          NULL,           "edit.delete-word-back"},
+  {NULL,         NULL,          NULL,           "edit.delete-word-forward"},
+  {NULL,         NULL,          NULL,           "edit.delete-to-end"},
   {NULL,         NULL,          NULL,           "edit.transpose"},
   {NULL,         NULL,          NULL,           "edit.filter"},
   {NULL,         NULL,          NULL,           "edit.insert-output"},

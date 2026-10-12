@@ -168,6 +168,83 @@ int cursors_add_sel(int cy, int cx, int ex) {
  * Enter and paste remove nothing, and Backspace removes what is behind. A
  * selection moves it to the far end of the selection, because that is the text
  * the operation replaces. */
+/* ---- words ----------------------------------------------------------------- */
+
+/* What a byte is, for word movement: blank, part of a word (letters, digits,
+ * the underscore and anything past ASCII), or punctuation. A run of one class
+ * is a word for Ctrl-Left and Ctrl-Right, so `foo->bar` is three stops and
+ * not one -- the rule every editor that moves by words agrees on. */
+static int byte_class(unsigned char c) {
+  if (c == ' ' || c == '\t') return 0;
+  if (isalnum(c) || c == '_' || c >= 0x80) return 1;
+  return 2;
+}
+
+/* One word from (cy, cx) in direction `dir`: rightwards, over any blanks and
+ * then to the end of the run that follows; leftwards, back over blanks and
+ * then to the start of the run before. At the edge of a row it crosses to
+ * the next or previous row, which is one stop of its own -- the way Left and
+ * Right cross a line end. */
+void word_step(int *cy, int *cx, int dir) {
+  erow *r;
+  int x = *cx, cls;
+  if (*cy >= row_count()) return;
+  r = row_at(*cy);
+  if (x > r->size) x = r->size;
+  if (dir > 0) {
+    if (x >= r->size) {
+      if (*cy + 1 < row_count()) {
+        (*cy)++;
+        *cx = 0;
+      }
+      return;
+    }
+    while (x < r->size && byte_class((unsigned char)r->chars[x]) == 0)
+      x += utf8_char_bytes(r->chars, r->size, x);
+    if (x < r->size) {
+      cls = byte_class((unsigned char)r->chars[x]);
+      while (x < r->size && byte_class((unsigned char)r->chars[x]) == cls)
+        x += utf8_char_bytes(r->chars, r->size, x);
+    }
+  } else {
+    if (x == 0) {
+      if (*cy > 0) {
+        (*cy)--;
+        *cx = row_at(*cy)->size;
+      }
+      return;
+    }
+    while (x > 0 && byte_class((unsigned char)r->chars[utf8_prev(r->chars, x)]) == 0)
+      x = utf8_prev(r->chars, x);
+    if (x > 0) {
+      cls = byte_class((unsigned char)r->chars[utf8_prev(r->chars, x)]);
+      while (x > 0 && byte_class((unsigned char)r->chars[utf8_prev(r->chars, x)]) == cls)
+        x = utf8_prev(r->chars, x);
+    }
+  }
+  *cx = x;
+}
+
+/* Where a forward delete at the cursor ends, for the three that are not a
+ * selection: a character, a word, the rest of the row. */
+static void forward_end(int what, int *r1, int *c1) {
+  erow *row;
+  if (CUR.cy >= row_count()) return;
+  row = row_at(CUR.cy);
+  if (what == MC_DEL_WORD_FWD) {
+    word_step(r1, c1, 1);
+  } else if (what == MC_DEL_TO_EOL && CUR.cx < row->size) {
+    *c1 = row->size;
+  } else if (CUR.cx < row->size) {
+    *c1 = CUR.cx + utf8_char_bytes(row->chars, row->size, CUR.cx);
+  } else if (CUR.cy < row_count() - 1) {
+    /* The row's terminator is what gets removed, so the range ends at the
+     * start of the row that is about to be joined on. */
+    *r1 = CUR.cy + 1;
+    *c1 = 0;
+  }
+}
+
 static void range_end(int what, int *r1, int *c1) {
   *r1 = CUR.cy;
   *c1 = CUR.cx;
@@ -181,17 +258,20 @@ static void range_end(int what, int *r1, int *c1) {
     }
   }
 
-  if (what == MC_DELETE_FWD && CUR.cy < row_count()) {
-    erow *row = row_at(CUR.cy);
-    if (CUR.cx < row->size) {
-      *c1 = CUR.cx + utf8_char_bytes(row->chars, row->size, CUR.cx);
-    } else if (CUR.cy < row_count() - 1) {
-      /* The row's terminator is what gets removed, so the range ends at the
-       * start of the row that is about to be joined on. */
-      *r1 = CUR.cy + 1;
-      *c1 = 0;
-    }
-  }
+  if (what == MC_DELETE_FWD || what == MC_DEL_WORD_FWD || what == MC_DEL_TO_EOL)
+    forward_end(what, r1, c1);
+}
+
+/* Delete from the cursor to (ey, ex), whichever side of it that is, as a
+ * selection would be: the same path, so the undo and the row joining are the
+ * ones every other delete has. Nothing when the two are the same place. */
+static void delete_to(int ey, int ex) {
+  if (ey == CUR.cy && ex == CUR.cx) return;
+  CUR.sy = ey;
+  CUR.sx = ex;
+  CUR.sel_active = 1;
+  selection_delete();
+  CUR.sel_active = 0;
 }
 
 /* Move one cursor across an edit that replaced the text ending at (r1, c1) with
@@ -238,7 +318,9 @@ static void edit_one(int what, int arg) {
    * does. */
   if (CUR.sel_active) {
     selection_delete();
-    if (what == MC_DELETE_BACK || what == MC_DELETE_FWD) return;
+    if (what == MC_DELETE_BACK || what == MC_DELETE_FWD || what == MC_DEL_WORD_BACK ||
+        what == MC_DEL_WORD_FWD || what == MC_DEL_TO_EOL)
+      return;
   }
   switch (what) {
     case MC_INSERT:      editor_insert_char(arg); break;
@@ -251,6 +333,19 @@ static void edit_one(int what, int arg) {
       if (!indent_backspace()) editor_delete_char();
       break;
     case MC_DELETE_FWD:  editor_del_char(); break;
+    case MC_DEL_WORD_BACK: {
+      int y = CUR.cy, x = CUR.cx;
+      word_step(&y, &x, -1);
+      delete_to(y, x);
+      break;
+    }
+    case MC_DEL_WORD_FWD:
+    case MC_DEL_TO_EOL: {
+      int y = CUR.cy, x = CUR.cx;
+      forward_end(what, &y, &x);
+      delete_to(y, x);
+      break;
+    }
     /* editor_paste() takes the selection itself, so the call above has already
      * happened by the time this runs -- harmless, because the second one finds
      * nothing selected. */
@@ -716,6 +811,20 @@ void cursors_move_all(int key) {
   for (i = 0; i < V.ncursors; i++) {
     V.primary = i;
     editor_move_cursor(key);
+  }
+  V.primary = (keep < V.ncursors) ? keep : 0;
+  pre_seed_anchors();
+  cursors_dedup();
+}
+
+/* Every cursor a word left (dir < 0) or right. With Shift each extends its
+ * own selection, as an arrow does. */
+void cursors_word(int dir) {
+  int i, keep = V.primary;
+  pre_record();
+  for (i = 0; i < V.ncursors; i++) {
+    V.primary = i;
+    word_step(&CUR.cy, &CUR.cx, dir);
   }
   V.primary = (keep < V.ncursors) ? keep : 0;
   pre_seed_anchors();

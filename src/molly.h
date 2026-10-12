@@ -186,6 +186,9 @@ struct cursor {
 #define MC_PASTE       5
 #define MC_TEXT        6   /* the text cursors_insert_text() was given */
 #define MC_EACH        7   /* a text per cursor, from cursors_insert_each() */
+#define MC_DEL_WORD_BACK 8 /* to the start of the word before the cursor */
+#define MC_DEL_WORD_FWD  9 /* to the end of the word after it */
+#define MC_DEL_TO_EOL   10 /* to the end of the row, or the row's end if there */
 
 #define UC_INSERT 0
 #define UC_DELETE 1
@@ -1451,6 +1454,8 @@ int cursors_add_next(void);
 int cursors_add_vertical(int down);
 void cursors_line_edge(int to_end);
 void cursors_move_all(int key);
+void cursors_word(int dir);
+void word_step(int *cy, int *cx, int dir);
 void cursors_edit(int what, int arg);
 void cursors_insert_text(const char *s, int len);
 void cursors_insert_each(const char **s, const int *len);

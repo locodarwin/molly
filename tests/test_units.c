@@ -5229,6 +5229,56 @@ static void test_smart(void) {
   smart_set_auto_close(0);
 }
 
+static void test_nav(void) {
+  int y, x;
+  printf("\nnavigation: history, bookmarks, brackets\n");
+
+  mc_load("a\nb\nc\nd\ne");
+  CUR.cy = 1;
+  nav_push();
+  CUR.cy = 4;
+  nav_push();
+  CUR.cy = 2;
+  check("Alt-Left goes to the last place a jump left", nav_back() && CUR.cy == 4, 1);
+  check("and again to the one before", nav_back() && CUR.cy == 1, 1);
+  check("and then there is nowhere", nav_back(), 0);
+  check("Alt-Right comes forward again", nav_forward() && CUR.cy == 4, 1);
+  check("to where Alt-Left was first pressed", nav_forward() && CUR.cy == 2, 1);
+  check("and no further", nav_forward(), 0);
+  nav_back();
+  CUR.cy = 0;
+  nav_push();
+  check("a new jump forgets what was ahead", nav_can_forward(), 0);
+
+  mc_load("one\ntwo\nthree\nfour");
+  CUR.cy = 2;
+  CUR.cx = 1;
+  nav_mark_set(3);
+  CUR.cy = 0;
+  editor_insert_row(0, "new", 3);
+  nav_mark_go(3);
+  check("a bookmark moves down with its line", CUR.cy * 100 + CUR.cx, 301);
+  editor_delete_row(0);
+  editor_delete_row(0);
+  CUR.cy = 0;
+  CUR.cx = 0;
+  nav_mark_go(3);
+  check("and up", CUR.cy, 1);
+  nav_back();
+  check("going to one is a jump Alt-Left comes back from", CUR.cy, 0);
+  nav_mark_go(7);
+  check_str("an unset one says so", E.statusmsg, "No bookmark 7 in this file. Alt-J 7 sets one.");
+
+  mc_load("f(a[1], {\n  x }) + (\n)");
+  check("( finds its ) on another row", nav_match(0, 1, &y, &x) && y == 1 && x == 5, 1);
+  check("and back", nav_match(1, 5, &y, &x) && y == 0 && x == 1, 1);
+  check("[ finds ]", nav_match(0, 3, &y, &x) && y == 0 && x == 5, 1);
+  check("{ over a row of nesting", nav_match(0, 8, &y, &x) && y == 1 && x == 4, 1);
+  check("just after a bracket counts as on it", nav_match(0, 6, &y, &x) && x == 3, 1);
+  check("an unmatched one has no match", nav_match(2, 1, &y, &x) == 1 && y == 1 && x == 9, 1);
+  check("away from brackets, nothing", nav_match(0, 0, &y, &x), 0);
+}
+
 int main(void) {
   test_loop_sources();
   test_wait_key_services_sources();
@@ -5258,6 +5308,7 @@ int main(void) {
   test_words();
   test_lines();
   test_smart();
+  test_nav();
   test_cursors_edit();
   test_cursors_more();
   test_indent_block();

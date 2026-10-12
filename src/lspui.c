@@ -561,25 +561,6 @@ void lsp_answer(int kind, struct buffer *b, unsigned edits, int cy, int cx,
 
 /* ---- going there and back ------------------------------------------------ */
 
-#define JUMPS_MAX 32
-
-/* Where F12 jumped from, most recent last. A buffer by its id rather than by
- * pointer, because a buffer can be closed between the jump and the way back
- * and an id is safe to look for afterwards. */
-static struct { int buf_id, cy, cx; } jumps[JUMPS_MAX];
-static int njumps;
-
-static void jump_push(void) {
-  if (njumps == JUMPS_MAX) {
-    memmove(&jumps[0], &jumps[1], sizeof(jumps[0]) * (JUMPS_MAX - 1));
-    njumps--;
-  }
-  jumps[njumps].buf_id = B.id;
-  jumps[njumps].cy = CUR.cy;
-  jumps[njumps].cx = CUR.cx;
-  njumps++;
-}
-
 static void cursor_to(int cy, int cx) {
   cursors_collapse();
   CUR.sel_active = 0;
@@ -591,22 +572,9 @@ static void cursor_to(int cy, int cx) {
   CUR.cx = cx < 0 ? 0 : cx;
 }
 
-int lspui_can_back(void) { return njumps > 0; }
+int lspui_can_back(void) { return nav_can_back(); }
 
-int lspui_back(void) {
-  while (njumps > 0) {
-    int i;
-    njumps--;
-    for (i = 0; i < buf_count(); i++) {
-      if (buf_at(i)->id != jumps[njumps].buf_id) continue;
-      if (V.buf != buf_at(i)) buf_show(i);
-      cursor_to(jumps[njumps].cy, jumps[njumps].cx);
-      return 1;
-    }
-  }
-  editor_set_status_message("Nowhere to go back to.");
-  return 0;
-}
+int lspui_back(void) { return nav_back(); }
 
 /* The open buffer on this file, by what the name resolves to: the server says
  * /home/me/proj/src/a.c where the user typed src/a.c. -1 for none. */
@@ -630,7 +598,7 @@ static void deliver_definition(void) {
   char cwd[4096];
   size_t n;
 
-  jump_push();
+  nav_push();
   if (at >= 0) {
     if (V.buf != buf_at(at)) buf_show(at);
   } else {
@@ -808,6 +776,7 @@ int lspui_problems_jump(void) {
   path[pl] = '\0';
   col = (nprob_cols == pb->numrows) ? prob_cols[at] : 0;
   if (window_count() > 1) window_move_focus(-1);
+  nav_push();
   {
     int i, found = -1;
     for (i = 0; i < buf_count(); i++)

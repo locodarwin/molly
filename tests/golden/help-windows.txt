@@ -13,11 +13,11 @@ ga║                                         Ctrl-U         Line numbers      �
 ~ ║                                         Shift-F2       Previous problem  ║
 ~ ║                                         Ctrl-F2        List all problems ║
 ~ ║                                         F12            Go to definition  ║
-~ ║                                         Alt-Left       Back from there   ║
 ~ ║                                         Shift-F12      Find references   ║
 ~ ║                                         Alt-K          Info at cursor    ║
 ~ ║                                         Alt-/          Complete word     ║
 ~ ║                                         Alt-N          Rename symbol     ║
+~ ║                                         Alt-P          Show signature    ║
 ~ ║ In prompts: Enter accepts   Esc cancels                                  ║
 ~ ║ PgUp/PgDn scroll   any other key returns                                 ║
 ~ ╚══════════════════════════════════════════════════════════════════════════╝

@@ -322,7 +322,25 @@ static int have_problems(void) { return B.ndiag > 0; }
 static int cmd_lsp_status(void) { lspui_status(); return 0; }
 static int cmd_lsp_restart(void) { lspui_restart(); return 0; }
 static int cmd_definition(void) { return lspui_definition(); }
-static int cmd_back(void) { lspui_back(); return 0; }
+static int cmd_back(void) { nav_back(); return 0; }
+static int cmd_forward(void) { nav_forward(); return 0; }
+static int cmd_bracket(void) { nav_match_jump(); return 0; }
+/* Alt-J, then the digit: the second key is read here rather than bound,
+ * because ten commands for "set bookmark n" would be ten palette entries
+ * for one gesture. */
+static int cmd_mark_set(void) {
+  int c;
+  editor_set_status_message("Set which bookmark? 0-9");
+  editor_refresh_screen();
+  do c = ui_wait_key(); while (c == WINCH_KEY);
+  if (c >= '0' && c <= '9') nav_mark_set(c - '0');
+  else editor_set_status_message("No bookmark set.");
+  return 0;
+}
+#define MARK_GO(n) static int cmd_mark_go##n(void) { nav_mark_go(n); return 0; }
+MARK_GO(0) MARK_GO(1) MARK_GO(2) MARK_GO(3) MARK_GO(4)
+MARK_GO(5) MARK_GO(6) MARK_GO(7) MARK_GO(8) MARK_GO(9)
+#undef MARK_GO
 static int cmd_hover(void) { return lspui_hover(); }
 static int can_define(void) { return lspui_can(LSP_REQ_DEFINITION); }
 static int can_hover(void) { return lspui_can(LSP_REQ_HOVER); }
@@ -779,8 +797,20 @@ static const struct command commands[] = {
    .help = "Go to definition", .group = "CODE", .run = cmd_definition,
    .enabled = can_define},
   {.name = "goto.back", .label = "Back",
-   .help = "Back from there", .group = "CODE", .run = cmd_back,
-   .enabled = lspui_can_back},
+   .help = "Back from there", .group = "MOVEMENT", .run = cmd_back,
+   .enabled = nav_can_back},
+  {.name = "goto.forward", .label = "Forward",
+   .help = "Forward again", .group = "MOVEMENT", .run = cmd_forward,
+   .enabled = nav_can_forward},
+  {.name = "goto.bracket", .label = "Matching bracket",
+   .help = "Matching bracket", .group = "MOVEMENT", .run = cmd_bracket},
+  {.name = "bookmark.set", .label = "Set bookmark…",
+   .help = "Set bookmark 0-9", .group = "MOVEMENT", .run = cmd_mark_set},
+#define MARK_REC(n) {.name = "bookmark." #n, .label = "Go to bookmark " #n, \
+   .run = cmd_mark_go##n},
+  MARK_REC(0) MARK_REC(1) MARK_REC(2) MARK_REC(3) MARK_REC(4)
+  MARK_REC(5) MARK_REC(6) MARK_REC(7) MARK_REC(8) MARK_REC(9)
+#undef MARK_REC
   {.name = "code.hover", .label = "Info at cursor",
    .help = "Info at cursor", .group = "CODE", .run = cmd_hover,
    .enabled = can_hover},
@@ -1193,8 +1223,14 @@ int chord_parse(const char *s) {
        * "ctrl-shift-l" is refused, correctly, because the terminal cannot tell
        * it from "ctrl-l". */
       unsigned char c = (unsigned char)toupper((unsigned char)s[0]);
-      if (s[1] != '\0' || c < 'A' || c > 'Z') return -1;
-      key = CTRL_KEY(c);
+      /* Three punctuation marks have a Ctrl byte of their own too, which a
+       * terminal sends: \ ] and ^. ([ is Esc, and _ is ?, which is help.) */
+      if (s[1] == '\0' && (c == '\\' || c == ']' || c == '^')) {
+        key = CTRL_KEY(c);
+        c = 0;
+      }
+      if (c != 0 && (s[1] != '\0' || c < 'A' || c > 'Z')) return -1;
+      if (c != 0) key = CTRL_KEY(c);
     }
   }
   if (alt) {
@@ -1274,6 +1310,10 @@ void chord_name(int key, char *dst, size_t n) {
   }
   if (key >= 1 && key <= 26) {
     snprintf(dst, n, "Ctrl-%c", 'A' + key - 1);
+    return;
+  }
+  if (key >= 0x1c && key <= 0x1e) {
+    snprintf(dst, n, "Ctrl-%c", '@' + key);
     return;
   }
   if (key >= 0x20 && key <= 0x7e) {
@@ -1434,6 +1474,16 @@ static const struct binding default_bindings[] = {
    * K, because Ctrl-K is a chord a terminal cannot follow with a second. */
   {"f12",      "goto.definition"},
   {"alt-left", "goto.back"},
+  {"alt-right", "goto.forward"},
+  /* Ctrl-], vi's jump key, for the matching bracket: VS Code's Ctrl-Shift-\
+   * is not a chord a terminal sends. */
+  {"ctrl-]",    "goto.bracket"},
+  /* Alt-J and a digit sets a bookmark; Alt and the digit goes to it. */
+  {"alt-j",     "bookmark.set"},
+  {"alt-0", "bookmark.0"}, {"alt-1", "bookmark.1"}, {"alt-2", "bookmark.2"},
+  {"alt-3", "bookmark.3"}, {"alt-4", "bookmark.4"}, {"alt-5", "bookmark.5"},
+  {"alt-6", "bookmark.6"}, {"alt-7", "bookmark.7"}, {"alt-8", "bookmark.8"},
+  {"alt-9", "bookmark.9"},
   {"alt-k",    "code.hover"},
   /* Alt-/ for completion, as in Emacs and the editors that took it from
    * there: Ctrl-Space is the palette's, and a terminal cannot tell it from
@@ -1852,6 +1902,11 @@ static const struct help_entry help_entries[] = {
   {NULL,         "Home/End",  "Line start / end", NULL},
   {NULL,         NULL,        NULL,              "move.word-left"},
   {NULL,         NULL,        NULL,              "move.word-right"},
+  {NULL,         NULL,        NULL,              "goto.bracket"},
+  {NULL,         NULL,        NULL,              "goto.back"},
+  {NULL,         NULL,        NULL,              "goto.forward"},
+  {NULL,         NULL,        NULL,              "bookmark.set"},
+  {NULL,         "Alt-0..9",  "Go to bookmark",  NULL},
   {NULL,         NULL,        NULL,              "goto.line"},
 
   {"SELECTION",  "Shift+Arrows",   "Extend selection", NULL},
@@ -1941,7 +1996,7 @@ static const struct help_entry help_entries[] = {
   {NULL,        NULL, NULL, "goto.prev-problem"},
   {NULL,        NULL, NULL, "goto.problems"},
   {NULL,        NULL, NULL, "goto.definition"},
-  {NULL,        NULL, NULL, "goto.back"},
+
   {NULL,        NULL, NULL, "code.references"},
   {NULL,        NULL, NULL, "code.hover"},
   {NULL,        NULL, NULL, "code.complete"},

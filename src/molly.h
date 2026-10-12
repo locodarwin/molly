@@ -321,6 +321,9 @@ struct buffer {
   /* This is the problems list. See lspui.c. */
   int problems;
 
+  /* Bookmarks 0-9: a place each, moved with the text. See nav.c. */
+  struct { int y, x; unsigned char set; } marks[10];
+
   /* Bumped by every change to the text, at the row primitives. What the
    * language server was last sent is `lsp_sent`, so the two differing is what
    * "the server is behind" means -- and nothing that edits has to know there
@@ -1133,6 +1136,19 @@ int smart_insert(int c, int *adjust);
 int smart_surround(int c);
 void smart_set_auto_close(int on);
 void smart_set_home(int on);
+
+/* nav.c */
+int nav_back(void);
+int nav_can_back(void);
+int nav_can_forward(void);
+int nav_forward(void);
+int nav_match(int cy, int cx, int *my, int *mx);
+void nav_mark_go(int n);
+void nav_mark_set(int n);
+void nav_match_jump(void);
+void nav_push(void);
+void nav_record(int buf_id, int cy, int cx);
+void nav_rows_moved(struct buffer *b, int at, int delta);
 
 /* lsp.c */
 char *lsp_path_to_uri(const char *path);

@@ -375,6 +375,7 @@ void editor_insert_row(int at, char *s, size_t len) {
    * to the wrong rows. */
   syntax_invalidate_from(at);
   lsp_rows_moved(V.buf, at, 1);
+  nav_rows_moved(V.buf, at, 1);
 
   B.dirty++;
 }
@@ -393,6 +394,7 @@ void editor_delete_row(int at) {
   B.dirty++;
   B.edits++;
   lsp_rows_moved(V.buf, at, -1);
+  nav_rows_moved(V.buf, at, -1);
   /* Deleting shifts every row below up one, so their stored entry states belong
    * to the wrong rows now -- and the deleted row may have opened a comment. */
   syntax_invalidate_from(at);

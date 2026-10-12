@@ -448,12 +448,18 @@ void editor_find(void) {
 
   term = query[0] != '\0' ? query : last_query;
   excl = (query[0] == '\0');
+  {
+    /* Where the search started, for Alt-Left -- recorded only if it found
+     * something, so a miss leaves no step back to take. */
+    int sy = CUR.cy, sx = CUR.cx, sb = B.id;
   if (search_use_regex && (re = search_compile(term)) == NULL) {
     free(query);
     return;
   }
   r = editor_search_string(term, (int)strlen(term), re, 1, excl, SEARCH_WRAP,
                            NULL);
+  if (r == SEARCH_FOUND && (CUR.cy != sy || CUR.cx != sx)) nav_record(sb, sy, sx);
+  }
   regex_free(re);
   if (r == SEARCH_FOUND)
     editor_set_status_message("Found");
@@ -518,6 +524,7 @@ void editor_goto_line(void) {
   int target = (int)line - 1;
   if (target < 0) target = 0;
   if (target > max_cy) target = max_cy;
+  nav_push();
   CUR.cy = target;
   CUR.cx = 0;
   editor_set_status_message("Ln %d", CUR.cy + 1);

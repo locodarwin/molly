@@ -4,7 +4,7 @@ alpha   ╔═══════════════════════
 beta    ║  editor  tab width                                         8 ║
 gamma   ║  editor  insert spaces                                   off ║
 ~       ║  editor  auto indent                                      on ║
-~       ║  editor  smart home                                       on ║
+~       ║  editor  smart home                                      off ║
 ~       ║  editor  auto close                                      off ║
 ~       ║  editor  undo steps                                    32768 ║
 ~       ║  editor  language servers                                 on ║

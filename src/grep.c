@@ -371,6 +371,7 @@ int grep_jump(int delta) {
   }
 
   if (V.buf == b && window_count() > 1) window_move_focus(-1);
+  nav_push();
   editor_open_in_new_buffer(path);
 
   CUR.cy = (ln - 1 < row_count()) ? ln - 1 : (row_count() > 0 ? row_count() - 1 : 0);

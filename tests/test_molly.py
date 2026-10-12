@@ -5737,6 +5737,35 @@ def test_smart(tmpdir):
     check("it is off unless asked for", edit([END, " ("]), "    x = 1; (\n")
 
 
+def test_nav(tmpdir):
+    """Ctrl-], bookmarks and the position history, by their keys."""
+    print("\nnavigation: the keys")
+    path = os.path.join(tmpdir, "nav.c")
+
+    def edit(keys, text="f(a,\n  b) + 1;\nx\ny\nz\n"):
+        with open(path, "w") as fh:
+            fh.write(text)
+        run([MOLLY, path], keys + [SAVE])
+        with open(path) as fh:
+            return fh.read()
+
+    RIGHT, DOWN = "\x1b[C", "\x1b[B"
+    check("Ctrl-] goes to the matching bracket",
+          edit([RIGHT, "\x1d", "!"]), "f(a,\n  b!) + 1;\nx\ny\nz\n")
+    check("and back again", edit([RIGHT, "\x1d", "\x1d", "!"]), "f!(a,\n  b) + 1;\nx\ny\nz\n")
+    check("Alt-J 4 sets bookmark 4, and Alt-4 comes back to it",
+          edit([DOWN, DOWN, "\x1bj", "4", DOWN, DOWN, "\x1b4", "!"]),
+          "f(a,\n  b) + 1;\n!x\ny\nz\n")
+    check("Alt-Left goes back to where the bookmark jump left",
+          edit([DOWN, DOWN, "\x1bj", "4", DOWN, DOWN, "\x1b4", "\x1b[1;3D", "!"]),
+          "f(a,\n  b) + 1;\nx\ny\n!z\n")
+    check("and Alt-Right forward again",
+          edit([DOWN, DOWN, "\x1bj", "4", DOWN, DOWN, "\x1b4", "\x1b[1;3D",
+                "\x1b[1;3C", "!"]), "f(a,\n  b) + 1;\n!x\ny\nz\n")
+    check("Ctrl-G is a jump too",
+          edit(["\x07", "5", "\r", "\x1b[1;3D", "!"]), "!f(a,\n  b) + 1;\nx\ny\nz\n")
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -5815,6 +5844,7 @@ def main():
         test_words(tmpdir)
         test_lines(tmpdir)
         test_smart(tmpdir)
+        test_nav(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

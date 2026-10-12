@@ -15,7 +15,24 @@ This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
 
-**Latest:** the language server, which Shawn named on 2026-10-12, built in the
+**Latest:** the integrated terminal, the first of four Shawn asked for in order
+on 2026-10-12 ("the integrated terminal, then rename, find references, then
+signature help", with a problems list after). Three code commits. `4204fb4`
+lets a grid cell carry a colour a program chose (`grid_color`, `ATTR_RAW`),
+brought down to sixteen as the frame is written. `de02e59` is `src/vt.c`, an
+xterm-subset emulator that is bytes in and screen state out, 95 unit checks
+plus a random-sequence fuzz. `730c5c0` is `src/tty.c`: a pty and `$SHELL`
+behind a buffer, Alt-T to and from it (a split below, a third of the height),
+keys to the program except the ways out (found by command), Shift-PgUp
+scrollback, the size told to the program after layout, exit closing it from
+the main loop, and quit/close asking while something other than the shell
+runs. Commands that edit text refuse on a terminal through `cmd_run()`, which
+is now where keys, the menu bar and the palette all run commands. Pty checks
+`test_terminal` against a real `/bin/sh`; goldens `terminal*` against
+`tests/fake_shell.sh`, a fixed screen, because dash and bash prompt
+differently. Checked by hand with less, vim and htop.
+
+**Before that:** the language server, which Shawn named on 2026-10-12, built in the
 order `ROADMAP.md` already gave it: diagnostics, then definition and hover, then
 completion. Four commits. `7521f49` is `src/json.c`, a tree reader and a string
 writer, nothing calling it. `b897ef3` is the client, `src/lsp.c`, reachable only
@@ -197,8 +214,8 @@ views of the command table that had room for it, `bf35a8f` the documentation.
 drop-down item that was the best value-to-work ratio left. What is left is the
 smaller work under "Next by dependency", none of it confirmed as next — ask
 before starting any of it. The big-file rewrite and the language server are
-both done; the biggest thing left on the whole list is the integrated terminal,
-and `ROADMAP.md` has the argument for it.
+both done, and so is the integrated terminal; what is queued is rename, find
+references and signature help, then a problems list.
 
 ---
 
@@ -513,8 +530,7 @@ keymap, multiple buffers with tabs, syntax highlighting, window splits, the
 shell filter, indentation with per-filetype defaults, multiple cursors, and
 soft wrap. Nothing on the list below has been confirmed as next.
 
-The largest thing left is in `ROADMAP.md` rather than here: the integrated
-terminal, a phase of its own and not an afternoon. The big-file rewrite is done;
+Nothing large is left in `ROADMAP.md`: the integrated terminal is done too. The big-file rewrite is done;
 what it leaves (wrap measuring every row of a huge file once per width) is at
 the end of §5's big-file section. The language server is done; what it leaves
 -- rename, references, signature help, a problems list, completion as a word is
@@ -595,6 +611,16 @@ later.
   writing config nobody asked for.
 
 ### Gotchas
+
+- **Run commands through `cmd_run()`, never `cmd->run()`.** It is what refuses
+  `CMD_EDITS` commands on a terminal. A new command that changes text needs
+  the flag, or it will edit a terminal's empty buffer from the menu.
+- **A terminal's golden needs `tests/fake_shell.sh`, not a shell.** Its pty
+  checks use `/bin/sh` with `PS1` pinned and `ENV` empty, which is enough for
+  dash and bash to agree on what is typed and printed -- not on the screen
+  byte for byte.
+- **Keep scratch files out of `/tmp` and out of the tree.** This session's
+  were under `.git/tt/`, which git never shows.
 
 - **The pty harness pins `MOLLY_LSP=off`.** C files open in dozens of tests, and
   on a machine with clangd each would start one and draw its diagnostics. A

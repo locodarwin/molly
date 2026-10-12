@@ -15,9 +15,10 @@ command reached through a keymap, and the event loop can wait on a child process
 as well as the keyboard — and the features it was groundwork *for* have started
 landing: a configuration file with a rebindable keymap, any number of files open
 at once with a tab bar, syntax highlighting for seven languages, window splits,
-a shell filter, per-filetype indentation, multiple cursors, soft wrap and a
-language-server client. 2,216 checks pass, including golden screenshots taken
-before the renderer was replaced and still compared against today. What comes next, and why, is in
+a shell filter, per-filetype indentation, multiple cursors, soft wrap, a
+language-server client and an integrated terminal. 2,350 checks pass,
+including golden screenshots taken before the renderer was replaced and still
+compared against today. What comes next, and why, is in
 [`ROADMAP.md`](ROADMAP.md).
 
 [olly]: https://github.com/locodarwin/olly
@@ -106,6 +107,12 @@ Everything olly does, molly does. These all work today:
   with the output. One undo step, with a timeout, an output cap and `Esc` to
   cancel; a command that fails leaves your text alone. `Alt-!` inserts a
   command's output at the cursor instead — `date`, `git rev-parse HEAD`.
+- **An integrated terminal**: `Alt-T` opens your shell in a window below the
+  file, and goes back and forth. Colours, `less`, `vim`, `htop` and the rest
+  draw as they would in xterm; `Shift-PgUp` scrolls back 5,000 lines; paste
+  goes in bracketed. Every key is the program's but the ways out — window and
+  buffer switches, the menu bar, the palette, quit — and when the shell exits,
+  its window closes.
 - **Language servers**: open a C, C++, Rust or Python file with clangd,
   rust-analyzer or pylsp installed and molly starts it — a missing one is
   silence. Problems are underlined in the text and counted on the status bar,

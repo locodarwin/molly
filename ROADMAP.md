@@ -1039,7 +1039,7 @@ only; LSP folding is out until LSP is in.
 Shelling out to `git` for blame, log and diff gutter marks costs no dependency
 and is genuinely useful. Not core, and gated on panels.
 
-### Integrated terminal — **IN**
+### Integrated terminal — **done**
 
 - **For:** Fresh has one; it is a real part of the "never leave the editor" pitch.
 - **Against:** a pty, a second input loop, scrollback, resize handling and
@@ -1052,6 +1052,34 @@ and is genuinely useful. Not core, and gated on panels.
   feature that is genuinely hard to port to Windows, where it needs ConPTY.
 - Suspend-to-shell (Ctrl-Z job control) is worth having anyway and costs almost
   nothing.
+- **Done, on 2026-10-12**, picked by Shawn as the first of four ("the
+  integrated terminal, then rename, find references, then signature help").
+  It needed no "second input loop": the event loop already waited on child
+  processes for the language server, so a pty is one more source. What landed:
+  - **`src/vt.c`**, the emulator: xterm's subset as bash, readline, less, vim,
+    htop and git use it, bytes in and screen state out, with no pty in it so
+    every sequence is a unit test. 5,000 lines of scrollback, trailing blanks
+    trimmed. No reflow on resize, no mouse reporting to programs, and 24-bit
+    colour brought to the nearest of 256.
+  - **Grid cells that carry their own colour** (`grid_color`, `ATTR_RAW`): the
+    terminal is the one thing molly draws whose colours it does not choose.
+    Downgraded to sixteen as the frame is written, on a terminal that has
+    only sixteen.
+  - **`src/tty.c`**, the integration. **A terminal is a buffer** -- the window
+    tree, tabs, buffer list and closing all work on it unchanged -- whose text
+    is the emulator's screen; commands flagged `CMD_EDITS` refuse on it through
+    `cmd_run()`, now the one place keys, menus and the palette run commands.
+  - **Keys go to the program except the ways out**: window and buffer
+    switches, the menu bar, the palette, Quit and Alt-T, found by command so
+    rebinding moves them. F10 and F6 are therefore molly's in a terminal too,
+    which htop users will notice.
+  - **Exit closes it**, terminal and window, from the main loop. A program
+    other than the shell in the foreground makes quit and close ask first.
+- **Chosen without asking:** Alt-T (Ctrl-` arrives as the palette's NUL), a
+  third of the height, below; closing on exit; Quit kept by molly.
+- **Left for later:** selecting and copying inside a terminal with molly's own
+  selection, mouse reporting, reflow, true colour on terminals that have it,
+  a scrollback search, and Ctrl-Z suspend-to-shell for molly itself.
 
 ### LSP — **done** (diagnostics, definition, hover, completion)
 
@@ -1309,7 +1337,7 @@ structural to the menu bar.
 | Where the multi-cursor commands live | **The palette and the help screen, not the Edit menu** -- keyboard operations, as transpose already was |
 | LSP | **Done.** Diagnostics, definition, hover and completion; whole-document sync, answers through a mailbox the main loop opens |
 | LSP servers | **Found on PATH, silent when missing**; one per command line, so C and C++ share clangd |
-| Integrated terminal | **In**, late — needs panels first |
+| Integrated terminal | **Done.** A terminal is a buffer; keys go to the program except the ways out, found by command; exit closes it |
 | Big files | **In.** Buffer rewrite is planned, not optional |
 | Keymap | CUA on the four conflicts, and **fully customizable** |
 | Regex | **Hand-rolled PCRE subset**, with a step budget and a fuzz target |

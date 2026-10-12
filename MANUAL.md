@@ -1,10 +1,10 @@
 # Molly — A Command-Line Text Editor
 
-> **Note:** molly is at `0.1.0-dev`. The nine things this note used to say it
+> **Note:** molly is at `0.1.0-dev`. The ten things this note used to say it
 > did not have — more than one file open at once, regular-expression search,
 > syntax highlighting, a configuration file, window splits, a shell filter,
-> multi-cursor editing, soft wrap and a language server — it now has. What is
-> still missing is an integrated terminal.
+> multi-cursor editing, soft wrap, a language server and an integrated
+> terminal — it now has.
 > This manual describes what is there today and is accurate. For what is
 > coming, and why in that order, see [`ROADMAP.md`](ROADMAP.md).
 
@@ -44,6 +44,7 @@ and a searchable label, so nothing is reachable only by knowing a secret key.
 - [Filtering Through a Command](#filtering-through-a-command)
 - [Finding in Files](#finding-in-files)
 - [Window Splits](#window-splits)
+- [The Terminal](#the-terminal)
 - [Language Servers](#language-servers)
 - [Saving and Quitting](#saving-and-quitting)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
@@ -1392,6 +1393,68 @@ proportions, and a window squeezed below the minimum is left blank until there
 is room for it again — the window you are typing in stays legible, which is
 what matters while you are dragging a corner.
 
+## The Terminal
+
+`Alt-T` (or `Window ▸ Terminal`) opens a shell in a window under the one you
+are in, a third of its height. Type in it as in any terminal: everything you
+type goes to the program running there, and its output — colours, full-screen
+programs like `less`, `vim` and `htop`, all of it — is drawn in the window.
+
+    Alt-T          To the terminal, opening one if there is none; from it, back
+    Shift-PgUp     Scroll back through what has gone off the top (PgDn: forward)
+    F6 / Shift-F6  To the next / previous window, as anywhere
+    Ctrl-PgDn/PgUp To the next / previous buffer
+    F10            The menu bar
+    Ctrl-Space     The command palette (Alt-X does the same)
+    Ctrl-Q         Quit molly
+
+Those are the only keys a terminal leaves to molly — the ways out of it. Every
+other key, `Ctrl-C`, `Ctrl-W`, `Ctrl-S`, `Alt` with a letter and the function
+keys among them, goes to the program. A key you have rebound moves with its
+command: what is left to molly is decided by command, not by chord.
+
+A terminal is a buffer, so it has a tab, it is in the buffer list, it can be
+split into two windows or moved into the one you are in with `Ctrl-PgUp`, and
+`Window ▸ Close` closes its window without stopping it. **New terminal** in the
+palette opens another, in the current window. The shell is `$SHELL`, started in
+the directory molly was, and told its terminal is an `xterm-256color`.
+
+When the shell exits, its terminal closes: the buffer, and the window it was
+in. A shell that exits with an error says so on the message bar.
+
+### Copying, pasting and scrolling back
+
+- **Paste** — `Edit ▸ Paste`, or Paste in the palette — types molly's clipboard
+  into the program. A shell that asked for bracketed paste gets it, so a
+  pasted command is not run until you press `Enter`.
+- **Copying out of a terminal** is your own terminal's job: hold `Shift` and drag,
+  as anywhere in molly.
+- **The scrollback** keeps the last 5,000 lines. While you are scrolled back the
+  status bar says how far, new output does not move what you are reading, and
+  any key you type goes back to the bottom. The mouse wheel scrolls it too.
+
+### Running programs, and quitting
+
+The status bar says **running** while something other than the shell has the
+terminal — a build, an editor, a pager. Quitting molly then, or closing that
+terminal's buffer, asks first: `y` stops the program, anything else keeps it.
+A terminal at its prompt closes without asking.
+
+### What it deliberately does not do
+
+- **Nothing that edits text.** A terminal's screen is not text molly owns, so
+  undo, cut, indent, the filter and the rest say so and do nothing, and a
+  terminal cannot be saved.
+- **No mouse for the program.** A program that asks for mouse reports does not
+  get them; the wheel scrolls the scrollback instead, and clicks are molly's.
+- **No reflow.** A line is as wide as the window was when it was written; a
+  window made narrower cuts old lines, and wider pads them. Most full-screen
+  programs redraw when the window changes size, which is what they are told.
+- **24-bit colour is shown as the nearest of 256**, and on a sixteen-colour
+  terminal as the nearest of sixteen.
+- **F10 and F6 are molly's.** A program that wants them — `htop` quits on F10 —
+  has to be told another way (`q`, for `htop`).
+
 ## Language Servers
 
 A **language server** is a program that knows a language — clangd for C and
@@ -1615,6 +1678,7 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     F8       Split, new window below
     F6 / Shift-F6  Next / previous window
     F9       Close this window
+    Alt-T    To the terminal, opening one if there is none; from it, back
     Ctrl-Shift-Arrow  Move the border beside, above or below this window
     Ctrl-Q   Quit (asks what to do with unsaved changes)
     Ctrl-B   List the open buffers

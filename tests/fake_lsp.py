@@ -31,6 +31,10 @@ server the same way it asks for a working one:
   FAKE_LSP_DOCCHANGES=1   answer renames with documentChanges, not changes
   FAKE_LSP_MOVE=1         make a rename also move a file, which molly refuses
   FAKE_LSP_NORENAME=1     answer renames with an error
+  FAKE_LSP_SIGOFFSETS=1   give signature parameters as offsets, not strings
+
+Signature help: inside an unclosed `name(`, the signature `name(int a, int b,
+int c)` with the parameter the commas say is active.
 
 References are every whole-word occurrence, as renames change them -- in the open documents and in the
 files in the working directory that are not open.
@@ -187,6 +191,40 @@ def rename(word, new):
     return {"changes": by_uri}
 
 
+def signature(text, line, ch):
+    lines = text.split("\n")
+    if line >= len(lines):
+        return None
+    before = lines[line][:col_of(lines[line], ch)]
+    depth, i = 0, len(before) - 1
+    while i >= 0:
+        if before[i] == ")":
+            depth += 1
+        elif before[i] == "(":
+            if depth == 0:
+                break
+            depth -= 1
+        i -= 1
+    if i < 0:
+        return None
+    m = re.search(r"([A-Za-z_][A-Za-z0-9_]*)\s*$", before[:i])
+    if not m:
+        return None
+    name = m.group(1)
+    active = before[i + 1:].count(",")
+    label = "%s(int a, int b, int c)" % name
+    params = []
+    for p in ("int a", "int b", "int c"):
+        if os.environ.get("FAKE_LSP_SIGOFFSETS"):
+            start = label.index(p)
+            params.append({"label": [start, start + len(p)], "documentation": "the %s" % p[-1]})
+        else:
+            params.append({"label": p, "documentation": "the %s" % p[-1]})
+    return {"signatures": [{"label": label, "parameters": params,
+                            "documentation": "Does something with three."}],
+            "activeSignature": 0, "activeParameter": min(active, 2)}
+
+
 def answer(msg):
     method = msg["method"]
     p = msg.get("params", {})
@@ -205,6 +243,8 @@ def answer(msg):
             return [{"targetUri": loc["uri"], "targetRange": loc["range"],
                      "targetSelectionRange": loc["range"]}]
         return loc
+    if method == "textDocument/signatureHelp":
+        return signature(docs[uri], pos.get("line", 0), pos.get("character", 0))
     if method == "textDocument/references":
         if not word:
             return []
@@ -269,6 +309,7 @@ def main():
                     "completionProvider": {"triggerCharacters": [".", "->"]},
                     "renameProvider": True,
                     "referencesProvider": True,
+                    "signatureHelpProvider": {"triggerCharacters": ["(", ","]},
                 },
                 "serverInfo": {"name": "fake"}}})
         elif method == "initialized":

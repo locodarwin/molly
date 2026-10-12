@@ -2,8 +2,7 @@
  File  Edit  Search  View  Go  Window  Help
 alpha
 be╔═══════════════════════════ Keyboard Reference ═══════════════════════════╗
-ga║   Alt-Shift-←↑→↓ Block selection        F5             Redraw screen     ║
-~ ║   Alt+drag       Block selection        Ctrl-U         Line numbers      ║
+ga║   Alt+drag       Block selection        Ctrl-U         Line numbers      ║
 ~ ║                                         Alt-M          Show the menu bar ║
 ~ ║                                         Alt-B          Show a tab per fi ║
 ~ ║                                         Alt-Y          Colour by filetyp ║
@@ -18,6 +17,7 @@ ga║   Alt-Shift-←↑→↓ Block selection        F5             Redraw scre
 ~ ║                                         Alt-K          Info at cursor    ║
 ~ ║                                         Alt-/          Complete word     ║
 ~ ║                                         Alt-N          Rename symbol     ║
+~ ║                                         Alt-P          Show signature    ║
 ~ ║ In prompts: Enter accepts   Esc cancels                                  ║
 ~ ║ PgUp/PgDn scroll   any other key returns                                 ║
 ~ ╚══════════════════════════════════════════════════════════════════════════╝

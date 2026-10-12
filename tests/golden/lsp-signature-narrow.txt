@@ -1,0 +1,35 @@
+--- screen ---
+ F E S V G W H
+┌────────────────┐
+│ …nt a, int b,  │
+└────────────────┘
+go(1,
+~
+~
+~
+sample.c - 4 lines
+HELP: Ctrl-S = sav
+--- attrs ---
+gggggggggggggggggg
+gggggggggggggggggg
+gggggggggggggggggg
+gggggggggggggggggg
+...g
+g
+g
+g
+RRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-17 7/0
+2: 0-17 7/8
+3: 0-0 7/8  1-8 15/8  9-13 15/4  14-16 15/8  17-17 7/8
+4: 0-17 7/8
+5: 3-3 11/-
+6: 0-0 8/-
+7: 0-0 8/-
+8: 0-0 8/-
+--- modifiers ---
+1: 1-1 u  3-3 u  5-5 u  7-7 u  9-9 u  11-11 u  13-13 u
+--- cursor ---
+row 5 col 7 visible 1

@@ -96,7 +96,8 @@ struct server {
   int utf8;                /* columns are bytes, not UTF-16 units */
   int sync;                /* 0 none, 1 full, 2 incremental */
   int save;                /* wants didSave */
-  int hover, definition, completion, rename, references;
+  int hover, definition, completion, rename, references, signature;
+  char sig_triggers[16];   /* signature help's, trigger and retrigger both */
   char triggers[16];       /* completion trigger characters, the one-byte ones */
 
   char lasterr[160];       /* the last line it wrote to standard error */
@@ -517,7 +518,10 @@ static void send_initialize(struct server *s) {
           "\"completion\":{\"completionItem\":{\"snippetSupport\":false},"
                          "\"contextSupport\":true},"
           "\"rename\":{\"prepareSupport\":false},"
-          "\"references\":{}"
+          "\"references\":{},"
+          "\"signatureHelp\":{\"signatureInformation\":{"
+            "\"documentationFormat\":[\"plaintext\",\"markdown\"],"
+            "\"parameterInformation\":{\"labelOffsetSupport\":true}}}"
         "},"
         /* Edits to text only: a rename that wants to create, move or delete
          * files is declined rather than half done. */
@@ -929,6 +933,24 @@ static void on_initialized(struct server *s, const struct json *result) {
   s->completion = provided(json_get(caps, "completionProvider"));
   s->rename = provided(json_get(caps, "renameProvider"));
   s->references = provided(json_get(caps, "referencesProvider"));
+  s->signature = provided(json_get(caps, "signatureHelpProvider"));
+  {
+    /* Triggers open it and retriggers keep it current; molly asks again on
+     * every key while it is open anyway, so the two are one list here. */
+    static const char *const lists[] = {"triggerCharacters", "retriggerCharacters"};
+    int l, m = 0;
+    for (l = 0; l < 2; l++) {
+      const struct json *tl = json_get(json_get(caps, "signatureHelpProvider"), lists[l]);
+      const struct json *k;
+      if (tl == NULL || tl->type != JSON_ARRAY) continue;
+      for (k = tl->kid; k != NULL; k = k->next)
+        if (k->type == JSON_STRING && k->n == 1 && m + 1 < (int)sizeof(s->sig_triggers) &&
+            strchr(s->sig_triggers, k->str[0]) == NULL) {
+          s->sig_triggers[m++] = k->str[0];
+          s->sig_triggers[m] = '\0';
+        }
+    }
+  }
   t = json_get(json_get(caps, "completionProvider"), "triggerCharacters");
   if (t != NULL && t->type == JSON_ARRAY) {
     const struct json *k;
@@ -1125,6 +1147,7 @@ int lsp_can(struct buffer *b, int kind) {
   case LSP_REQ_COMPLETION: return s->completion;
   case LSP_REQ_RENAME: return s->rename;
   case LSP_REQ_REFERENCES: return s->references;
+  case LSP_REQ_SIGNATURE: return s->signature;
   }
   return 0;
 }
@@ -1136,6 +1159,14 @@ int lsp_is_trigger(struct buffer *b, int c) {
   if (b->lsp_srv <= 0 || c <= 0 || c > 127) return 0;
   s = &servers[b->lsp_srv - 1];
   return s->state == SRV_READY && s->completion && strchr(s->triggers, c) != NULL;
+}
+
+/* Does typing `c` in this buffer ask for signature help? */
+int lsp_is_sig_trigger(struct buffer *b, int c) {
+  struct server *s;
+  if (b->lsp_srv <= 0 || c <= 0 || c > 127) return 0;
+  s = &servers[b->lsp_srv - 1];
+  return s->state == SRV_READY && s->signature && strchr(s->sig_triggers, c) != NULL;
 }
 
 /* Ask about the position (cy, cx) in `b`. Returns 1 when the question went,
@@ -1150,6 +1181,7 @@ int lsp_ask(struct buffer *b, int kind, int cy, int cx, int trigger,
     [LSP_REQ_COMPLETION] = "textDocument/completion",
     [LSP_REQ_RENAME] = "textDocument/rename",
     [LSP_REQ_REFERENCES] = "textDocument/references",
+    [LSP_REQ_SIGNATURE] = "textDocument/signatureHelp",
   };
   struct server *s = ready_for(b);
   struct abuf ab = ABUF_INIT;

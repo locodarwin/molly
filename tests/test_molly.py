@@ -5471,6 +5471,74 @@ def test_lsp_references(tmpdir):
         os.chdir(here)
 
 
+def test_lsp_signature(tmpdir):
+    """Signature help: the call the cursor is in, above the line.
+
+    The fake server answers inside an unclosed `name(` with `name(int a, int
+    b, int c)` and the parameter the commas say is active. Checked: `(` opens
+    it unasked, the highlight follows the comma, it closes when the call does,
+    when the cursor leaves the line and on Esc, and Alt-P asks again.
+    """
+    print("\nlanguage server: signature help")
+
+    work = os.path.join(tmpdir, "lspsig")
+    os.makedirs(work, exist_ok=True)
+    rc = os.path.join(work, "lsprc")
+    with open(rc, "w") as fh:
+        fh.write("[syntax c]\nlanguage server = python3 -I %s\n" % FAKE_LSP)
+    SIG, ESC, UP, END = "\x1bp", "\x1b", "\x1b[A", "\x1b[F"
+    WAIT = 2.0
+    # The call is typed on the fifth row, so the box has room above it.
+    to_row = [WAIT] + ["\x1b[B"] * 4
+
+    def session(keys, env=None):
+        with open("s.c", "w") as fh:
+            fh.write("int a;\nint b;\nint c;\nint d;\n\n")
+        e = {"MOLLY_CONFIG": rc, "MOLLY_LSP": ""}
+        e.update(env or {})
+        scr = Screen(14, 60)
+        scr.feed(run([MOLLY, "s.c"], keys, rows=14, cols=60, env=e))
+        return scr
+
+    def box(scr):
+        return [r[r.index("\u2502"):].strip() for r in scr.text() if "\u2502" in r]
+
+    def selected(scr):
+        out = ""
+        for y in range(14):
+            for x in range(60):
+                if scr.colors[y][x] == (15, 4):
+                    out += scr.grid[y][x]
+        return out
+
+    here = os.getcwd()
+    os.chdir(work)
+    try:
+        scr = session(to_row + ["go(", 1.0])
+        check("( opens the signature unasked, above the line",
+              box(scr), ["\u2502 go(int a, int b, int c) \u2502", "\u2502 the a                   \u2502"])
+        check("the first parameter picked out", selected(scr), "int a")
+        scr = session(to_row + ["go(1, ", 1.0])
+        check("after a comma, the next", selected(scr), "int b")
+        check("and what is said about it", "\u2502 the b" in "\n".join(box(scr)), True)
+        scr = session(to_row + ["go(1, 2", 1.0], env={"FAKE_LSP_SIGOFFSETS": "1"})
+        check("parameters given as offsets are picked out the same",
+              selected(scr), "int b")
+        scr = session(to_row + ["go(1)", 1.0])
+        check("closing the call closes it", box(scr), [])
+        scr = session(to_row + ["go(", 1.0, ESC, 0.5])
+        check("Esc closes it", box(scr), [])
+        scr = session(to_row + ["go(", 1.0, UP, 0.5])
+        check("so does leaving the line", box(scr), [])
+        scr = session(to_row + ["go(1, ", 1.0, ESC, 0.5, SIG, 1.0])
+        check("Alt-P asks again", selected(scr), "int b")
+        scr = session(to_row + ["x", SIG, 1.0])
+        check("outside a call, Alt-P says there is nothing",
+              "No signature to show here." in scr.text()[13], True)
+    finally:
+        os.chdir(here)
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -5543,6 +5611,7 @@ def main():
         test_terminal(tmpdir)
         test_lsp_rename(tmpdir)
         test_lsp_references(tmpdir)
+        test_lsp_signature(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

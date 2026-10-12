@@ -211,6 +211,11 @@ static struct {
   struct fedit *refs;     /* references: sl/sc used, text holding the path */
   int nrefs;
 
+  char *sig;              /* signature help: the active signature's label */
+  int sig_p0, sig_p1;     /* the active parameter in it, bytes; -1 for none */
+  char *sig_doc;          /* the first line of what is said about it */
+  int sig_n, sig_i;       /* how many signatures, and which this is */
+
   struct citem *items;    /* completion: what could go here */
   int nitems;
   int incomplete;         /* the server would say more given more to go on */
@@ -270,6 +275,8 @@ static void box_clear(void) {
   free(box.text);
   items_free(box.items, box.nitems);
   files_free(box.files, box.nfiles);
+  free(box.sig);
+  free(box.sig_doc);
   {
     int i;
     for (i = 0; i < box.nrefs; i++) free(box.refs[i].text);
@@ -283,9 +290,13 @@ static void box_clear(void) {
 static void comp_close(void);
 static struct buffer *comp_buf;
 
+static void sig_close(void);
+static struct buffer *sig_buf;
+
 void lspui_forget(struct buffer *b) {
   if (box.buf == b) box_clear();
   if (comp_buf == b) comp_close();
+  if (sig_buf == b) sig_close();
 }
 
 /* ---- reading an answer --------------------------------------------------- */
@@ -432,6 +443,64 @@ static void read_workspace_edit(const struct json *we) {
     for (k = ch->kid; k != NULL; k = k->next) add_edits(k->key, k);
 }
 
+/* Documentation, which is a string or MarkupContent, as its first line that
+ * says something: a fence or a blank opens a lot of them. */
+static char *first_doc_line(const struct json *d) {
+  const char *s = d == NULL ? NULL : d->type == JSON_STRING ? d->str
+                                    : json_str(json_get(d, "value"));
+  while (s != NULL && *s != '\0') {
+    size_t n = strcspn(s, "\n");
+    const char *p = s;
+    while (p < s + n && (*p == ' ' || *p == '\t')) p++;
+    if (p < s + n && strncmp(p, "```", 3) != 0) {
+      char *out = xmalloc(n + 1);
+      memcpy(out, s, n);
+      out[n] = '\0';
+      return out;
+    }
+    s += n;
+    if (*s == '\n') s++;
+  }
+  return NULL;
+}
+
+/* SignatureHelp: the signatures of the call the cursor is in, which one is
+ * active, and which of its parameters. A parameter's label is either a
+ * string, to be found in the signature's label, or a pair of offsets into it
+ * -- in UTF-16 units, as the protocol counts everything. */
+static void read_signature(const struct json *r) {
+  const struct json *sigs = json_get(r, "signatures"), *sg, *params, *pl;
+  const char *label;
+  int active, ap, len;
+  box.sig_p0 = box.sig_p1 = -1;
+  if (sigs == NULL || sigs->type != JSON_ARRAY || sigs->n == 0) return;
+  active = json_int(json_get(r, "activeSignature"), 0);
+  if (active < 0 || active >= sigs->n) active = 0;
+  sg = json_at(sigs, active);
+  label = json_str(json_get(sg, "label"));
+  if (label == NULL) return;
+  box.sig = xstrdup(label);
+  box.sig_n = sigs->n;
+  box.sig_i = active;
+  len = (int)strlen(label);
+  ap = json_int(json_get(sg, "activeParameter"), json_int(json_get(r, "activeParameter"), 0));
+  params = json_get(sg, "parameters");
+  pl = json_get(json_at(params, ap), "label");
+  if (pl != NULL && pl->type == JSON_STRING && pl->n > 0) {
+    const char *at = strstr(label, pl->str);
+    if (at != NULL) {
+      box.sig_p0 = (int)(at - label);
+      box.sig_p1 = box.sig_p0 + pl->n;
+    }
+  } else if (pl != NULL && pl->type == JSON_ARRAY && pl->n == 2) {
+    box.sig_p0 = lsp_units_to_col(label, len, json_int(json_at(pl, 0), 0), 0);
+    box.sig_p1 = lsp_units_to_col(label, len, json_int(json_at(pl, 1), 0), 0);
+    if (box.sig_p1 <= box.sig_p0) box.sig_p0 = box.sig_p1 = -1;
+  }
+  box.sig_doc = first_doc_line(json_get(json_at(params, ap), "documentation"));
+  if (box.sig_doc == NULL) box.sig_doc = first_doc_line(json_get(sg, "documentation"));
+}
+
 /* Called by lsp.c with an answer; `result` is NULL for an error. */
 void lsp_answer(int kind, struct buffer *b, unsigned edits, int cy, int cx,
                 const struct json *result, int utf8) {
@@ -454,6 +523,8 @@ void lsp_answer(int kind, struct buffer *b, unsigned edits, int cy, int cx,
     box.text = ab.b;
   } else if (kind == LSP_REQ_COMPLETION) {
     read_completions(result);
+  } else if (kind == LSP_REQ_SIGNATURE) {
+    read_signature(result);
   } else if (kind == LSP_REQ_REFERENCES) {
     const struct json *k;
     if (result != NULL && result->type == JSON_ARRAY && result->n > 0) {
@@ -1248,6 +1319,158 @@ static void comp_show(void) {
   comp_layer = layer_push(&l);
 }
 
+/* ---- the signature popup ------------------------------------------------- */
+
+/* The call the cursor is in, above the line it is on: the signature, the
+ * parameter being typed picked out, and what is said about it. Above, so a
+ * completion list can open under the same word without the two overlapping;
+ * open until the server has nothing to say, the cursor leaves the line, or
+ * Esc. It is asked again after every key while it is open, so the
+ * parameter picked out follows the comma. */
+static char *sig_label, *sig_doc;
+static int sig_p0 = -1, sig_p1 = -1, sig_n, sig_i;
+static int sig_layer = -1;
+static int sig_cy;
+static int sig_manual;   /* asked for with Alt-P, so "nothing" is said */
+/* Asked and not yet answered. Typing goes on while the server thinks, and a
+ * key typed then must ask again just as one typed with the box open does --
+ * or the answer to `go(` arrives after `go(1)` and opens a box for a call
+ * that is already closed. */
+static int sig_pending;
+
+static void sig_close(void) {
+  if (sig_layer >= 0) layer_pop_to(sig_layer);
+  sig_layer = -1;
+  sig_pending = 0;
+  free(sig_label);
+  free(sig_doc);
+  sig_label = sig_doc = NULL;
+  sig_buf = NULL;
+}
+
+static void sig_draw(const struct layer *self) {
+  int cy = V.screeny + drow_of_cursor(&CUR) - V.drowoff;
+  int cx = V.screenx + (drow_cursor_col(&CUR) - V.coloff) + V.gutter_w;
+  int cols = grid_cols(), w, h, x, y, off = 0, inner, used, len, i;
+  char head[32] = "";
+  (void)self;
+  if (sig_label == NULL) return;
+
+  len = (int)strlen(sig_label);
+  if (sig_n > 1) snprintf(head, sizeof(head), "%d/%d ", sig_i + 1, sig_n);
+  w = utf8_str_cols(sig_label) + (int)strlen(head) + 4;
+  if (sig_doc != NULL && utf8_str_cols(sig_doc) + 4 > w) w = utf8_str_cols(sig_doc) + 4;
+  if (w > cols) w = cols;
+  if (w < 8) return;
+  /* Above if it fits, below if not; and where neither has room for the note
+   * too, without the note -- the signature is the part worth the room. */
+  {
+    int full = sig_doc != NULL ? 4 : 3, top = V.screeny, bottom = V.screeny + V.screenrows;
+    for (h = full; h >= 3; h--) {
+      if (cy - h >= top) { y = cy - h; break; }
+      if (cy + 1 + h <= bottom) { y = cy + 1; break; }
+    }
+    if (h < 3) return;
+  }
+  x = cx - 2;
+  if (x + w > cols) x = cols - w;
+  if (x < 0) x = 0;
+  inner = w - 4 - (int)strlen(head);
+
+  /* A signature wider than the box is shown from where the active parameter
+   * can be seen, with an ellipsis for what is cut off the front. */
+  if (sig_p1 > 0) {
+    int c0 = 0;
+    for (i = 0; i < sig_p1; i += utf8_char_bytes(sig_label, len, i)) c0++;
+    if (c0 > inner - 2) {
+      int want = sig_p0;
+      for (i = 0; i < 6 && want > 0; i++) want = utf8_prev(sig_label, want);
+      off = want;
+    }
+  }
+
+  lspui_box(x, y, w, h);
+  grid_role(ROLE_MENU);
+  grid_puts(y + 1, x + 2, head, (int)strlen(head));
+  {
+    int px = x + 2 + (int)strlen(head), limit = x + w - 2, b;
+    if (off > 0) px += grid_puts(y + 1, px, "\xe2\x80\xa6", 3);
+    for (b = off; b < len && px < limit;) {
+      int nb, cw = utf8_char_cols(sig_label, len, b, &nb);
+      if (px + cw > limit) break;
+      grid_role(b >= sig_p0 && b < sig_p1 ? ROLE_MENU_SELECTED : ROLE_MENU);
+      px += grid_put_char(y + 1, px, sig_label + b, nb, cw);
+      b += nb;
+    }
+  }
+  if (sig_doc != NULL && h == 4) {
+    int take = utf8_fit_cols(sig_doc, w - 4, &used);
+    grid_role(ROLE_MENU_DISABLED);
+    grid_puts(y + 2, x + 2, sig_doc, take);
+  }
+  grid_role(ROLE_TEXT);
+}
+
+static void sig_ask(int manual) {
+  sig_manual = manual;
+  sig_pending = lsp_ask(V.buf, LSP_REQ_SIGNATURE, CUR.cy, CUR.cx, 0, NULL);
+  sig_buf = V.buf;
+  sig_cy = CUR.cy;
+}
+
+static void deliver_signature(void) {
+  sig_pending = 0;
+  if (box.sig == NULL) {
+    sig_close();
+    if (sig_manual) editor_set_status_message("No signature to show here.");
+    return;
+  }
+  free(sig_label);
+  free(sig_doc);
+  sig_label = box.sig;
+  sig_doc = box.sig_doc;
+  box.sig = box.sig_doc = NULL;
+  sig_p0 = box.sig_p0;
+  sig_p1 = box.sig_p1;
+  sig_n = box.sig_n;
+  sig_i = box.sig_i;
+  sig_buf = V.buf;
+  sig_cy = CUR.cy;
+  if (sig_layer < 0) {
+    struct layer l;
+    memset(&l, 0, sizeof(l));
+    l.draw = sig_draw;
+    l.w = grid_cols();
+    l.h = grid_rows();
+    sig_layer = layer_push(&l);
+  }
+}
+
+/* Alt-P: the signature of the call the cursor is in, asked for. */
+int lspui_signature(void) {
+  if (!lsp_can(V.buf, LSP_REQ_SIGNATURE)) {
+    ask(LSP_REQ_SIGNATURE, "show signatures");
+    return 0;
+  }
+  sig_ask(1);
+  return 0;
+}
+
+/* After a key: keep an open signature current, or open one when a trigger
+ * character was typed. */
+static void sig_after_key(int c) {
+  if (c == WINCH_KEY || c == MOUSE_KEY) return;
+  if (sig_layer >= 0 || sig_pending) {
+    if (V.buf != sig_buf || CUR.cy != sig_cy || V.ncursors > 1) sig_close();
+    else sig_ask(sig_manual);
+    return;
+  }
+  if (c <= 0 || c > 127 || V.ncursors > 1 || CUR.cx == 0 || CUR.cy >= row_count() ||
+      row_at(CUR.cy)->chars[CUR.cx - 1] != c)
+    return;
+  if (lsp_is_sig_trigger(V.buf, c)) sig_ask(0);
+}
+
 /* ---- keys ---------------------------------------------------------------- */
 
 static int refilter_pending;
@@ -1269,7 +1492,15 @@ int lspui_key(int c) {
     hover_close();
     return c == '\x1b';
   }
-  if (!comp_open_p()) return 0;
+  /* Esc closes the completion list first when both are open, and the
+   * signature after; any other key leaves the signature where it is. */
+  if (!comp_open_p()) {
+    if (sig_layer >= 0 && c == '\x1b' && !mods) {
+      sig_close();
+      return 1;
+    }
+    return 0;
+  }
   if (!mods) {
     switch (c) {
     case ARROW_DOWN: csel = (csel + 1) % nshown; return 1;
@@ -1313,6 +1544,7 @@ static void comp_ask(int trigger) {
  * nothing matches. Without one, a character the server named as a trigger
  * asks it what could come next. */
 void lspui_after_key(int c) {
+  sig_after_key(c);
   if (comp_open_p() && refilter_pending) {
     refilter_pending = 0;
     if (V.buf != comp_buf || CUR.cy != comp_cy || CUR.cx < comp_start ||
@@ -1384,6 +1616,13 @@ void lspui_deliver(void) {
   if (box.kind == 0) return;
   if (box.kind == LSP_REQ_COMPLETION) {
     if (completion_current()) deliver_completion();
+    box_clear();
+    return;
+  }
+  /* A signature is about the call on this line, wherever on it the cursor
+   * has got to since: that it moved is why it was asked again. */
+  if (box.kind == LSP_REQ_SIGNATURE) {
+    if (box.buf == V.buf && CUR.cy == box.cy && V.ncursors == 1) deliver_signature();
     box_clear();
     return;
   }

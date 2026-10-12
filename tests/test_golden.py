@@ -701,6 +701,19 @@ def main():
     check("lsp-complete-256", comp_keys, rows=10, cols=50, files=comp_files,
           args=["sample.c"], env=dict(lsp_env, TERM="xterm-256color"))
     # Room for one item under the word: the list scrolls in a box of three.
+    # Signature help: `(` opened it and the comma moved it on, so the second
+    # parameter is picked out, with its note under the signature: below the
+    # line, because on the fourth row there is no room above for the note.
+    # The narrow one has room for neither, and drops the note to go above.
+    sig_files = dict(lsp_files, **{"sample.c": "int a;\nint b;\nint c;\n\n"})
+    sig_keys = [2.0, "\x1b[B", "\x1b[B", "\x1b[B", "go(1, ", 1.0]
+    check("lsp-signature", sig_keys, rows=12, cols=50, files=sig_files,
+          args=["sample.c"], env=lsp_env)
+    check("lsp-signature-256", sig_keys, rows=12, cols=50, files=sig_files,
+          args=["sample.c"], env=dict(lsp_env, TERM="xterm-256color"))
+    # Narrower than the signature: shown from where the parameter can be seen.
+    check("lsp-signature-narrow", sig_keys, rows=10, cols=18, files=sig_files,
+          args=["sample.c"], env=lsp_env)
     # Alt-T: the integrated terminal, a third of the height, under the file.
     # Not a real shell, whose prompt is the machine's, but tests/fake_shell.sh,
     # which prints a fixed screen: bold, reverse, the sixteen colours and the

@@ -420,16 +420,25 @@ void json_put_str(struct abuf *ab, const char *s, int len) {
 }
 
 /* printf into the buffer, for the parts of a message that are not text: keys,
- * numbers, punctuation. A format that needs more than the stack buffer is a
- * programming error here, since text never goes through this. */
+ * numbers, punctuation. Any length: it was a fixed 512 bytes, and the client's
+ * capabilities outgrew that the day signature help joined them -- a message
+ * cut short is invalid JSON, and the server that receives it rightly dies. */
 void json_putf(struct abuf *ab, const char *fmt, ...) {
-  char buf[512];
+  char buf[512], *big;
   va_list ap;
   int n;
   va_start(ap, fmt);
   n = vsnprintf(buf, sizeof(buf), fmt, ap);
   va_end(ap);
   if (n < 0) return;
-  if (n >= (int)sizeof(buf)) n = (int)sizeof(buf) - 1;
-  ab_append(ab, buf, n);
+  if (n < (int)sizeof(buf)) {
+    ab_append(ab, buf, n);
+    return;
+  }
+  big = xmalloc((size_t)n + 1);
+  va_start(ap, fmt);
+  vsnprintf(big, (size_t)n + 1, fmt, ap);
+  va_end(ap);
+  ab_append(ab, big, n);
+  free(big);
 }

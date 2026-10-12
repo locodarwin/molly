@@ -4149,6 +4149,20 @@ static void test_json(void) {
   }
 
   printf("\nJSON: writing\n");
+  {
+    /* Past the stack buffer it formats into first: the client's capabilities
+     * outgrew it once, and the message that went out was cut short. */
+    struct abuf ab = ABUF_INIT;
+    char big[2001];
+    memset(big, 'x', 2000);
+    big[2000] = '\0';
+    json_putf(&ab, "{\"k\":\"%s\",\"n\":%d}", big, 7);
+    d = json_parse(ab.b, (size_t)ab.len);
+    check("json_putf writes any length whole", d != NULL &&
+          json_root(d)->kid->n == 2000 && json_int(json_get(json_root(d), "n"), 0) == 7, 1);
+    json_free(d);
+    free(ab.b);
+  }
   w = jwrite("plain", 5);
   check_str("plain text is quoted", w, "\"plain\"");
   free(w);

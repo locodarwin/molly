@@ -96,6 +96,32 @@ static int molly_wcwidth(uint32_t cp) {
   return 1;
 }
 
+/* Display columns of one code point, for a caller that has decoded it already:
+ * the integrated terminal, whose input arrives as a stream rather than a row. */
+int utf8_cp_cols(uint32_t cp) { return molly_wcwidth(cp); }
+
+/* A code point as UTF-8 into dst, which has room for four bytes. Returns the
+ * bytes written. */
+int utf8_encode(uint32_t cp, char *dst) {
+  if (cp < 0x80) { dst[0] = (char)cp; return 1; }
+  if (cp < 0x800) {
+    dst[0] = (char)(0xC0 | (cp >> 6));
+    dst[1] = (char)(0x80 | (cp & 0x3F));
+    return 2;
+  }
+  if (cp < 0x10000) {
+    dst[0] = (char)(0xE0 | (cp >> 12));
+    dst[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+    dst[2] = (char)(0x80 | (cp & 0x3F));
+    return 3;
+  }
+  dst[0] = (char)(0xF0 | (cp >> 18));
+  dst[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+  dst[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+  dst[3] = (char)(0x80 | (cp & 0x3F));
+  return 4;
+}
+
 /* Display columns of the character at index i (tabs are the caller's job). */
 int utf8_char_cols(const char *s, int size, int i, int *nbytes) {
   uint32_t cp = utf8_decode(s, size, i, nbytes);

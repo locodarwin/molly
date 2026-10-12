@@ -4628,6 +4628,312 @@ static void test_lsp_answers(void) {
   if (system(json) != 0) printf("  note  could not remove %s\n", tmpl);
 }
 
+/* ---- the terminal emulator ----------------------------------------------- */
+
+/* Row y of the screen (or of the scrollback, negative) as text, trailing
+ * blanks trimmed: a wide character's right half adds nothing. */
+static const char *vt_row_text(struct vt *t, int y) {
+  static char buf[512];
+  int n, x, o = 0;
+  const struct vt_cell *c = vt_line(t, y, &n);
+  if (c == NULL) return "<none>";
+  for (x = 0; x < n && o < (int)sizeof(buf) - 10; x++) {
+    if (c[x].w == 0) continue;
+    o += utf8_encode(c[x].cp, buf + o);
+    if (c[x].comb) o += utf8_encode(c[x].comb, buf + o);
+  }
+  while (o > 0 && buf[o - 1] == ' ') o--;
+  buf[o] = '\0';
+  return buf;
+}
+
+static void vts(struct vt *t, const char *s) { vt_feed(t, s, strlen(s)); }
+
+static int vt_cur(struct vt *t) {
+  int y, x, v;
+  vt_cursor(t, &y, &x, &v);
+  return y * 100 + x;
+}
+
+static const struct vt_cell *vt_at(struct vt *t, int y, int x) {
+  int n;
+  return &vt_line(t, y, &n)[x];
+}
+
+static void test_vt(void) {
+  struct vt *t;
+  int i, len, bad;
+  char k[16];
+  const char *r;
+
+  printf("\nterminal: text and the cursor\n");
+  t = vt_new(4, 10, 100);
+  vts(t, "hello");
+  check_str("text lands where the cursor is", vt_row_text(t, 0), "hello");
+  check("and moves it", vt_cur(t), 5);
+  vts(t, "\r\nworld");
+  check_str("CR LF starts the next line", vt_row_text(t, 1), "world");
+  vts(t, "\x1b[H\x1b[2J0123456789");
+  check("the last column leaves the cursor on it", vt_cur(t), 9);
+  vts(t, "X");
+  check_str("and the next character wraps", vt_row_text(t, 1), "X");
+  vts(t, "\x1b[1;1H\x1b[2J0123456789\r");
+  check("a CR after the last column cancels the wrap", vt_cur(t), 0);
+  vts(t, "\x1b[3;4H");
+  check("CUP is one-based", vt_cur(t), 203);
+  vts(t, "\x1b[99;99H");
+  check("and clamped to the screen", vt_cur(t), 309);
+  vts(t, "\x1b[2;5H\x1b[A\x1b[2C\x1b[B\x1b[3D");
+  check("up, right, down, left", vt_cur(t), 103);
+  vts(t, "\x1b[10A");
+  check("up past the top stops there", vt_cur(t), 3);
+  vts(t, "\x1b[7G");
+  check("CHA takes a column", vt_cur(t), 6);
+  vts(t, "\x1b[3d");
+  check("VPA takes a row", vt_cur(t), 206);
+  vts(t, "\x1b[1;1H\tX\tY");
+  check_str("tabs every eight, the last column the last stop",
+            vt_row_text(t, 0), "01234567XY");
+  vts(t, "\x1b[1;1H\x1b[2Jab\bc");
+  check_str("backspace moves left without erasing", vt_row_text(t, 0), "ac");
+  vts(t, "\x1b[2;3H\x1b" "7\x1b[4;9H\x1b" "8");
+  check("ESC 7 and ESC 8 save and restore", vt_cur(t), 102);
+  vts(t, "\x1b[3;4H\x1b[s\x1b[H\x1b[u");
+  check("so do CSI s and CSI u", vt_cur(t), 203);
+  vt_free(t);
+
+  printf("\nterminal: erasing and editing\n");
+  t = vt_new(3, 10, 100);
+  vts(t, "abcdefghij\r\nklmnopqrst\r\nuvwxyz");
+  vts(t, "\x1b[2;4H\x1b[K");
+  check_str("EL 0 erases to the end", vt_row_text(t, 1), "klm");
+  vts(t, "\x1b[1;4H\x1b[1K");
+  check_str("EL 1 to the start, inclusive", vt_row_text(t, 0), "    efghij");
+  vts(t, "\x1b[3;3H\x1b[2K");
+  check_str("EL 2 the whole line", vt_row_text(t, 2), "");
+  vts(t, "\x1b[H\x1b[2J");
+  check_str("ED 2 the whole screen", vt_row_text(t, 0), "");
+  vts(t, "abcdef\x1b[1;2H\x1b[2P");
+  check_str("DCH pulls the rest left", vt_row_text(t, 0), "adef");
+  vts(t, "\x1b[2@");
+  check_str("ICH pushes it right", vt_row_text(t, 0), "a  def");
+  vts(t, "\x1b[1;1H\x1b[3X");
+  check_str("ECH blanks in place", vt_row_text(t, 0), "   def");
+  vts(t, "\x1b[2;1H=\x1b[4b");
+  check_str("REP repeats the last character", vt_row_text(t, 1), "=====");
+  vts(t, "\x1b[H\x1b[2Jaaa\r\nbbb\r\nccc\x1b[2;1H\x1b[L");
+  check_str("IL opens a line", vt_row_text(t, 1), "");
+  check_str("pushing the rest down", vt_row_text(t, 2), "bbb");
+  vts(t, "\x1b[M");
+  check_str("DL closes it again", vt_row_text(t, 1), "bbb");
+  vts(t, "\x1b[H\x1b[2J\x1b[4h" "abc\x1b[1;1HX\x1b[4l");
+  check_str("insert mode pushes rather than overwrites", vt_row_text(t, 0), "Xabc");
+  vts(t, "\x1b[44m\x1b[2;1H\x1b[K\x1b[m");
+  check("an erase paints the background in use", vt_at(t, 1, 5)->bg, 4);
+  vt_free(t);
+
+  printf("\nterminal: colour and attributes\n");
+  t = vt_new(2, 20, 100);
+  vts(t, "\x1b[1;31mR\x1b[0mn");
+  check("a colour and bold", vt_at(t, 0, 0)->fg * 100 + vt_at(t, 0, 0)->attrs, 100 + VT_BOLD);
+  check("reset is everything off", vt_at(t, 0, 1)->fg * 100 + vt_at(t, 0, 1)->attrs, -100);
+  vts(t, "\x1b[92;104mx");
+  check("bright foreground and background",
+        vt_at(t, 0, 2)->fg * 100 + vt_at(t, 0, 2)->bg, 10 * 100 + 12);
+  vts(t, "\x1b[38;5;208;48;5;17my");
+  check("256-colour indices", vt_at(t, 0, 3)->fg * 1000 + vt_at(t, 0, 3)->bg, 208017);
+  vts(t, "\x1b[38;2;255;0;0mz");
+  check("a 24-bit colour is its nearest of the 256", vt_at(t, 0, 4)->fg, 196);
+  vts(t, "\x1b[38:2::0:0:255mz");
+  check("so is the colon form, with its empty slot", vt_at(t, 0, 5)->fg, 21);
+  vts(t, "\x1b[38;2;128;128;128mz");
+  check("a grey goes to the grey ramp", vt_at(t, 0, 6)->fg, 244);
+  vts(t, "\x1b[m\x1b[3;4;7mw\x1b[23;24;27mv");
+  check("italic, underline, reverse",
+        vt_at(t, 0, 7)->attrs, VT_ITALIC | VT_UNDERLINE | VT_REVERSE);
+  check("and each off by name", vt_at(t, 0, 8)->attrs, 0);
+  vts(t, "\x1b[4mu\x1b[4:0mu");
+  check("4:0 is no underline", vt_at(t, 0, 10)->attrs, 0);
+  vts(t, "\x1b[31m\x1b[39mq");
+  check("39 is the default foreground", vt_at(t, 0, 11)->fg, -1);
+  vt_free(t);
+
+  printf("\nterminal: scrolling and the scrollback\n");
+  t = vt_new(3, 10, 2);
+  vts(t, "one\r\ntwo\r\nthree\r\nfour");
+  check_str("a line scrolled off the top is in the scrollback", vt_row_text(t, -1), "one");
+  check_str("and the screen moved up", vt_row_text(t, 0), "two");
+  vts(t, "\r\nfive\r\nsix");
+  check("the scrollback keeps as many as it was given", vt_scrollback(t), 2);
+  check_str("the newest is -1", vt_row_text(t, -1), "three");
+  check_str("the oldest that is left", vt_row_text(t, -2), "two");
+  check("past it is nothing", vt_line(t, -3, &len) == NULL, 1);
+  vts(t, "\x1b[2;3r\x1b[3;1H\nseven");
+  check_str("inside a scroll region the region scrolls", vt_row_text(t, 1), "six");
+  check_str("and the line above it stays", vt_row_text(t, 0), "four");
+  check_str("what left the region is gone, not kept", vt_row_text(t, -1), "three");
+  vts(t, "\x1b[r\x1b[2;1H\x1bM\x1bM");
+  check_str("RI at the top scrolls down", vt_row_text(t, 1), "four");
+  vts(t, "\x1b[3J");
+  check("CSI 3 J clears the scrollback", vt_scrollback(t), 0);
+  vt_free(t);
+
+  printf("\nterminal: the alternate screen\n");
+  t = vt_new(3, 10, 10);
+  vts(t, "shell$ ls\r\nfile");
+  vts(t, "\x1b[?1049h");
+  check_str("1049 switches to a clear screen", vt_row_text(t, 0), "");
+  check("and says so", vt_mode(t, VT_MODE_ALT_SCREEN), 1);
+  vts(t, "\x1b[Hvim\r\n\r\n\r\n\r\nmore");
+  check("full-screen output is not history", vt_scrollback(t), 0);
+  vts(t, "\x1b[?1049l");
+  check_str("leaving puts the shell's screen back", vt_row_text(t, 0), "shell$ ls");
+  check("and its cursor", vt_cur(t), 104);
+  vt_free(t);
+
+  printf("\nterminal: what it says back\n");
+  t = vt_new(5, 20, 0);
+  vts(t, "\x1b[3;7H\x1b[6n");
+  r = vt_reply(t, &len);
+  {
+    char got[64];
+    memcpy(got, r, (size_t)len);
+    got[len] = '\0';
+    check_str("as row and column", got, "\x1b[3;7R");
+  }
+  vt_reply_done(t);
+  vts(t, "\x1b[c");
+  r = vt_reply(t, &len);
+  check("primary device attributes are answered", len > 0 && memcmp(r, "\x1b[?", 3) == 0, 1);
+  vt_reply_done(t);
+  vts(t, "\x1b]0;my title\x07");
+  check_str("OSC 0 sets the title", vt_take_title(t), "my title");
+  check("which is taken once", vt_take_title(t) == NULL, 1);
+  vts(t, "\x1b]2;other\x1b\\");
+  check_str("OSC 2, ended by ST", vt_take_title(t), "other");
+  vts(t, "\x1b]52;c;aGVsbG8=\x07");
+  check("OSC 52 is not a title, and is ignored", vt_take_title(t) == NULL, 1);
+  vts(t, "\x07");
+  check("BEL rings", vt_take_bell(t), 1);
+  vt_free(t);
+
+  printf("\nterminal: characters\n");
+  t = vt_new(3, 6, 0);
+  vts(t, "\xc3\xa9t\xc3\xa9");
+  check_str("UTF-8 decodes", vt_row_text(t, 0), "\xc3\xa9t\xc3\xa9");
+  vts(t, "\r\n\xe4\xb8\xad" "x");
+  check("a wide character takes two columns", vt_cur(t), 103);
+  check("the second of which is its right half", vt_at(t, 1, 1)->w, 0);
+  vts(t, "\x1b[3;6H\xe4\xb8\xad");
+  check("one at the last column goes to the next line whole", vt_at(t, 2, 0)->cp, 0x4e2d);
+  vts(t, "\x1b[1;1H\x1b[2Je\xcc\x81");
+  check("a combining mark joins the character before", vt_at(t, 0, 0)->comb, 0x301);
+  check("and takes no column", vt_cur(t), 1);
+  vts(t, "\x1b[1;1H\xff" "a");
+  check("a byte that is not UTF-8 is U+FFFD", vt_at(t, 0, 0)->cp, 0xFFFD);
+  check("and what follows it is read normally", vt_at(t, 0, 1)->cp, 'a');
+  vts(t, "\x1b[1;1H\x1b(0lqk\x1b(B");
+  check("DEC graphics draws boxes", vt_at(t, 0, 0)->cp * 0 + (vt_at(t, 0, 1)->cp == 0x2500), 1);
+  check("its corner", vt_at(t, 0, 0)->cp, 0x250c);
+  vts(t, "\x1b[1;1Hq");
+  check("and ESC ( B ends it", vt_at(t, 0, 0)->cp, 'q');
+  vt_free(t);
+
+  printf("\nterminal: what it ignores, and sequences in pieces\n");
+  t = vt_new(2, 20, 0);
+  vts(t, "a\x1b[?1000h\x1b[?1006h\x1bP+q544e\x1b\\\x1b[>4;1m\x1b[ 2qb");
+  check_str("unknown and unwanted sequences leave nothing behind",
+            vt_row_text(t, 0), "ab");
+  vts(t, "\x1b[2;1H");
+  {
+    const char *pieces[] = {"\x1b", "[", "3", "1", "m", "\xe4", "\xb8", "\xad"};
+    for (i = 0; i < 8; i++) vt_feed(t, pieces[i], 1);
+  }
+  check("a sequence split across reads still works",
+        vt_at(t, 1, 0)->fg * 100000 + (int)vt_at(t, 1, 0)->cp, 100000 + 0x4e2d);
+  vts(t, "\x1b[3\x18" "c");
+  check("CAN abandons a sequence", vt_at(t, 1, 2)->cp, 'c');
+  vt_free(t);
+
+  printf("\nterminal: resizing\n");
+  t = vt_new(4, 10, 10);
+  vts(t, "1\r\n2\r\n3\r\n4");
+  vt_resize(t, 2, 10);
+  check_str("shrinking keeps the cursor's line on screen", vt_row_text(t, 1), "4");
+  check_str("by moving the top into the scrollback", vt_row_text(t, -1), "2");
+  check("the cursor moves with it", vt_cur(t), 101);
+  vt_resize(t, 4, 10);
+  check_str("growing takes them back", vt_row_text(t, 0), "1");
+  check("and the cursor with them", vt_cur(t), 301);
+  vt_resize(t, 4, 3);
+  vts(t, "\x1b[1;1Habcdef");
+  check_str("narrower: lines are as wide as the screen", vt_row_text(t, 1), "def");
+  vt_resize(t, 1, 1);
+  vts(t, "xyz\x1b[5;5H\x1b[3;3r\x1b[L");
+  check("a one-cell screen survives anything", vt_cur(t), 0);
+  vt_free(t);
+
+  printf("\nterminal: keys, going the other way\n");
+  t = vt_new(2, 10, 0);
+  len = vt_key(t, 'a', 0, k);
+  check("a letter is itself", len == 1 && k[0] == 'a', 1);
+  len = vt_key(t, ALT_KEY('b'), 0, k);
+  check("Alt-b is ESC b", len == 2 && k[0] == 27 && k[1] == 'b', 1);
+  len = vt_key(t, ARROW_UP, 0, k);
+  k[len] = '\0';
+  check_str("Up is CSI A", k, "\x1b[A");
+  vts(t, "\x1b[?1h");
+  len = vt_key(t, ARROW_UP, 0, k);
+  k[len] = '\0';
+  check_str("in application cursor mode, SS3 A", k, "\x1bOA");
+  len = vt_key(t, ARROW_LEFT, 4, k);
+  k[len] = '\0';
+  check_str("Ctrl-Left carries its modifier", k, "\x1b[1;5D");
+  len = vt_key(t, PAGE_UP, 0, k);
+  k[len] = '\0';
+  check_str("PgUp", k, "\x1b[5~");
+  len = vt_key(t, F5_KEY, 1, k);
+  k[len] = '\0';
+  check_str("Shift-F5", k, "\x1b[15;2~");
+  len = vt_key(t, F1_KEY, 0, k);
+  k[len] = '\0';
+  check_str("F1 is SS3 P", k, "\x1bOP");
+  len = vt_key(t, BACKTAB_KEY, 0, k);
+  k[len] = '\0';
+  check_str("Shift-Tab", k, "\x1b[Z");
+  check("a mouse report means nothing to it", vt_key(t, MOUSE_KEY, 0, k), 0);
+  vt_free(t);
+
+  /* Bytes chosen to land in sequences: escapes, brackets, digits, the
+   * separators, the finals. Under the sanitizers this is the test that every
+   * path through the parser stays inside the screen. */
+  bad = 0;
+  srand(11);
+  for (i = 0; i < 300; i++) {
+    char buf[400];
+    int n, j;
+    t = vt_new(1 + rand() % 8, 1 + rand() % 12, rand() % 5);
+    for (n = 0; n < 6; n++) {
+      int len2 = rand() % (int)sizeof(buf);
+      for (j = 0; j < len2; j++) {
+        static const char alphabet[] = "\x1b[]?;:0123456789HJKLMPX@ABCDEFGSTdrbmhlnsu\r\n\t\b(0Bc78DEM\x07\xe4\xb8\xad\xcc\x81 abc";
+        buf[j] = (rand() % 4 == 0) ? (char)(rand() % 256)
+                                   : alphabet[rand() % (sizeof(alphabet) - 1)];
+      }
+      vt_feed(t, buf, (size_t)len2);
+      if (rand() % 3 == 0) vt_resize(t, 1 + rand() % 8, 1 + rand() % 12);
+      {
+        int y, x, v;
+        vt_cursor(t, &y, &x, &v);
+        if (y < 0 || y >= vt_rows(t) || x < 0 || x >= vt_cols(t)) bad++;
+      }
+      vt_reply_done(t);
+    }
+    vt_free(t);
+  }
+  check("300 screens of random sequences keep the cursor on them", bad, 0);
+}
+
 int main(void) {
   test_loop_sources();
   test_wait_key_services_sources();
@@ -4660,6 +4966,7 @@ int main(void) {
   test_indent_convert();
   test_block();
   test_json();
+  test_vt();
   test_storage_load();
   test_storage_edit();
   test_storage_gap();

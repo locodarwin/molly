@@ -686,6 +686,34 @@ struct diag_span {
   int severity;
 };
 
+/* --- the integrated terminal's screen -----------------------------------------
+ *
+ * One character cell as a program in the terminal left it. See vt.c. The
+ * attribute bits are the grid's own, so drawing one is a copy and not a
+ * translation; DIM and INVISIBLE have no grid equivalent and are read by the
+ * drawing code. `w` is 1, 2 for a wide character, or 0 for the column a wide
+ * character's right half occupies. */
+#define VT_BOLD      ATTR_BOLD
+#define VT_UNDERLINE ATTR_UNDERLINE
+#define VT_ITALIC    ATTR_ITALIC
+#define VT_REVERSE   ATTR_REVERSE
+#define VT_DIM       0x20
+#define VT_INVISIBLE 0x40
+
+struct vt_cell {
+  uint32_t cp;
+  uint32_t comb;        /* one combining mark, or 0 */
+  short fg, bg;         /* palette indices, -1 for the default */
+  unsigned char w;
+  unsigned char attrs;
+};
+
+#define VT_MODE_APP_CURSOR      1
+#define VT_MODE_BRACKETED_PASTE 2
+#define VT_MODE_ALT_SCREEN      3
+
+struct vt;
+
 /* --- the event loop --------------------------------------------------------
  *
  * What loop_wait returns. The keyboard is reported; every other source is
@@ -1301,12 +1329,31 @@ void undo_set_max_steps(int n);
 
 /* utf8.c */
 int utf8_char_bytes(const char *s, int size, int i);
+int utf8_cp_cols(uint32_t cp);
+int utf8_encode(uint32_t cp, char *dst);
 int utf8_char_cols(const char *s, int size, int i, int *nbytes);
 int utf8_col_to_byte(const char *s, int col);
 int utf8_fit_cols(const char *s, int cols, int *out_cols);
 int utf8_is_cont(unsigned char c);
 int utf8_prev(const char *s, int i);
 int utf8_str_cols(const char *s);
+
+/* vt.c */
+const char *vt_reply(const struct vt *t, int *len);
+const char *vt_take_title(struct vt *t);
+const struct vt_cell *vt_line(const struct vt *t, int i, int *n);
+int vt_cols(const struct vt *t);
+int vt_key(const struct vt *t, int key, int mods, char *out);
+int vt_mode(const struct vt *t, int mode);
+int vt_rows(const struct vt *t);
+int vt_scrollback(const struct vt *t);
+int vt_take_bell(struct vt *t);
+struct vt *vt_new(int rows, int cols, int scrollback);
+void vt_cursor(const struct vt *t, int *y, int *x, int *visible);
+void vt_feed(struct vt *t, const char *s, size_t n);
+void vt_free(struct vt *t);
+void vt_reply_done(struct vt *t);
+void vt_resize(struct vt *t, int rows, int cols);
 
 /* window.c */
 int window_close_current(void);

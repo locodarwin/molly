@@ -117,6 +117,7 @@ void editor_draw_text_row(int y, erow *row, const struct drow *d,
   int rs = row->size;
   int tabw = tab_width();
   int col = 0, i = 0;
+  const unsigned char *roles = syntax_roles(d->filerow);
 
   /* First display column to show: where this slice starts, plus the horizontal
    * scroll. Wrap and horizontal scrolling are alternatives -- a wrapped view has
@@ -159,10 +160,10 @@ void editor_draw_text_row(int y, erow *row, const struct drow *d,
     /* A selection outranks the syntax colouring rather than blending with it:
      * reverse video over a keyword's own colour is unreadable, and what the
      * user is being told at that moment is "this is selected". Without a
-     * filetype, or with highlighting off, syntax_role_at returns ROLE_TEXT and
-     * this is the line it always was. */
+     * filetype, or with highlighting off, there are no roles and this is the
+     * line it always was. */
     grid_role((has_sel && dcol >= sel0 && dcol < sel1) ? ROLE_SELECTION
-                                                       : syntax_role_at(row, i));
+              : roles ? roles[i] : ROLE_TEXT);
     if (r[i] == '\t')
       grid_put_char(y, x, " ", 1, 1);
     else

@@ -131,7 +131,7 @@ const char *syntax_lang_name(int i) {
 /* ---- the multi-row state --------------------------------------------------- */
 
 /* What a row can be in the middle of when it starts. A tag and an index, packed
- * into the int that each row stores, because a row carrying a struct would make
+ * into the byte that each row stores, because a row carrying a struct would make
  * erow bigger for a value that is always one of a dozen possibilities.
  *
  * SYN_ST_NONE is zero on purpose: a row that has never been lexed, and every
@@ -144,6 +144,9 @@ const char *syntax_lang_name(int i) {
 #define SYN_ST(tag, idx) ((tag) * 16 + (idx))
 #define SYN_ST_TAG(st)   ((st) / 16)
 #define SYN_ST_IDX(st)   ((st) % 16)
+
+_Static_assert(SYN_ST(SYN_ST_FENCE, 15) <= 255,
+               "a lexer state has to fit the byte a row keeps it in");
 
 /* ---- building a definition ------------------------------------------------- */
 
@@ -503,6 +506,16 @@ void syntax_init(void) {
   }
 }
 
+/* The one row's roles the draw loop is working from; see syntax_roles(). Up
+ * here because cleanup frees them. */
+static unsigned char *roles;
+static int rolecap;
+static struct {
+  const struct buffer *buf;
+  const struct syntax *syn;
+  int row, in;
+} lexed;
+
 void syntax_cleanup(void) {
   int i, c;
   for (i = 0; i < nlangs; i++)
@@ -511,6 +524,10 @@ void syntax_cleanup(void) {
       langs[i].words[c] = NULL;
     }
   nlangs = 0;
+  free(roles);
+  roles = NULL;
+  rolecap = 0;
+  lexed.buf = NULL;
 }
 
 /* ---- picking a definition for a file -------------------------------------- */
@@ -856,14 +873,30 @@ done:
 
 /* ---- keeping rows up to date ----------------------------------------------- */
 
-/* Room for one role per byte of the row. At least one byte even
- * for an empty row, so that `syn != NULL` means "this row has been lexed" and
- * nothing has to carry a separate flag. */
-static void syn_alloc(erow *row) {
-  int need = (row->size > 0) ? row->size : 1;
-  if (row->syncap >= need) return;
-  row->syn = xrealloc(row->syn, (size_t)need);
-  row->syncap = need;
+/* The roles of one row, worked out when it is drawn rather than kept.
+ *
+ * Rows used to keep a role per byte from the moment they were lexed, which put
+ * a second copy's worth of memory beside every row a highlighted file had ever
+ * scrolled past -- the whole file, after a jump to its end. What a row has to
+ * keep is only the state it is entered with: from that, its roles are one pass
+ * over its bytes, and a frame only ever needs a screenful of them.
+ *
+ * One row's worth, remembered by which row it was and what it was lexed from,
+ * because a wrapped row is drawn a slice at a time and each slice asks for the
+ * same roles. Nothing in the key says whether the row's text has changed, and
+ * nothing needs to: an edit lowers the watermark to the row it touched, so the
+ * row is either below it -- and drawn plain until relexed -- or has been relexed
+ * by syntax_ensure, which works in this same buffer and so forgets what it
+ * held. */
+static unsigned char *roles_room(int n) {
+  if (n < 1) n = 1;
+  if (rolecap < n) {
+    roles = xrealloc(roles, (size_t)n);
+    rolecap = n;
+  }
+  /* Whatever was in there is about to be overwritten. */
+  lexed.buf = NULL;
+  return roles;
 }
 
 /* An edit on `row` makes every row below it suspect, because a comment opened
@@ -891,10 +924,10 @@ void syntax_ensure(int upto) {
   if (upto >= row_count()) upto = row_count() - 1;
   for (i = B.syn_valid; i <= upto; i++) {
     erow *row = row_at(i);
-    int in = (i > 0) ? row_at(i - 1)->syn_out : SYN_ST_NONE;
-    syn_alloc(row);
-    row->syn_in = in;
-    syntax_row(B.syn, row->chars, row->size, in, row->syn, &row->syn_out);
+    int in = (i > 0) ? row_at(i - 1)->syn_out : SYN_ST_NONE, out;
+    row->syn_in = (unsigned char)in;
+    syntax_row(B.syn, row->chars, row->size, in, roles_room(row->size), &out);
+    row->syn_out = (unsigned char)out;
   }
   if (upto + 1 > B.syn_valid) B.syn_valid = upto + 1;
 }
@@ -908,6 +941,9 @@ void syntax_retype(void) {
   if (V.buf == NULL) return;
   B.syn = syntax_for_filename(B.filename);
   B.syn_valid = 0;
+  /* A buffer freed and another made at the same address could otherwise be
+   * handed the roles of a row of the first. Every open comes through here. */
+  lexed.buf = NULL;
   /* The filetype is what the tab width can hang off, so a new name can mean a
    * new width. Here rather than at the call sites, because every one of them
    * changes the name for the same reason. On an open this runs before the rows
@@ -937,19 +973,31 @@ void syntax_ensure_view(void) {
   if (last >= 0) syntax_ensure(last);
 }
 
-/* The role for one byte of a row, for the draw loop.
+/* The roles of file row `filerow` of the current buffer, one per byte, for the
+ * draw loop -- or NULL for a row drawn in plain text: no filetype, highlighting
+ * off, or a row the watermark says has not been lexed. The pointer is good until
+ * the next call.
  *
- * Returns ROLE_TEXT for anything not coloured: no filetype, a row that has not
- * been lexed, or a byte past what was lexed. The draw loop therefore needs no
- * special case for highlighting being off, which is why this is a function here
- * rather than an `if` there. */
-unsigned char syntax_role_at(const erow *row, int i) {
+ * NULL rather than a run of ROLE_TEXT, so a buffer with no filetype costs the
+ * draw loop one test per row and nothing per byte. */
+const unsigned char *syntax_roles(int filerow) {
+  erow *row;
+  int out;
   /* `V.syntax` is read here and not only in syntax_ensure_view: turning
-   * highlighting off has to stop the colours being *drawn*, and rows lexed
-   * while it was on keep their roles until they are next edited. Checking only
-   * at the lexing end left the text coloured after the toggle. */
-  if (V.buf == NULL || !V.syntax || B.syn == NULL) return ROLE_TEXT;
-  if (row->syn == NULL || i < 0 || i >= row->size || i >= row->syncap)
-    return ROLE_TEXT;
-  return row->syn[i];
+   * highlighting off has to stop the colours being *drawn*, which is not the
+   * same thing as no longer lexing. */
+  if (V.buf == NULL || !V.syntax || B.syn == NULL) return NULL;
+  if (filerow < 0 || filerow >= B.syn_valid || filerow >= row_count())
+    return NULL;
+  row = row_at(filerow);
+  if (lexed.buf == V.buf && lexed.syn == B.syn && lexed.row == filerow &&
+      lexed.in == row->syn_in)
+    return roles;
+  syntax_row(B.syn, row->chars, row->size, row->syn_in, roles_room(row->size),
+             &out);
+  lexed.buf = V.buf;
+  lexed.syn = B.syn;
+  lexed.row = filerow;
+  lexed.in = row->syn_in;
+  return roles;
 }

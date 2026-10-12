@@ -40,8 +40,6 @@ void saved_snapshot_take(void) {
     }
     /* Text only: the snapshot exists to answer "is this buffer really
      * different from the file on disk", and nothing ever draws it. */
-    B.saved_rows[i].syn = NULL;
-    B.saved_rows[i].syncap = 0;
     B.saved_rows[i].syn_in = 0;
     B.saved_rows[i].syn_out = 0;
     wrap_row_invalidate(&B.saved_rows[i]);
@@ -207,8 +205,6 @@ void editor_insert_row(int at, char *s, size_t len) {
 
   (*row_at(at)).size = len;
   (*row_at(at)).chars = chars;
-  (*row_at(at)).syn = NULL;
-  (*row_at(at)).syncap = 0;
   (*row_at(at)).syn_in = 0;
   (*row_at(at)).syn_out = 0;
   editor_update_row(row_at(at));
@@ -222,7 +218,6 @@ void editor_insert_row(int at, char *s, size_t len) {
 
 void editor_free_row(erow *row) {
   free(row->chars);
-  free(row->syn);
 }
 
 void editor_delete_row(int at) {

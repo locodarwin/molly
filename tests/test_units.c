@@ -3180,6 +3180,62 @@ static int slice_frag(int index) {
 /* Which display row the one cursor is on, and where in it. */
 static int cur_drow(void) { return drow_of_cursor(&CUR); }
 
+/* The roles a row is drawn with, as a sketch -- or "-" for a row drawn plain. */
+static const char *roles_sketch(int row) {
+  static char got[128];
+  const unsigned char *r = syntax_roles(row);
+  int i, n = row_at(row)->size;
+  if (r == NULL) return "-";
+  if (n > (int)sizeof(got) - 1) n = (int)sizeof(got) - 1;
+  for (i = 0; i < n; i++) got[i] = syn_letter(r[i]);
+  got[n] = '\0';
+  return got;
+}
+
+static void test_syntax_roles(void) {
+  printf("\nsyntax: a row's colours are worked out when it is drawn\n");
+  mc_load("int x;\n/* a\nb */ x\n");
+  V.syntax = 1;
+  check_str("no filetype draws plain", roles_sketch(0), "-");
+
+  free(B.filename);
+  B.filename = xstrdup("x.c");
+  syntax_retype();
+  check_str("a row the watermark has not reached draws plain", roles_sketch(0), "-");
+  syntax_ensure(2);
+  check_str("once lexed it has its colours", roles_sketch(0), "ttt...");
+  /* The state a row is entered with is all it keeps, and it is enough. */
+  check_str("a row inside a comment", roles_sketch(1), "cccc");
+  check_str("and the row that closes it", roles_sketch(2), "cccc..");
+  check("the entry state is kept on the row", row_at(2)->syn_in != 0, 1);
+  check_str("asked again, the same", roles_sketch(2), "cccc..");
+
+  /* An edit has to be seen by the one row remembered, or the slices of a
+   * wrapped row would be drawn with the colours it had before. */
+  editor_row_insert_n(row_at(2), 4, "y", 1);   /* a letter after the closer */
+  syntax_ensure(2);
+  check_str("an edit is seen on the row that was remembered", roles_sketch(2),
+            "cccc...");
+  editor_row_delete_n(row_at(0), 0, 4);       /* "x;" */
+  syntax_ensure(2);
+  check_str("and on another row", roles_sketch(0), "..");
+  editor_row_delete_n(row_at(1), 0, 2);       /* " a": the comment is gone */
+  syntax_ensure(2);
+  check_str("a comment closed above changes the rows below", roles_sketch(2),
+            ".......");
+
+  /* Relexing another row works in the same buffer, so the row remembered has
+   * to be forgotten -- or asking for it again hands back the other row's. */
+  check_str("a row is remembered", roles_sketch(0), "..");
+  editor_row_insert_n(row_at(2), 0, "/* ", 3);
+  syntax_ensure(2);
+  check_str("and still its own after another is relexed", roles_sketch(0), "..");
+
+  V.syntax = 0;
+  check_str("highlighting off draws plain", roles_sketch(0), "-");
+  V.syntax = 1;
+}
+
 static void test_wrap(void) {
   printf("\nsoft wrap: how many screen lines a row takes, and which is which\n");
 
@@ -3689,6 +3745,7 @@ int main(void) {
   test_indent_block();
   test_indent_convert();
   test_block();
+  test_syntax_roles();
   test_wrap();
   test_menu_band();
   test_menu_dropdown();

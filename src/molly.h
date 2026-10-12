@@ -124,21 +124,13 @@ struct mouse_event {
 #define KEY_MODS         (KEY_ALT | KEY_SHIFT | KEY_CTRL)
 #define KEY_BASE(k)      ((k) & ~KEY_MODS)
 
+/* One line of a buffer. There is one of these per line of the file, so its
+ * size is most of what a big file costs beyond its own bytes: the fields are in
+ * the order that packs them, and the assertion below is there so that adding one
+ * is a decision rather than an accident. */
 typedef struct erow {
-  int size;
   char *chars;
-
-  /* Syntax highlighting: one cell role per byte of `chars`, and the lexer state
-   * this row was entered and left with. See syntax.c.
-   *
-   * `syn` is NULL until the row is first lexed, and stays NULL for a buffer with
-   * no filetype, which is what makes highlighting cost nothing when it is off.
-   * `syn_in` is the state the row starts in; the buffer's `syn_valid` says how
-   * many rows' worth of those are known to be right. */
-  unsigned char *syn;
-  int syncap;
-  int syn_in;
-  int syn_out;
+  int size;
 
   /* Soft wrap: how many display rows this row occupies, and the text width that
    * was measured at. A row is its own cache because the answer depends on its
@@ -149,7 +141,18 @@ typedef struct erow {
    * every row's when the tab width moves. See wrap.c. */
   int wcols;
   int wrows;
+
+  /* Syntax highlighting: the lexer state this row is entered with and the one
+   * it leaves in, which is all a row keeps -- its colours are worked out from
+   * `syn_in` when it is drawn (syntax_roles). The buffer's `syn_valid` says how
+   * many rows' worth of these are known to be right. A byte each, because a
+   * state is a tag and an index that fit in six bits (see syntax.c). */
+  unsigned char syn_in;
+  unsigned char syn_out;
 } erow;
+
+_Static_assert(sizeof(void *) != 8 || sizeof(erow) <= 24,
+               "a row is per line of the file: keep it at 24 bytes");
 
 /* One cursor: a position plus its own selection anchor. Molly keeps a *list* of
  * these rather than a single cursor, even though only one is ever created so
@@ -1062,7 +1065,7 @@ void syntax_ensure_view(void);
 void syntax_init(void);
 void syntax_invalidate_from(int row);
 void syntax_retype(void);
-unsigned char syntax_role_at(const erow *row, int i);
+const unsigned char *syntax_roles(int filerow);
 void syntax_row(const struct syntax *s, const char *r, int rs, int state_in,
                 unsigned char *out, int *state_out);
 

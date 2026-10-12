@@ -315,6 +315,9 @@ struct buffer {
   /* This is the find-in-files results buffer. See grep.c. */
   int grep_results;
 
+  /* This is the problems list. See lspui.c. */
+  int problems;
+
   /* Bumped by every change to the text, at the row primitives. What the
    * language server was last sent is `lsp_sent`, so the two differing is what
    * "the server is behind" means -- and nothing that edits has to know there
@@ -1138,7 +1141,11 @@ int lspui_cursor_message(char *dst, size_t n);
 int lspui_complete(void);
 int lspui_definition(void);
 int lspui_references(void);
+int lspui_problems(void);
+int lspui_problems_jump(void);
 int lspui_rename(void);
+void lspui_problems_changed(void);
+void lspui_problems_refresh(void);
 int lspui_signature(void);
 int lspui_hover(void);
 int lspui_key(int c);

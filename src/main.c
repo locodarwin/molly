@@ -262,6 +262,8 @@ int main(int argc, char *argv[]) {
     /* A language server's answer, if one has come and is still about where
      * the cursor is. Here and not where it arrives: see lspui_deliver. */
     lspui_deliver();
+    /* And the problems list, if a server has changed its mind since. */
+    lspui_problems_refresh();
     /* Terminals whose shells have exited close here, for the same reason. */
     tty_tidy();
     editor_refresh_screen();

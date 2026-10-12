@@ -10,12 +10,12 @@ gamma                     │  Go to definition         F12 │
 ~                         ├───────────────────────────────┤
 ~                         │  Next problem              F2 │
 ~                         │  Previous problem    Shift-F2 │
+~                         │  Problems             Ctrl-F2 │
 ~                         ├───────────────────────────────┤
 ~                         │  Next buffer        Ctrl-PgDn │
 ~                         │  Previous buffer    Ctrl-PgUp │
 ~                         │  Buffers…              Ctrl-B │
 ~                         └───────────────────────────────┘
-~
 ~
 [1/2] sample.txt - 3 lines                           Ln 1, Col 1
 2 files open - Ctrl-PgUp/PgDn to switch
@@ -36,8 +36,8 @@ g.........................ggggggggggggggggggggggggggggggggggg
 g.........................ggggggggggggggggggggggggggggggggggg
 g.........................ggggggggggggggggggggggggggggggggggg
 g.........................ggggggggggggggggggggggggggggggggggg
+g.........................ggggggggggggggggggggggggggggggggggg
 g...........................ggggggggggggggggggggggggggggggggg
-g
 RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 
 --- colors ---
@@ -52,19 +52,20 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 9: 0-0 8/-  26-58 7/8  59-60 8/0
 10: 0-0 8/-  26-26 7/8  27-57 0/8  58-58 7/8  59-60 8/0
 11: 0-0 8/-  26-26 7/8  27-57 0/8  58-58 7/8  59-60 8/0
-12: 0-0 8/-  26-58 7/8  59-60 8/0
-13: 0-0 8/-  26-26 7/8  27-57 15/8  58-58 7/8  59-60 8/0
+12: 0-0 8/-  26-26 7/8  27-57 15/8  58-58 7/8  59-60 8/0
+13: 0-0 8/-  26-58 7/8  59-60 8/0
 14: 0-0 8/-  26-26 7/8  27-57 15/8  58-58 7/8  59-60 8/0
 15: 0-0 8/-  26-26 7/8  27-57 15/8  58-58 7/8  59-60 8/0
-16: 0-0 8/-  26-58 7/8  59-60 8/0
-17: 0-0 8/-  28-60 8/0
-18: 0-0 8/-
+16: 0-0 8/-  26-26 7/8  27-57 15/8  58-58 7/8  59-60 8/0
+17: 0-0 8/-  26-58 7/8  59-60 8/0
+18: 0-0 8/-  28-60 8/0
 --- modifiers ---
 1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u  39-39 u
 2: 0-11 b
 3: 29-29 u
-13: 29-29 u
+12: 33-33 u
 14: 29-29 u
 15: 29-29 u
+16: 29-29 u
 --- cursor ---
 row 3 col 1 visible 0

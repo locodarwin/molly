@@ -642,6 +642,7 @@ static struct server *server_get(const char *cmd) {
 void lsp_diag_clear(struct buffer *b) {
   int i;
   if (b == NULL) return;
+  if (b->ndiag > 0 && !b->problems) lspui_problems_changed();
   for (i = 0; i < b->ndiag; i++) free(b->diag[i].msg);
   free(b->diag);
   b->diag = NULL;
@@ -750,7 +751,8 @@ static void doc_change(struct buffer *b, struct server *s) {
 /* Which server a buffer should be open with, or NULL. Starts it if need be. */
 static struct server *server_for(struct buffer *b) {
   const char *cmd;
-  if (!lsp_enabled() || b->filename == NULL || b->syn == NULL || b->grep_results)
+  if (!lsp_enabled() || b->filename == NULL || b->syn == NULL || b->grep_results ||
+      b->problems)
     return NULL;
   cmd = syntax_lsp(b->syn);
   if (cmd == NULL || cmd[0] == '\0') return NULL;
@@ -900,6 +902,7 @@ static void on_diagnostics(struct server *s, const struct json *params) {
   }
   b->ndiag = n;
   qsort(b->diag, (size_t)n, sizeof(*b->diag), diag_cmp);
+  lspui_problems_changed();
   ui_request_redraw();
 }
 

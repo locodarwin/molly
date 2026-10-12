@@ -714,6 +714,15 @@ def main():
     # Narrower than the signature: shown from where the parameter can be seen.
     check("lsp-signature-narrow", sig_keys, rows=10, cols=18, files=sig_files,
           args=["sample.c"], env=lsp_env)
+    # Ctrl-F2: the problems list under the file, each row's severity word in
+    # its colour and the totals on the list's status bar.
+    prob_files = dict(lsp_files, **{"sample.c": "int a;\nBAD here\n  WARN\nNOTE\n"})
+    check("lsp-problems", [2.0, "\x1b[1;5Q", 0.5], rows=16, cols=56,
+          files=prob_files, args=["sample.c"], env=lsp_env)
+    check("lsp-problems-256", [2.0, "\x1b[1;5Q", 0.5], rows=16, cols=56,
+          files=prob_files, args=["sample.c"], env=dict(lsp_env, TERM="xterm-256color"))
+    check("lsp-problems-narrow", [2.0, "\x1b[1;5Q", 0.5], rows=12, cols=24,
+          files=prob_files, args=["sample.c"], env=lsp_env)
     # Alt-T: the integrated terminal, a third of the height, under the file.
     # Not a real shell, whose prompt is the machine's, but tests/fake_shell.sh,
     # which prints a fixed screen: bold, reverse, the sixteen colours and the

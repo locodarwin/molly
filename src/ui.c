@@ -639,7 +639,7 @@ void editor_open_in_new_buffer(char *path) {
   }
 
   if (!(cur->filename == NULL && cur->numrows == 0 && !cur->dirty &&
-        !cur->grep_results))
+        !cur->grep_results && !cur->problems && cur->tty == NULL))
     buf_show(buf_index_of(buf_new()));
 
   editor_open(path);

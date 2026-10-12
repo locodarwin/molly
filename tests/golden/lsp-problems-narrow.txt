@@ -1,0 +1,46 @@
+--- screen ---
+ F E S V G W H
+ sample.c  problems
+int a;
+BAD here
+  WARN
+NOTE
+[1/2] sample.c - 4 lines
+sample.c:2:1: error: BAD
+sample.c:3:3: warning: W
+sample.c:4:1: info: NOTE
+[2/2] problems - 3 lines
+3 problems -- Enter goes
+--- attrs ---
+gggggggggggggggggggggggg
+gggggggggggggggggggggggg
+ggg
+ggg
+..gggg
+
+gggggggggggggggggggggggg
+..............ggggg
+..............ggggggg
+
+RRRRRRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-23 7/0
+2: 0-9 7/0  10-19 15/8  20-23 7/0
+3: 0-2 14/-
+4: 0-2 9/-
+5: 2-5 3/-
+7: 0-23 7/8
+8: 14-18 9/-
+9: 14-20 3/-
+--- modifiers ---
+1: 1-1 u  3-3 u  5-5 u  7-7 u  9-9 u  11-11 u  13-13 u
+2: 10-19 b
+4: 0-2 u
+5: 2-5 u
+6: 0-3 u
+8: 14-18 u
+9: 14-20 u
+10: 14-17 u
+--- cursor ---
+row 8 col 1 visible 1

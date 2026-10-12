@@ -43,6 +43,12 @@ static int cmd_newline(void) {
    * is what a list of matches is for -- the way it is in every other editor's
    * results. A row that names no file falls back to an ordinary Enter. */
   if (B.grep_results && V.ncursors <= 1 && grep_jump(0)) return 0;
+  /* The problems list likewise -- and never an ordinary Enter, because the
+   * next refresh would write over whatever it made. */
+  if (B.problems) {
+    if (V.ncursors <= 1) lspui_problems_jump();
+    return 0;
+  }
   cursors_edit(MC_NEWLINE, 0);
   return 0;
 }
@@ -311,6 +317,7 @@ static int cmd_terminal(void) { return tty_toggle(); }
 static int cmd_terminal_new(void) { tty_open_here(); return 0; }
 static int cmd_problem_next(void) { lspui_problem_jump(1); return 0; }
 static int cmd_problem_prev(void) { lspui_problem_jump(-1); return 0; }
+static int cmd_problems(void) { return lspui_problems(); }
 static int have_problems(void) { return B.ndiag > 0; }
 static int cmd_lsp_status(void) { lspui_status(); return 0; }
 static int cmd_lsp_restart(void) { lspui_restart(); return 0; }
@@ -769,6 +776,8 @@ static const struct command commands[] = {
   {.name = "code.complete", .label = "Complete word",
    .help = "Complete word", .group = "CODE", .flags = CMD_EDITS, .run = cmd_complete,
    .enabled = can_complete},
+  {.name = "goto.problems", .label = "Problems",
+   .help = "List all problems", .group = "CODE", .run = cmd_problems},
   {.name = "lsp.status", .label = "Language server status",
    .run = cmd_lsp_status},
   {.name = "lsp.restart", .label = "Restart language servers",
@@ -1339,6 +1348,7 @@ static const struct binding default_bindings[] = {
    * and F2 is free until molly renames anything. */
   {"f2",       "goto.next-problem"},
   {"shift-f2", "goto.prev-problem"},
+  {"ctrl-f2",  "goto.problems"},
   /* F12 is VS Code's and Visual Studio's. Back is Alt-Left, as in a browser
    * and in VS Code on Windows; Alt-K for what is under the cursor, after vi's
    * K, because Ctrl-K is a chord a terminal cannot follow with a second. */
@@ -1835,6 +1845,7 @@ static const struct help_entry help_entries[] = {
    * VIEW by paging down to it. */
   {"CODE",      NULL, NULL, "goto.next-problem"},
   {NULL,        NULL, NULL, "goto.prev-problem"},
+  {NULL,        NULL, NULL, "goto.problems"},
   {NULL,        NULL, NULL, "goto.definition"},
   {NULL,        NULL, NULL, "goto.back"},
   {NULL,        NULL, NULL, "code.references"},

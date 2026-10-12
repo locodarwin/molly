@@ -639,6 +639,177 @@ static void deliver_definition(void) {
   editor_set_status_message("Definition: %s:%d", buf_name(V.buf), CUR.cy + 1);
 }
 
+/* ---- the problems list --------------------------------------------------- */
+
+/* Every problem in every open file, a row each -- `path:line:col: error: what`
+ * -- in a buffer of its own, kept up to date: a server's new opinion of any
+ * file rewrites it. Enter on a row goes there.
+ *
+ * Built from the main loop, as every other answer is acted on: a server's
+ * diagnostics arrive inside the event loop, and only say the list is out of
+ * date (lspui_problems_changed). The rows are a buffer's like any other, so
+ * the list scrolls, searches and splits; editing it is allowed and pointless,
+ * since the next refresh writes over it.
+ *
+ * Each row carries a diagnostic of its own, over its severity word, so the
+ * word is drawn in the problem's colour by the code that draws every other
+ * problem -- and the status bar's counts, over this buffer, are the totals. */
+
+static int problems_stale;
+/* The column each row's problem starts at, for Enter; trusted only while the
+ * list has as many rows as when it was written, as find-in-files' are. */
+static int *prob_cols;
+static int nprob_cols;
+
+void lspui_problems_changed(void) { problems_stale = 1; }
+
+static struct buffer *problems_buffer(void) {
+  int i;
+  for (i = 0; i < buf_count(); i++)
+    if (buf_at(i)->problems) return buf_at(i);
+  return NULL;
+}
+
+/* Rewrite the list's rows from every buffer's diagnostics. Works on the list
+ * by borrowing the current view's buffer pointer for the duration, as
+ * buf_free does, and touches no cursor but the list's own windows'. */
+static void problems_fill(struct buffer *pb) {
+  struct buffer *was = V.buf;
+  struct diag *marks = NULL;
+  int nmarks = 0, i, k, total = 0;
+
+  for (i = 0; i < buf_count(); i++)
+    if (!buf_at(i)->problems) total += buf_at(i)->ndiag;
+  free(prob_cols);
+  prob_cols = xmalloc(sizeof(*prob_cols) * (size_t)(total > 0 ? total : 1));
+  nprob_cols = 0;
+  if (total > 0) marks = xmalloc(sizeof(*marks) * (size_t)total);
+
+  V.buf = pb;
+  editor_clear_rows();
+  for (i = 0; i < buf_count(); i++) {
+    struct buffer *b = buf_at(i);
+    if (b->problems) continue;
+    for (k = 0; k < b->ndiag; k++) {
+      const struct diag *d = &b->diag[k];
+      char row[400], msg[300];
+      int col = 0, n, w0;
+      static const char *const words[] = {"", "error", "warning", "info", "hint"};
+      if (d->y0 < b->numrows) {
+        erow *r = buf_row(b, d->y0);
+        col = editor_row_cx_to_charcol(r, d->x0 <= r->size ? d->x0 : r->size);
+      }
+      snprintf(msg, sizeof(msg), "%s", d->msg);
+      msg[strcspn(msg, "\n")] = '\0';
+      for (n = 0; msg[n]; n++)
+        if ((unsigned char)msg[n] < 0x20) msg[n] = ' ';
+      n = snprintf(row, sizeof(row), "%.200s:%d:%d: ", buf_name(b), d->y0 + 1, col + 1);
+      w0 = n;
+      n += snprintf(row + n, sizeof(row) - (size_t)n, "%s: %s", words[d->severity], msg);
+      if (n >= (int)sizeof(row)) n = (int)sizeof(row) - 1;
+      editor_insert_row(row_count(), row, (size_t)n);
+      marks[nmarks].y0 = marks[nmarks].y1 = row_count() - 1;
+      marks[nmarks].x0 = w0;
+      marks[nmarks].x1 = w0 + (int)strlen(words[d->severity]);
+      marks[nmarks].severity = d->severity;
+      marks[nmarks].msg = xstrdup(d->msg);
+      nmarks++;
+      prob_cols[nprob_cols++] = d->x0;
+    }
+  }
+  editor_free_undo_redo();
+  saved_snapshot_free();
+  saved_snapshot_take();
+  B.dirty = 0;
+  lsp_diag_clear(V.buf);
+  V.buf->diag = marks;
+  V.buf->ndiag = nmarks;
+  V.buf = was;
+
+  /* Windows on the list keep their place where it still exists. */
+  for (i = 0; i < window_count(); i++) {
+    struct view *v = window_view_at(i);
+    if (v->buf != pb) continue;
+    for (k = 0; k < v->ncursors; k++) {
+      struct cursor *c = &v->cursors[k];
+      c->sel_active = 0;
+      if (c->cy >= pb->numrows) c->cy = pb->numrows > 0 ? pb->numrows - 1 : 0;
+      if (c->cy < pb->numrows && c->cx > buf_row(pb, c->cy)->size)
+        c->cx = buf_row(pb, c->cy)->size;
+    }
+  }
+}
+
+/* From the main loop: bring the list up to date if there is one and it is not. */
+void lspui_problems_refresh(void) {
+  struct buffer *pb;
+  if (!problems_stale) return;
+  pb = problems_buffer();
+  if (pb != NULL) problems_fill(pb);
+  problems_stale = 0;
+}
+
+/* Ctrl-F2: the list, in a window below -- or the window already showing it. */
+int lspui_problems(void) {
+  struct buffer *pb = problems_buffer();
+  int i, n = 0;
+  for (i = 0; i < window_count(); i++) {
+    if (window_view_at(i)->buf == pb && pb != NULL) {
+      window_focus(i);
+      return 0;
+    }
+  }
+  if (pb == NULL) {
+    pb = buf_new();
+    pb->problems = 1;
+    pb->title = xstrdup("problems");
+  }
+  problems_fill(pb);
+  if (window_split(WIN_ROWS)) buf_show(buf_index_of(pb));
+  else buf_show(buf_index_of(pb));
+  memset(&CUR, 0, sizeof(CUR));
+  V.drowoff = V.coloff = 0;
+  screen_force_repaint();
+  n = pb->numrows;
+  if (n == 0)
+    editor_set_status_message("No problems in the open files. The list stays up to date.");
+  else
+    editor_set_status_message("%d problem%s -- Enter goes to one; the list stays up to date",
+                              n, n == 1 ? "" : "s");
+  return 0;
+}
+
+/* Enter in the list: to the problem on this row, in the window the list was
+ * opened from when there is one, as find in files does. Returns 1 when it
+ * went; a row that names nothing is not an Enter either way. */
+int lspui_problems_jump(void) {
+  int at = CUR.cy, p0, pl, ln, col;
+  struct buffer *pb = V.buf;
+  erow *r;
+  char *path;
+  if (!pb->problems || at >= pb->numrows) return 1;
+  r = row_at(at);
+  if (!grep_parse_line(r->chars, r->size, &p0, &pl, &ln)) return 1;
+  path = xmalloc((size_t)pl + 1);
+  memcpy(path, r->chars + p0, (size_t)pl);
+  path[pl] = '\0';
+  col = (nprob_cols == pb->numrows) ? prob_cols[at] : 0;
+  if (window_count() > 1) window_move_focus(-1);
+  {
+    int i, found = -1;
+    for (i = 0; i < buf_count(); i++)
+      if (buf_at(i)->filename != NULL && strcmp(buf_at(i)->filename, path) == 0) found = i;
+    if (found >= 0) {
+      if (V.buf != buf_at(found)) buf_show(found);
+      free(path);
+    } else {
+      editor_open_in_new_buffer(path);
+    }
+  }
+  cursor_to(ln - 1, col);
+  return 1;
+}
+
 /* ---- renaming ------------------------------------------------------------ */
 
 static char rename_to[128];   /* the name asked for, for what is said after */

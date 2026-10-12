@@ -10,12 +10,12 @@ gamma                     ├─────────────────
 ~                         ├───────────────────────────────┤
 ~                         │  Next problem              F2 │
 ~                         │  Previous problem    Shift-F2 │
+~                         │  Problems             Ctrl-F2 │
 ~                         ├───────────────────────────────┤
 ~                         │  Next buffer        Ctrl-PgDn │
 ~                         │  Previous buffer    Ctrl-PgUp │
 ~                         │  Buffers…              Ctrl-B │
 ~                         └───────────────────────────────┘
-~
 ~
 sample.txt - 3 lines                                 Ln 1, Col 1
 HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find | F3 = next
@@ -36,8 +36,8 @@ g.........................ggggggggggggggggggggggggggggggggggg
 g.........................ggggggggggggggggggggggggggggggggggg
 g.........................ggggggggggggggggggggggggggggggggggg
 g.........................ggggggggggggggggggggggggggggggggggg
+g.........................ggggggggggggggggggggggggggggggggggg
 g...........................ggggggggggggggggggggggggggggggggg
-g
 RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 
 --- colors ---
@@ -52,16 +52,17 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 9: 0-0 8/-  26-58 245/238  59-60 240/234
 10: 0-0 8/-  26-26 245/238  27-57 243/238  58-58 245/238  59-60 240/234
 11: 0-0 8/-  26-26 245/238  27-57 243/238  58-58 245/238  59-60 240/234
-12: 0-0 8/-  26-58 245/238  59-60 240/234
-13: 0-0 8/-  26-26 245/238  27-57 243/238  58-58 245/238  59-60 240/234
+12: 0-0 8/-  26-26 245/238  27-57 252/238  58-58 245/238  59-60 240/234
+13: 0-0 8/-  26-58 245/238  59-60 240/234
 14: 0-0 8/-  26-26 245/238  27-57 243/238  58-58 245/238  59-60 240/234
-15: 0-0 8/-  26-26 245/238  27-57 252/238  58-58 245/238  59-60 240/234
-16: 0-0 8/-  26-58 245/238  59-60 240/234
-17: 0-0 8/-  28-60 240/234
-18: 0-0 8/-
+15: 0-0 8/-  26-26 245/238  27-57 243/238  58-58 245/238  59-60 240/234
+16: 0-0 8/-  26-26 245/238  27-57 252/238  58-58 245/238  59-60 240/234
+17: 0-0 8/-  26-58 245/238  59-60 240/234
+18: 0-0 8/-  28-60 240/234
 --- modifiers ---
 1: 1-1 u  7-7 u  13-13 u  21-21 u  27-27 u  31-31 u  39-39 u
 3: 29-29 u
-15: 29-29 u
+12: 33-33 u
+16: 29-29 u
 --- cursor ---
 row 2 col 1 visible 0

@@ -5539,6 +5539,62 @@ def test_lsp_signature(tmpdir):
         os.chdir(here)
 
 
+def test_lsp_problems(tmpdir):
+    """Ctrl-F2: every problem in every open file, in a list that keeps up.
+
+    The fake server marks BAD, WARN and NOTE. Checked: the list's rows and
+    order, its totals, Enter going to a problem in another file, the list
+    following a fix made in the file, and that it is not left modified.
+    """
+    print("\nlanguage server: the problems list")
+
+    work = os.path.join(tmpdir, "lspprob")
+    os.makedirs(work, exist_ok=True)
+    rc = os.path.join(work, "lsprc")
+    with open(rc, "w") as fh:
+        fh.write("[syntax c]\nlanguage server = python3 -I %s\n" % FAKE_LSP)
+    LIST, F6, DOWN, DEL = "\x1b[1;5Q", "\x1b[17~", "\x1b[B", "\x1b[3~"
+    WAIT = 2.5
+
+    def session(keys):
+        with open("main.c", "w") as fh:
+            fh.write("int widget = 1;\nBAD here\n  WARN\n")
+        with open("other.c", "w") as fh:
+            fh.write("NOTE x\nBAD\n")
+        scr = Screen(18, 72)
+        scr.feed(run([MOLLY, "main.c", "other.c"], keys, rows=18, cols=72,
+                     env={"MOLLY_CONFIG": rc, "MOLLY_LSP": ""}))
+        return [r.rstrip() for r in scr.text()]
+
+    def rows(text):
+        return [r for r in text if re.match(r"^\w+\.c:\d+:\d+: ", r)]
+
+    here = os.getcwd()
+    os.chdir(work)
+    try:
+        text = session([WAIT, LIST, 0.5])
+        check("Ctrl-F2 lists every open file's problems, in order", rows(text),
+              ["main.c:2:1: error: BAD is not allowed here",
+               "main.c:3:3: warning: WARN is not allowed here",
+               "other.c:1:1: info: NOTE is not allowed here",
+               "other.c:2:1: error: BAD is not allowed here"])
+        check("its status bar has the totals, and it is not modified",
+              any(r.startswith("[3/3] problems - 4 lines") and "(modified)" not in r
+                  and "E:2 W:1" in r for r in text), True)
+        text = session([WAIT, LIST, 0.5, DOWN, DOWN, DOWN, "\r", 0.5])
+        check("Enter goes to the problem, in its own file",
+              any(r.startswith("[2/3] other.c") and "Ln 2, Col 1" in r for r in text), True)
+        text = session([WAIT, LIST, 0.5, F6, DOWN, DEL, DEL, DEL, 1.5])
+        check("fixing one takes it off the list",
+              rows(text)[0], "main.c:3:3: warning: WARN is not allowed here")
+        check("which still has the rest", len(rows(text)), 3)
+        text = session([WAIT, LIST, 0.5, F6, LIST, 0.3])
+        check("Ctrl-F2 again goes to the list rather than opening another",
+              sum(1 for r in text if r.startswith("[") and "problems -" in r), 1)
+    finally:
+        os.chdir(here)
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -5612,6 +5668,7 @@ def main():
         test_lsp_rename(tmpdir)
         test_lsp_references(tmpdir)
         test_lsp_signature(tmpdir)
+        test_lsp_problems(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

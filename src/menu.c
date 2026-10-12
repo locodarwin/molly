@@ -89,10 +89,10 @@ static const struct menu_item go_items[] = {
   /* D of "definition", K of "Back" because B is Buffers', R of "references",
    * I of "Info". X and
    * V for the problems, as Search's pair of results have them: N and P are
-   * the buffers'. */
+   * the buffers'; L for the list of them, P being Previous's. */
   {"goto.definition", 6}, {"goto.back", 3}, {"code.references", 5},
   {"code.hover", 0}, SEP,
-  {"goto.next-problem", 2}, {"goto.prev-problem", 3}, SEP,
+  {"goto.next-problem", 2}, {"goto.prev-problem", 3}, {"goto.problems", 4}, SEP,
   /* N and P, since Go has nothing else competing for either. */
   {"buffer.next", 0}, {"buffer.prev", 0}, {"buffer.list", 0},
 };

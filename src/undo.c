@@ -175,10 +175,7 @@ void uc_do_join(struct uchange *u) {
 void uc_do_split(struct uchange *u) {
   erow *row = row_at(u->row);
   editor_insert_row(u->row + 1, row->chars + u->at, row->size - u->at);
-  row = row_at(u->row);
-  row->size = u->at;
-  row->chars[row->size] = '\0';
-  editor_update_row(row);
+  editor_row_truncate(row_at(u->row), u->at);
 }
 
 void uc_do_newrow(struct uchange *u) {

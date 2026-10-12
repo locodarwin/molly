@@ -124,15 +124,9 @@ struct buffer *buf_new(void) {
  * case the caller is mid-close and sets it afterwards. */
 static void buf_free(struct buffer *b) {
   struct buffer *was = V.buf;
-  int i;
 
   V.buf = b;
-  for (i = 0; i < b->numrows; i++) editor_free_row(&b->row[i]);
-  free(b->row);
-  b->row = NULL;
-  b->numrows = 0;
-  b->rowcap = 0;
-  saved_snapshot_free();
+  editor_free_rows();
   editor_free_undo_redo();
   free(b->filename);
   b->filename = NULL;
@@ -175,8 +169,8 @@ void buf_show(int i) {
      * no column but zero to be in -- anything else leaves the cursor drawn out
      * in the blank and an insert addressing an offset the row does not have. */
     CUR.cx = 0;
-  } else if (CUR.cx > b->row[CUR.cy].size) {
-    CUR.cx = b->row[CUR.cy].size;
+  } else if (CUR.cx > buf_row(b, CUR.cy)->size) {
+    CUR.cx = buf_row(b, CUR.cy)->size;
   }
   if (CUR.cx < 0) CUR.cx = 0;
   V.drowoff = (b->last_drowoff < 0) ? 0 : b->last_drowoff;

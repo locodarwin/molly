@@ -3,57 +3,119 @@
 
 #include "molly.h"
 
-/* --- saved-content snapshot: the buffer is only "modified" when it really
+/* --- where a buffer's text lives -----------------------------------------
+ *
+ * A file is read in one piece, into one block (B.text), and each row is a span
+ * of that block: its line, with the byte after it overwritten by a NUL so the row
+ * is terminated where it lies. Nothing is copied per line and nothing is
+ * allocated per line, which is what opening a large file costs in time and in
+ * memory -- the block is the file's size, and a row is 24 bytes beside it.
+ *
+ * A row gets text of its own the first time it is changed (row_own). Before
+ * that it is *borrowed*, and a borrowed row is never written: the block is also
+ * the saved snapshot, below, and a byte changed in it would be a change to what
+ * the buffer is compared against. Whether a row is borrowed is a question about
+ * its address and nothing else, so no row carries a flag for it.
+ *
+ * The rows themselves are a gap array: the array has its free slots in one run
+ * (the gap) at B.gap, and inserting or deleting a row moves the gap there first.
+ * Edits cluster, so the gap is nearly always where it is wanted already, and a
+ * new line in a big file costs the rows between the last edit and this one
+ * rather than every row below it. row_at() is the only translation between a
+ * row's index and its slot.
+ *
+ * --- saved-content snapshot: the buffer is only "modified" when it really
  * differs from what is on disk, so undoing back to the saved state clears the
- * dirty flag and the quit warning. The snapshot (B.saved_rows) and the mtime
- * seen when it was taken (B.on_disk_mtime) are per-buffer, since each open file
- * has its own saved state; B.have_disk_mtime is 0 for a buffer not backed by an
- * existing file yet -- a brand-new buffer, or one just named via Save As. --- */
+ * dirty flag and the quit warning. The snapshot is the block: line i of what was
+ * saved is the span at B.saved_off[i], one NUL-terminated line after another, so
+ * a line's length is the distance to the next one less its NUL. A row that still
+ * borrows its own line is equal to it without a comparison. The mtime seen when
+ * it was taken (B.on_disk_mtime) is per-buffer too, since each open file has its
+ * own saved state; B.have_disk_mtime is 0 for a buffer not backed by an existing
+ * file yet -- a brand-new buffer, or one just named via Save As. --- */
 
 static int mtime_eq(struct timespec a, struct timespec b) {
   return a.tv_sec == b.tv_sec && a.tv_nsec == b.tv_nsec;
 }
 
-void saved_snapshot_free(void) {
-  int i;
-  for (i = 0; i < B.saved_numrows; i++) free(B.saved_rows[i].chars);
-  free(B.saved_rows);
-  B.saved_rows = NULL;
-  B.saved_numrows = 0;
+/* Whether a row's text is a span of the buffer's block rather than its own. */
+static int row_borrowed(const erow *row) {
+  uintptr_t p = (uintptr_t)row->chars, t = (uintptr_t)B.text;
+  return B.text != NULL && p >= t && p < t + B.textlen;
 }
 
+/* Give a row text of its own, before anything writes to it. */
+static void row_own(erow *row) {
+  char *c;
+  if (!row_borrowed(row)) return;
+  c = xmalloc((size_t)row->size + 1);
+  memcpy(c, row->chars, (size_t)row->size + 1);
+  row->chars = c;
+}
+
+/* Forget the snapshot, so nothing matches it. The block stays: rows may still
+ * be borrowing from it. */
+void saved_snapshot_free(void) {
+  free(B.saved_off);
+  B.saved_off = NULL;
+  B.saved_numrows = -1;
+}
+
+/* Make what the buffer holds now the saved state.
+ *
+ * Which means a new block: every row is copied into it, one after another, and
+ * then points there -- rows that had text of their own give it up, and the old
+ * block goes. So this is also where the memory an editing session has scattered
+ * across rows comes back to one allocation the size of the file, and it happens
+ * at every save. It costs a copy of the buffer, which a save has just written
+ * out anyway.
+ *
+ * An allocation failure leaves the rows where they were and no snapshot at all,
+ * so the buffer reads as modified until the next save: wrong in the safe
+ * direction, since the worst it does is ask before quitting. */
 void saved_snapshot_take(void) {
-  int i;
-  saved_snapshot_free();
-  if (row_count() == 0) return;
-  B.saved_rows = malloc(sizeof(erow) * (size_t)row_count());
-  if (B.saved_rows == NULL) return;
-  B.saved_numrows = row_count();
-  for (i = 0; i < B.saved_numrows; i++) {
-    B.saved_rows[i].size = (*row_at(i)).size;
-    B.saved_rows[i].chars = malloc((size_t)(*row_at(i)).size + 1);
-    if (B.saved_rows[i].chars != NULL) {
-      memcpy(B.saved_rows[i].chars, (*row_at(i)).chars, (size_t)(*row_at(i)).size);
-      B.saved_rows[i].chars[(*row_at(i)).size] = '\0';
-    } else {
-      B.saved_rows[i].size = 0;
-    }
-    /* Text only: the snapshot exists to answer "is this buffer really
-     * different from the file on disk", and nothing ever draws it. */
-    B.saved_rows[i].syn_in = 0;
-    B.saved_rows[i].syn_out = 0;
-    wrap_row_invalidate(&B.saved_rows[i]);
+  int i, n = row_count();
+  size_t need = 1, w = 0;
+  char *text;
+  size_t *off;
+
+  for (i = 0; i < n; i++) need += (size_t)row_at(i)->size + 1;
+  text = malloc(need);
+  off = malloc(sizeof(size_t) * ((size_t)n + 1));
+  if (text == NULL || off == NULL) {
+    free(text);
+    free(off);
+    saved_snapshot_free();
+    return;
   }
+  for (i = 0; i < n; i++) {
+    erow *row = row_at(i);
+    memcpy(text + w, row->chars, (size_t)row->size);
+    text[w + (size_t)row->size] = '\0';
+    off[i] = w;
+    if (!row_borrowed(row)) free(row->chars);
+    row->chars = text + w;
+    w += (size_t)row->size + 1;
+  }
+  off[n] = w;
+  text[w] = '\0';
+  free(B.text);
+  B.text = text;
+  B.textlen = need;
+  free(B.saved_off);
+  B.saved_off = off;
+  B.saved_numrows = n;
 }
 
 int editor_matches_saved(void) {
   int i;
   if (row_count() != B.saved_numrows) return 0;
   for (i = 0; i < row_count(); i++) {
-    if (B.saved_rows[i].chars == NULL) return 0;
-    if ((*row_at(i)).size != B.saved_rows[i].size) return 0;
-    if (memcmp((*row_at(i)).chars, B.saved_rows[i].chars, (size_t)(*row_at(i)).size) != 0)
-      return 0;
+    const erow *row = row_at(i);
+    const char *was = B.text + B.saved_off[i];
+    size_t len = B.saved_off[i + 1] - B.saved_off[i] - 1;
+    if ((size_t)row->size != len) return 0;
+    if (row->chars != was && memcmp(row->chars, was, len) != 0) return 0;
   }
   return 1;
 }
@@ -166,64 +228,101 @@ void tab_width_set(int n) {
  * stopped being the right one. */
 void editor_remeasure_all(void) {
   int i;
-  for (i = 0; i < B.numrows; i++) wrap_row_invalidate(&B.row[i]);
+  for (i = 0; i < row_count(); i++) wrap_row_invalidate(row_at(i));
+}
+
+/* The index of a row of the current buffer from where it sits, or -1. The
+ * inverse of row_at(): a slot below the gap is its own index, one above it is
+ * the gap's length further on. */
+static int row_index(const erow *row) {
+  int gaplen = B.rowcap - B.numrows;
+  if (B.row == NULL || row < B.row || row >= B.row + B.rowcap) return -1;
+  if (row < B.row + B.gap) return (int)(row - B.row);
+  if (row < B.row + B.gap + gaplen) return -1;   /* in the gap: not a row */
+  return (int)(row - B.row) - gaplen;
 }
 
 void editor_update_row(erow *row) {
-  /* The row's index, for the syntax watermark. Pointer arithmetic into the row
-   * array rather than an argument, because this is called from a dozen places
-   * that hold the erow and not its index -- and because the array is exactly
-   * where every row of this buffer lives. Whatever replaces the flat array will
-   * have to answer this differently, along with everything else that indexes
-   * B.row. */
-  if (V.buf != NULL && B.row != NULL && row >= B.row && row < B.row + B.rowcap)
-    syntax_invalidate_from((int)(row - B.row));
+  /* The row's index, for the syntax watermark. Worked out from the pointer,
+   * because this is called from a dozen places that hold the erow and not its
+   * index. */
+  if (V.buf != NULL) {
+    int at = row_index(row);
+    if (at >= 0) syntax_invalidate_from(at);
+  }
 
   /* Whatever this row wrapped to, it was measured from the text that just
    * changed. */
   wrap_row_invalidate(row);
 }
 
+/* Move the gap to just before row `at`, shifting the rows between where it
+ * was and where it is going. */
+static void gap_move(int at) {
+  int gaplen = B.rowcap - B.numrows;
+  if (gaplen > 0 && at < B.gap)
+    memmove(&B.row[at + gaplen], &B.row[at], sizeof(erow) * (size_t)(B.gap - at));
+  else if (gaplen > 0 && at > B.gap)
+    memmove(&B.row[B.gap], &B.row[B.gap + gaplen],
+            sizeof(erow) * (size_t)(at - B.gap));
+  B.gap = at;
+}
+
+/* Room for one more row. Half as much again when full rather than double: the
+ * array is the per-line cost of a big file, and doubling it for the sake of one
+ * new line would add half of that again for nothing. Still a constant factor, so
+ * filling it a row at a time stays O(rows) overall. */
+static void rows_reserve(int more) {
+  int cap;
+  if (B.numrows + more <= B.rowcap) return;
+  cap = B.rowcap < 32 ? 32 : B.rowcap + B.rowcap / 2;
+  if (cap < B.numrows + more) cap = B.numrows + more;
+  B.row = xrealloc(B.row, sizeof(erow) * (size_t)cap);
+  /* The rows above the gap were at the top of the old array; they belong at
+   * the top of the new one, with the new slots joining the gap. */
+  memmove(&B.row[B.gap + (cap - B.numrows)], &B.row[B.gap + (B.rowcap - B.numrows)],
+          sizeof(erow) * (size_t)(B.numrows - B.gap));
+  B.rowcap = cap;
+}
+
 void editor_insert_row(int at, char *s, size_t len) {
+  erow *row;
   if (at < 0 || at > row_count()) return;
-  /* Allocate the new row's text before touching the array. The memmove below
-   * duplicates each shifted row's pointers into the next slot for an instant;
-   * if an allocation failed after that and died, editor_cleanup would free
-   * the duplicated pointer twice. Allocating first means a failure here dies
-   * with the array still consistent. */
+  /* Allocate the new row's text before touching the array, so a failure here
+   * dies with the array still consistent and editor_cleanup frees each row
+   * once. */
   char *chars = xmalloc(len + 1);
   memcpy(chars, s, len);
   chars[len] = '\0';
 
-  /* Double the capacity when full, so loading an n-line file costs O(log n)
-   * reallocations rather than one per line. */
-  if (row_count() == B.rowcap) {
-    B.rowcap = B.rowcap ? B.rowcap * 2 : 32;
-    B.row = xrealloc(B.row, sizeof(erow) * (size_t)B.rowcap);
-  }
-  memmove(row_at(at + 1), row_at(at), sizeof(erow) * (row_count() - at));
+  rows_reserve(1);
+  gap_move(at);
+  row = &B.row[B.gap];
+  B.gap++;
+  B.numrows++;
 
-  (*row_at(at)).size = len;
-  (*row_at(at)).chars = chars;
-  (*row_at(at)).syn_in = 0;
-  (*row_at(at)).syn_out = 0;
-  editor_update_row(row_at(at));
+  row->size = len;
+  row->chars = chars;
+  row->syn_in = 0;
+  row->syn_out = 0;
+  editor_update_row(row);
   /* Inserting shifts every row below, so their stored entry states now belong
    * to the wrong rows. */
   syntax_invalidate_from(at);
 
-  B.numrows++;
   B.dirty++;
 }
 
 void editor_free_row(erow *row) {
-  free(row->chars);
+  if (!row_borrowed(row)) free(row->chars);
 }
 
 void editor_delete_row(int at) {
   if (at < 0 || at >= row_count()) return;
-  editor_free_row(row_at(at));
-  memmove(row_at(at), row_at(at + 1), sizeof(erow) * (row_count() - at - 1));
+  gap_move(at);
+  /* Row `at` is now the first one past the gap, and one less row makes the gap
+   * one longer -- so it is already where it has gone. */
+  editor_free_row(&B.row[B.gap + (B.rowcap - B.numrows)]);
   B.numrows--;
   B.dirty++;
   /* Deleting shifts every row below up one, so their stored entry states belong
@@ -231,8 +330,42 @@ void editor_delete_row(int at) {
   syntax_invalidate_from(at);
 }
 
+/* Every row of the current buffer gone, the array kept for what comes next. */
+void editor_clear_rows(void) {
+  int i;
+  for (i = 0; i < row_count(); i++) editor_free_row(row_at(i));
+  B.numrows = 0;
+  B.gap = 0;
+  syntax_invalidate_from(0);
+}
+
+/* Everything the current buffer's text owns: the rows, their array, the block
+ * and the snapshot. For freeing the buffer. */
+void editor_free_rows(void) {
+  editor_clear_rows();
+  free(B.row);
+  B.row = NULL;
+  B.rowcap = 0;
+  free(B.saved_off);
+  B.saved_off = NULL;
+  B.saved_numrows = 0;
+  free(B.text);
+  B.text = NULL;
+  B.textlen = 0;
+}
+
+/* Cut a row short at byte `at`. */
+void editor_row_truncate(erow *row, int at) {
+  if (at < 0 || at >= row->size) return;
+  row_own(row);
+  row->size = at;
+  row->chars[at] = '\0';
+  editor_update_row(row);
+}
+
 void editor_row_insert_char(erow *row, int at, int c) {
   if (at < 0 || at > row->size) at = row->size;
+  row_own(row);
   row->chars = xrealloc(row->chars, (size_t)row->size + 2);
   memmove(&row->chars[at + 1], &row->chars[at], row->size - at + 1);
   row->size++;
@@ -242,6 +375,7 @@ void editor_row_insert_char(erow *row, int at, int c) {
 }
 
 void editor_row_append_string(erow *row, char *s, size_t len) {
+  row_own(row);
   row->chars = xrealloc(row->chars, (size_t)row->size + len + 1);
   memcpy(&row->chars[row->size], s, len);
   row->size += len;
@@ -251,6 +385,7 @@ void editor_row_append_string(erow *row, char *s, size_t len) {
 
 void editor_row_delete_char(erow *row, int at) {
   if (at < 0 || at >= row->size) return;
+  row_own(row);
   memmove(&row->chars[at], &row->chars[at + 1], row->size - at);
   row->size--;
   editor_update_row(row);
@@ -259,6 +394,7 @@ void editor_row_delete_char(erow *row, int at) {
 
 void editor_row_insert_n(erow *row, int at, const char *s, size_t n) {
   if (at < 0 || at > row->size) at = row->size;
+  row_own(row);
   row->chars = xrealloc(row->chars, (size_t)row->size + n + 1);
   memmove(&row->chars[at + n], &row->chars[at], row->size - at + 1);
   memcpy(&row->chars[at], s, n);
@@ -269,6 +405,7 @@ void editor_row_insert_n(erow *row, int at, const char *s, size_t n) {
 
 void editor_row_delete_n(erow *row, int at, int n) {
   if (at < 0 || at + n > row->size) return;
+  row_own(row);
   memmove(&row->chars[at], &row->chars[at + n], row->size - at - n);
   row->size -= n;
   row->chars[row->size] = '\0';
@@ -469,39 +606,133 @@ void editor_save(void) {
   if (B.recovery_path[0] != '\0') unlink(B.recovery_path);
 }
 
-/* Read every line of fp into the (already empty) buffer and set the end-of-
- * line style flags from what was seen. Returns -1 if the stream ended in a
- * read error rather than at end of file. */
-int editor_fill_rows(FILE *fp) {
-  char *line = NULL;
-  size_t linecap = 0;
-  ssize_t linelen;
-  int any = 0, saw_cr = 0, had_final_nl = 1;
-  while ((linelen = getline(&line, &linecap, fp)) != -1) {
-    any = 1;
-    /* Whether this line -- so, once the loop ends, the last line -- carried a
-     * trailing newline, and whether the endings were CRLF. Both are preserved
-     * on save instead of being silently rewritten. */
-    had_final_nl = (linelen > 0 && line[linelen - 1] == '\n');
+/* All of fp, in one allocation with a byte to spare past the end. NULL if the
+ * stream ended in a read error rather than at end of file -- which includes a
+ * directory, so that refusal comes from here as well.
+ *
+ * Sized from fstat where there is a size to be had, so a file is read into a
+ * block exactly big enough with no reallocation; a pipe or anything else that
+ * grows is read in increasing steps. The byte past the end is what lets the last
+ * line be terminated where it lies when the file has no final newline. */
+static char *read_all(FILE *fp, size_t *len) {
+  struct stat st;
+  size_t cap = 4096, n = 0;
+  char *b;
+
+  if (fstat(fileno(fp), &st) == 0 && S_ISREG(st.st_mode) &&
+      (size_t)st.st_size + 1 > cap)
+    cap = (size_t)st.st_size + 1;
+  b = xmalloc(cap);
+  for (;;) {
+    int c;
+    n += fread(b + n, 1, cap - 1 - n, fp);
+    if (n < cap - 1) break;              /* short: the end, or an error */
+    /* Exactly full, which is the ordinary case for a regular file. Only grow
+     * if there turns out to be more. */
+    if ((c = getc(fp)) == EOF) break;
+    cap += cap / 2;
+    b = xrealloc(b, cap);
+    b[n++] = (char)c;
+  }
+  if (ferror(fp)) {
+    free(b);
+    return NULL;
+  }
+  *len = n;
+  return b;
+}
+
+/* Make rows of `text`, which is `n` bytes of a file with room for one more,
+ * and set the end-of-line style flags from what was seen.
+ *
+ * With `adopt` the block becomes the buffer's: each line is moved down to sit
+ * straight after the previous one with a NUL after it, the rows point at the
+ * lines where they now lie, and the block is the saved snapshot as well. For a
+ * file with LF endings nothing moves -- the newline is the byte that becomes the
+ * NUL -- and a CRLF file moves each line back by the carriage returns before it.
+ * Without `adopt` the lines are copied into rows of their own and the block is
+ * freed, which is what restoring a recovery file wants: the snapshot there is
+ * still the file on disk.
+ *
+ * A line ends at a newline, and gives up every carriage return and newline it
+ * ends with -- the rule this had when lines were read one at a time, kept so that
+ * no file loads differently. */
+static void rows_from_text(char *text, size_t n, int adopt) {
+  size_t i = 0, w = 0, lines = 0;
+  int saw_cr = 0, had_final_nl = 1;
+  const char *p;
+
+  for (p = text; p < text + n && (p = memchr(p, '\n', (size_t)(text + n - p)));
+       p++)
+    lines++;
+  if (n > 0 && text[n - 1] != '\n') lines++;
+  if (lines > (size_t)INT_MAX - 1) die("too many lines");
+
+  if (adopt) {
+    rows_reserve((int)lines);
+    gap_move(row_count());
+    free(B.saved_off);
+    B.saved_off = xmalloc(sizeof(size_t) * (lines + 1));
+  }
+
+  while (i < n) {
+    const char *nl = memchr(text + i, '\n', n - i);
+    size_t e = nl ? (size_t)(nl - text) : n, len = e - i;
     int had_cr = 0;
-    while (linelen > 0 && (line[linelen - 1] == '\n' ||
-        line[linelen - 1] == '\r')) {
-      if (line[linelen - 1] == '\r') had_cr = 1;
-      linelen--;
+    had_final_nl = (nl != NULL);
+    while (len > 0 && text[i + len - 1] == '\r') {
+      had_cr = 1;
+      len--;
     }
     if (had_cr) saw_cr = 1;
-    if (linelen > INT_MAX - 1) die("line too long");
-    editor_insert_row(row_count(), line, (size_t)linelen);
+    if (len > INT_MAX - 1) die("line too long");
+    if (adopt) {
+      erow *row = &B.row[B.gap];
+      if (w != i) memmove(text + w, text + i, len);
+      text[w + len] = '\0';
+      B.saved_off[row_count()] = w;
+      row->chars = text + w;
+      row->size = (int)len;
+      row->wcols = -1;
+      row->wrows = 1;
+      row->syn_in = 0;
+      row->syn_out = 0;
+      B.gap++;
+      B.numrows++;
+      w += len + 1;
+    } else {
+      editor_insert_row(row_count(), text + i, len);
+    }
+    i = e + 1;
   }
-  free(line);
-  /* getline returns -1 for a read error as well as at end of file. Taking an
-   * error for the end would present a partial buffer as the whole file, and
-   * the next save would truncate the file on disk. */
-  if (!feof(fp)) return -1;
-  if (any) {
+
+  if (adopt) {
+    B.saved_off[row_count()] = w;
+    B.saved_numrows = row_count();
+    free(B.text);
+    B.text = text;
+    B.textlen = n + 1;
+    B.wrapgen++;
+    syntax_invalidate_from(0);
+  } else {
+    free(text);
+  }
+  if (lines > 0) {
     B.eol_crlf = saw_cr;
     B.final_newline = had_final_nl;
   }
+}
+
+/* Read every line of fp into the (already empty) buffer. With `adopt` the text
+ * becomes the buffer's block and its saved snapshot; see rows_from_text().
+ * Returns -1 if the stream ended in a read error rather than at end of file. */
+int editor_fill_rows(FILE *fp, int adopt) {
+  size_t n;
+  char *text = read_all(fp, &n);
+  /* An error taken for the end would present a partial buffer as the whole
+   * file, and the next save would truncate the file on disk. */
+  if (text == NULL) return -1;
+  rows_from_text(text, n, adopt);
   return 0;
 }
 
@@ -528,7 +759,7 @@ void editor_open(char *filename) {
   }
   /* The error refusal also covers a directory, which used to open as an
    * empty buffer that could never be saved. */
-  if (editor_fill_rows(fp) == -1) die(filename);
+  if (editor_fill_rows(fp, 1) == -1) die(filename);
   /* fstat on the still-open descriptor, not a path-based stat after close:
    * the file could otherwise be replaced between the two calls, baselining
    * the wrong content's mtime. */
@@ -538,8 +769,8 @@ void editor_open(char *filename) {
     B.have_disk_mtime = 1;
   }
   fclose(fp);
+  /* The rows are the snapshot already: they were read into it. */
   B.dirty = 0;
-  saved_snapshot_take();
 }
 
 /* Startup recovery UX: when the file being opened has a recovery file left by
@@ -574,16 +805,14 @@ void editor_check_recovery(void) {
     editor_set_status_message("Restore failed: %s", strerror(errno));
     return;
   }
-  int i;
-  for (i = 0; i < row_count(); i++) editor_free_row(row_at(i));
-  B.numrows = 0;
+  editor_clear_rows();
   CUR.cx = 0;
   CUR.rx = 0;
   CUR.cy = 0;
   V.drowoff = 0;
   V.coloff = 0;
   CUR.sel_active = 0;
-  if (editor_fill_rows(fp) == -1) {
+  if (editor_fill_rows(fp, 0) == -1) {
     /* Only reachable if the file turns unreadable between the stat and the
      * read; the buffer is left holding whatever was salvaged. */
     fclose(fp);

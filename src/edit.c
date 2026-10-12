@@ -58,10 +58,7 @@ void editor_insert_newline(void) {
     u->cy1 = CUR.cy + 1;
     undo_push(u);
     editor_insert_row(CUR.cy + 1, &row->chars[CUR.cx], row->size - CUR.cx);
-    row = row_at(CUR.cy);
-    row->size = CUR.cx;
-    row->chars[row->size] = '\0';
-    editor_update_row(row);
+    editor_row_truncate(row_at(CUR.cy), CUR.cx);
   }
   CUR.cy++;
   CUR.cx = 0;

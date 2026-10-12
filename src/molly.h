@@ -233,9 +233,19 @@ struct undoState {
 
 /* One open file. */
 struct buffer {
+  /* The rows, as a gap array: row[0 .. gap) are rows 0 .. gap, and the rest sit
+   * at the top of the array after rowcap - numrows free slots. row_at() and
+   * buf_row() are the translation; nothing else should index row[]. */
   erow *row;
   int numrows;
-  int rowcap;           /* allocated capacity of row[], grown by doubling */
+  int rowcap;           /* allocated slots in row[], rows and gap together */
+  int gap;              /* the slot the gap starts at, which is a row index */
+
+  /* The block the file was read into, which rows borrow their text from until
+   * they are first changed, and which is also the saved snapshot below. See
+   * buffer.c. `textlen` covers every byte a row can point at. */
+  char *text;
+  size_t textlen;
   char *filename;
   int dirty;
   int eol_crlf;         /* write \r\n line endings, as the loaded file used */
@@ -257,8 +267,11 @@ struct buffer {
   int tabw;
 
   /* The last-saved contents, so "modified" means really different rather than
-   * merely edited, and the mtime seen then, so an overwrite can be questioned. */
-  erow *saved_rows;
+   * merely edited, and the mtime seen then, so an overwrite can be questioned.
+   * The contents are `text`: line i of them starts at saved_off[i], and
+   * saved_off[saved_numrows] is where the last one ends. -1 rows means there is
+   * no snapshot and nothing matches. */
+  size_t *saved_off;
   int saved_numrows;
   struct timespec on_disk_mtime;
   int have_disk_mtime;
@@ -443,8 +456,11 @@ extern struct editorConfig E;
  *
  * erow itself is still visible to the renderer and to search, so this is not yet
  * full isolation; closing that gap is part of the buffer rewrite, not of Phase 0. */
+static inline erow *buf_row(const struct buffer *b, int i) {
+  return &b->row[i < b->gap ? i : i + (b->rowcap - b->numrows)];
+}
 static inline int row_count(void) { return V.buf->numrows; }
-static inline erow *row_at(int i) { return &V.buf->row[i]; }
+static inline erow *row_at(int i) { return buf_row(V.buf, i); }
 
 /* Width available for text once the line-number gutter takes its columns. The
  * horizontal scroll, the row draw budget and the cursor column are all measured
@@ -817,12 +833,15 @@ void buflist_cleanup(void);
 void buflist_init(void);
 
 /* buffer.c */
-int editor_fill_rows(FILE *fp);
+int editor_fill_rows(FILE *fp, int adopt);
 int editor_matches_saved(void);
 void build_recovery_path(void);
 void editor_check_recovery(void);
 void editor_delete_row(int at);
 void editor_free_row(erow *row);
+void editor_clear_rows(void);
+void editor_free_rows(void);
+void editor_row_truncate(erow *row, int at);
 void editor_insert_row(int at, char *s, size_t len);
 void editor_open(char *filename);
 void editor_recompute_dirty(void);

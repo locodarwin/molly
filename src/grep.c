@@ -305,7 +305,7 @@ int grep_jump(int delta) {
   /* A row that does not parse -- the user edited the list -- is skipped in the
    * direction of travel, and is a refusal for Enter. */
   for (;;) {
-    r = &b->row[at];
+    r = buf_row(b, at);
     if (grep_parse_line(r->chars, r->size, &p0, &pl, &ln)) break;
     if (delta == 0) {
       editor_set_status_message("Not a match: this row names no file and line.");

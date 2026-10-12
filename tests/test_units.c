@@ -2587,26 +2587,26 @@ static void test_indent(void) {
   syntax_retype();
   editor_insert_row(0, "\tx", 2);
   check("a tab lays out at the default width",
-        editor_row_cx_to_rx(&B.row[0], 2), 9);
+        editor_row_cx_to_rx(&(*row_at(0)), 2), 9);
 
   /* The width a filetype names reaches rows that were already measured. This
    * is what the per-buffer `tabw` exists for: without the re-measure a wrapped
    * row would keep slices worked out at the old width. */
   check("giving the filetype a width is accepted",
         syntax_set_line("c", "tab width", "4", &err), 1);
-  B.row[0].wcols = 80;
-  B.row[0].wrows = 7;
+  (*row_at(0)).wcols = 80;
+  (*row_at(0)).wrows = 7;
   syntax_retype();
-  check("and the row lays out at it", editor_row_cx_to_rx(&B.row[0], 2), 5);
-  check("its wrap measurement dropped", B.row[0].wcols, -1);
+  check("and the row lays out at it", editor_row_cx_to_rx(&(*row_at(0)), 2), 5);
+  check("its wrap measurement dropped", (*row_at(0)).wcols, -1);
   check("which the buffer records", B.tabw, 4);
 
   /* Moving the default does not move a buffer whose filetype named its own. */
-  B.row[0].wcols = 80;
+  (*row_at(0)).wcols = 80;
   tab_width_set(2);
   check("the default moved", tab_width_default(), 2);
-  check("but this buffer did not", editor_row_cx_to_rx(&B.row[0], 2), 5);
-  check("nor did its measurements", B.row[0].wcols, 80);
+  check("but this buffer did not", editor_row_cx_to_rx(&(*row_at(0)), 2), 5);
+  check("nor did its measurements", (*row_at(0)).wcols, 80);
   check("because the filetype still answers", tab_width(), 4);
   tab_width_set(8);
 
@@ -2623,20 +2623,20 @@ static void test_indent(void) {
   /* With the flag off a step is the tab character it has always been. */
   indent_set_insert_spaces(0);
   indent_insert_step();
-  check("a step with the flag off is one tab", B.row[0].size, 3);
-  check("and it is a tab", B.row[0].chars[2] == '\t', 1);
+  check("a step with the flag off is one tab", (*row_at(0)).size, 3);
+  check("and it is a tab", (*row_at(0)).chars[2] == '\t', 1);
   editor_undo();
-  check("which undoes in one step", B.row[0].size, 2);
+  check("which undoes in one step", (*row_at(0)).size, 2);
 
   /* With it on, a step reaches the next stop rather than inserting a fixed
    * number of spaces -- so from column 2 of an 8-column stop it is six. */
   indent_set_insert_spaces(1);
   CUR.cx = 2;
   indent_insert_step();
-  check("a step with the flag on reaches the next stop", B.row[0].size, 8);
-  check_str("in spaces", B.row[0].chars, "ab      ");
+  check("a step with the flag on reaches the next stop", (*row_at(0)).size, 8);
+  check_str("in spaces", (*row_at(0)).chars, "ab      ");
   editor_undo();
-  check("and the run undoes as one step", B.row[0].size, 2);
+  check("and the run undoes as one step", (*row_at(0)).size, 2);
 
   /* From a stop, a step is a whole width. */
   CUR.cx = 0;
@@ -2645,7 +2645,7 @@ static void test_indent(void) {
   CUR.cy = 0;
   CUR.cx = 0;
   indent_insert_step();
-  check("from column zero it is a whole width", B.row[0].size, 8);
+  check("from column zero it is a whole width", (*row_at(0)).size, 8);
   indent_set_insert_spaces(0);
 
   printf("\nindentation: a new line under the old one\n");
@@ -2656,7 +2656,7 @@ static void test_indent(void) {
   indent_set_auto(1);
   editor_newline_and_indent();
   check("the new row carries the indentation down", B.numrows, 2);
-  check_str("as the same whitespace", B.row[1].chars, "    ");
+  check_str("as the same whitespace", (*row_at(1)).chars, "    ");
   check("and the cursor sits after it", CUR.cx, 4);
 
   /* One undo step for the whole gesture: the split and the indent together.
@@ -2664,7 +2664,7 @@ static void test_indent(void) {
    * just decided not to start. */
   editor_undo();
   check("and the whole gesture undoes at once", B.numrows, 1);
-  check_str("leaving the row as it was", B.row[0].chars, "    ab");
+  check_str("leaving the row as it was", (*row_at(0)).chars, "    ab");
 
   /* Enter inside the leading whitespace. The rule is that the text that moves
    * down keeps the column it was at: only the whitespace behind the cursor is
@@ -2675,7 +2675,7 @@ static void test_indent(void) {
   CUR.cx = 2;
   editor_newline_and_indent();
   check_str("a split inside the indent leaves the text in its column",
-            B.row[1].chars, "    ab");
+            (*row_at(1)).chars, "    ab");
   check("and the cursor is at the indent it copied", CUR.cx, 2);
   editor_undo();
 
@@ -2684,7 +2684,7 @@ static void test_indent(void) {
   CUR.cy = 0;
   CUR.cx = 6;
   editor_newline_and_indent();
-  check_str("with auto-indent off the new row is empty", B.row[1].chars, "");
+  check_str("with auto-indent off the new row is empty", (*row_at(1)).chars, "");
   editor_undo();
 
   /* And the mechanism underneath never indents, whoever calls it. This is what
@@ -2695,7 +2695,7 @@ static void test_indent(void) {
   CUR.cx = 6;
   editor_insert_newline();
   check_str("the plain split does not indent, even with the flag on",
-            B.row[1].chars, "");
+            (*row_at(1)).chars, "");
   editor_undo();
 
   /* Leave the editor as the rest of the suite expects to find it. */
@@ -2747,9 +2747,9 @@ static char *mc_text(void) {
   int i, n = 0;
   out[0] = '\0';
   for (i = 0; i < B.numrows; i++) {
-    int len = B.row[i].size;
+    int len = (*row_at(i)).size;
     if (n + len + 2 > (int)sizeof(out)) break;
-    memcpy(out + n, B.row[i].chars, (size_t)len);
+    memcpy(out + n, (*row_at(i)).chars, (size_t)len);
     n += len;
     if (i + 1 < B.numrows) out[n++] = '\n';
   }
@@ -3179,6 +3179,178 @@ static int slice_frag(int index) {
 
 /* Which display row the one cursor is on, and where in it. */
 static int cur_drow(void) { return drow_of_cursor(&CUR); }
+
+/* ---- the buffer's storage ------------------------------------------------- */
+
+/* Load `bytes` as though they were a file opened from disk. */
+static void store_load(const char *bytes, size_t n) {
+  FILE *fp = tmpfile();
+  mc_load("");
+  if (fp == NULL) return;
+  fwrite(bytes, 1, n, fp);
+  rewind(fp);
+  editor_fill_rows(fp, 1);
+  fclose(fp);
+  B.dirty = 0;
+}
+
+/* Whether row i is still a span of the block it was read into. */
+static int store_borrowed(int i) {
+  uintptr_t p = (uintptr_t)row_at(i)->chars, t = (uintptr_t)B.text;
+  return B.text != NULL && p >= t && p < t + B.textlen;
+}
+
+static int store_all_borrowed(void) {
+  int i;
+  for (i = 0; i < row_count(); i++)
+    if (!store_borrowed(i)) return 0;
+  return 1;
+}
+
+static void test_storage_load(void) {
+  printf("\nstorage: a file is read in one piece and its rows point into it\n");
+
+  store_load("one\ntwo\n\nfour\n", 14);
+  check_str("the lines are the rows", mc_text(), "one\ntwo\n\nfour");
+  check("as many as there are lines", row_count(), 4);
+  check("every row points into the block", store_all_borrowed(), 1);
+  check("each where its line was", row_at(1)->chars == B.text + 4, 1);
+  check("and is terminated there", row_at(1)->chars[3], '\0');
+  check("the snapshot is the block", editor_matches_saved(), 1);
+  check("LF endings", B.eol_crlf, 0);
+  check("a final newline", B.final_newline, 1);
+
+  store_load("ab\r\ncd\r\n", 8);
+  check_str("CRLF loses its carriage returns", mc_text(), "ab\ncd");
+  check("and still points into the block", store_all_borrowed(), 1);
+  check("the endings are remembered", B.eol_crlf, 1);
+  check("and the snapshot agrees", editor_matches_saved(), 1);
+
+  store_load("a\r\r\nb", 5);
+  check_str("every carriage return before the newline goes", mc_text(), "a\nb");
+  check("no final newline is remembered", B.final_newline, 0);
+  check("and the last line is terminated in the spare byte", row_at(1)->chars[1], '\0');
+
+  store_load("x\0y\nz", 5);
+  check("a NUL inside a line is part of it", row_at(0)->size, 3);
+  check("as the byte it was", row_at(0)->chars[1] == '\0' && row_at(0)->chars[2] == 'y', 1);
+
+  store_load("", 0);
+  check("an empty file is no rows", row_count(), 0);
+  check("and matches what was saved", editor_matches_saved(), 1);
+
+  store_load("\n", 1);
+  check("a lone newline is one empty row", row_count(), 1);
+  check("of nothing", row_at(0)->size, 0);
+
+  {
+    /* Bigger than any first guess, so the read has to go round. */
+    static char big[20000];
+    int i;
+    for (i = 0; i < (int)sizeof(big); i++) big[i] = (i % 100 == 99) ? '\n' : 'a' + i % 26;
+    store_load(big, sizeof(big));
+    check("a file larger than one read is all there", row_count(), 200);
+    check("to its last byte",
+          row_count() == 200 && row_at(199)->chars[98] == 'a' + 19998 % 26, 1);
+  }
+
+  {
+    /* A pipe has no size to read into, so the block has to grow as it goes. */
+    static char big[20000];
+    int fds[2], i;
+    FILE *fp;
+    for (i = 0; i < (int)sizeof(big); i++) big[i] = (i % 100 == 99) ? '\n' : 'a' + i % 26;
+    mc_load("");
+    if (pipe(fds) == 0) {
+      if (write(fds[1], big, sizeof(big)) != (ssize_t)sizeof(big)) {}
+      close(fds[1]);
+      fp = fdopen(fds[0], "r");
+      editor_fill_rows(fp, 1);
+      fclose(fp);
+    }
+    check("a pipe longer than the first guess is all there", row_count(), 200);
+    check("to its last byte",
+          row_count() == 200 && row_at(199)->chars[98] == 'a' + 19998 % 26, 1);
+    check("and its rows point into the block", store_all_borrowed(), 1);
+  }
+}
+
+static void test_storage_edit(void) {
+  printf("\nstorage: a row is copied the first time it changes\n");
+
+  store_load("alpha\nbeta\ngamma\n", 17);
+  editor_row_insert_char(row_at(1), 0, 'X');
+  check_str("the edit is made", mc_text(), "alpha\nXbeta\ngamma");
+  check("that row has text of its own now", store_borrowed(1), 0);
+  check("the others still point into the block", store_borrowed(0) && store_borrowed(2), 1);
+  check("the block still holds the line as saved", memcmp(B.text + 6, "beta", 5), 0);
+  check("so the buffer differs from it", editor_matches_saved(), 0);
+  editor_row_delete_char(row_at(1), 0);
+  check("and an edit back is a match again", editor_matches_saved(), 1);
+
+  /* Every way a row can be changed has to copy before it writes. */
+  editor_row_delete_n(row_at(0), 0, 2);
+  check("a deletion copies", store_borrowed(0), 0);
+  check("and leaves the block alone", memcmp(B.text, "alpha", 6), 0);
+  editor_row_truncate(row_at(2), 2);
+  check("so does cutting a row short", store_borrowed(2), 0);
+  check("which also leaves it alone", memcmp(B.text + 11, "gamma", 6), 0);
+  check_str("giving", mc_text(), "pha\nbeta\nga");
+
+  /* A save makes what is there now the snapshot, and the block it lives in. */
+  saved_snapshot_take();
+  check("after a snapshot every row points into the new block", store_all_borrowed(), 1);
+  check_str("with nothing changed", mc_text(), "pha\nbeta\nga");
+  check("and it matches", editor_matches_saved(), 1);
+  editor_insert_row(1, "new", 3);
+  check("a new row is a difference", editor_matches_saved(), 0);
+  editor_delete_row(1);
+  check("and taking it away is not", editor_matches_saved(), 1);
+}
+
+static void test_storage_gap(void) {
+  /* A plain list of strings beside the buffer, given the same random edits:
+   * the gap array has to agree with it after every one. */
+  static char model[300][16];
+  int n = 0, step, bad = -1;
+  unsigned seed = 12345;
+  printf("\nstorage: the gap array agrees with a plain list\n");
+  mc_load("");
+  for (step = 0; step < 3000 && bad < 0; step++) {
+    int op, at, i;
+    seed = seed * 1103515245u + 12345u;
+    op = (int)((seed >> 16) % 4);
+    seed = seed * 1103515245u + 12345u;
+    at = n ? (int)((seed >> 16) % (unsigned)(n + 1)) : 0;
+    if ((op == 0 || n == 0) && n < 300) {           /* insert */
+      char t[16];
+      snprintf(t, sizeof(t), "r%d", step);
+      memmove(model[at + 1], model[at], sizeof(model[0]) * (size_t)(n - at));
+      strcpy(model[at], t);
+      n++;
+      editor_insert_row(at, t, strlen(t));
+    } else if (op == 1 && n > 0) {                 /* delete */
+      if (at == n) at--;
+      memmove(model[at], model[at + 1], sizeof(model[0]) * (size_t)(n - at - 1));
+      n--;
+      editor_delete_row(at);
+    } else if (n > 0) {                            /* change one */
+      if (at == n) at--;
+      if (strlen(model[at]) < 14) {
+        memmove(model[at] + 1, model[at], strlen(model[at]) + 1);
+        model[at][0] = '+';
+        editor_row_insert_char(row_at(at), 0, '+');
+      }
+    }
+    if (row_count() != n) bad = step;
+    for (i = 0; i < n && bad < 0; i++)
+      if (row_at(i)->size != (int)strlen(model[i]) ||
+          memcmp(row_at(i)->chars, model[i], strlen(model[i])) != 0)
+        bad = step;
+  }
+  check("3000 random edits, and every row where it should be", bad, -1);
+  check("the gap is inside the array", B.gap >= 0 && B.gap <= row_count(), 1);
+}
 
 /* The roles a row is drawn with, as a sketch -- or "-" for a row drawn plain. */
 static const char *roles_sketch(int row) {
@@ -3745,6 +3917,9 @@ int main(void) {
   test_indent_block();
   test_indent_convert();
   test_block();
+  test_storage_load();
+  test_storage_edit();
+  test_storage_gap();
   test_syntax_roles();
   test_wrap();
   test_menu_band();

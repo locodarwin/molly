@@ -7,7 +7,7 @@
  * click-to-position arithmetic all ask these questions already and none of them
  * knows what the answer depends on. See struct drow in molly.h.
  *
- * With wrap on a file row becomes one or more slices, each a range of *render*
+ * With wrap on a file row becomes one or more slices, each a range of *display*
  * columns -- not byte offsets, because wrapping happens where the glyphs land on
  * the screen and not where the bytes fall. The slices of a row partition its
  * columns with nothing left out and nothing counted twice, which is what lets a
@@ -17,7 +17,7 @@
  * What it costs. Every answer here but one is a walk over file rows: the display
  * row a cursor is on sums the rows above it, and the row at a display index
  * counts up to it. A row's own slice count is cached on the row and recomputed
- * only when editor_update_row() rebuilds `render` or the window changes width,
+ * only when editor_update_row() sees the row change, or the window changes width,
  * so a walk is one addition per file row rather than a re-measure of the file.
  * A frame is therefore O(rows) with wrap on where it was O(1) with wrap off;
  * ROADMAP.md section 7 has what that measures at.
@@ -42,15 +42,16 @@ static int wrap_cols(void) {
 /* Walk one row's wrap points.
  *
  * Returns the number of display rows the row occupies, always at least one. Then
- * `want` selects a slice by index and `rx` selects the slice holding that render
+ * `want` selects a slice by index and `rx` selects the slice holding that display
  * column (pass -1 for the one not being asked); when either names a slice the
  * walk stops there and fills *out, whose `rcols` is DROW_ALL for the last slice
  * of a row -- the one that runs to the end of the text.
  *
  * The break rule is a word wrap: a line breaks after the last space that fits,
  * and a run with no space in it breaks at the edge instead, because the
- * alternative is a column of nothing beside an unbroken word. Tabs are already
- * spaces in `render`, so a tab is a break opportunity without being named one.
+ * alternative is a column of nothing beside an unbroken word. A tab is a break
+ * opportunity at each of its columns, which is what it was when rows kept a
+ * tab-expanded copy of themselves and a tab was a run of spaces.
  *
  * The space a line breaks after stays on the line it ends, and a second space
  * after it opens the next one. Trimming it would read better and cost the thing
@@ -58,17 +59,18 @@ static int wrap_cols(void) {
  * row, so a cursor in the trimmed run would have no screen cell to sit in.
  */
 static int wrap_walk(erow *row, int cols, int want, int rx, struct drow *out) {
-  const char *r = row->render;
-  int rs = row->rsize;
-  int i = 0;        /* byte index into render */
-  int col = 0;      /* the render column byte i sits at */
-  int start = 0;    /* first render column of the slice being measured */
+  const char *r = row->chars;
+  int rs = row->size;
+  int tabw = tab_width();
+  int i = 0;        /* byte index into the row */
+  int col = 0;      /* the display column byte i sits at */
+  int start = 0;    /* first display column of the slice being measured */
   int bi = -1;      /* byte index just past the last space seen in this slice */
-  int bcol = 0;     /* and its render column */
+  int bcol = 0;     /* and its display column */
   int n = 0;        /* slices finished */
 
   while (i < rs) {
-    int nb, w = utf8_char_cols(r, rs, i, &nb);
+    int nb, w = text_cell(r, rs, i, col, tabw, &nb);
     /* `col > start` is what keeps a single glyph wider than the whole window
      * from stopping the walk: at the start of a slice the glyph is taken
      * whatever its width, and the draw loop drops what does not fit. */
@@ -86,7 +88,7 @@ static int wrap_walk(erow *row, int cols, int want, int rx, struct drow *out) {
       bi = -1;
       continue;
     }
-    if (r[i] == ' ') { bi = i + nb; bcol = col + w; }
+    if (r[i] == ' ' || r[i] == '\t') { bi = i + nb; bcol = col + w; }
     col += w;
     i += nb;
   }
@@ -106,8 +108,9 @@ static int wrap_walk(erow *row, int cols, int want, int rx, struct drow *out) {
  *
  * Cached on the row, keyed by the width it was measured at, so a resize
  * invalidates every row by disagreeing with all of them. editor_update_row()
- * clears it, which is both where `render` is rebuilt and the only place the
- * answer can change without the width changing. */
+ * clears it, which is where every change to a row's text passes, and
+ * indent_sync() clears every row's when the tab width moves -- the only two
+ * ways the answer can change without the window's width changing. */
 static int row_rows(erow *row, int cols) {
   if (row->wcols != cols) {
     row->wrows = wrap_walk(row, cols, -1, -1, NULL);
@@ -170,8 +173,8 @@ int drow_of_cursor(const struct cursor *c) {
   return n + d.frag;
 }
 
-/* The column of its display row that a cursor sits at, which is the render
- * column less wherever that row's slice began. Unwrapped that is the render
+/* The column of its display row that a cursor sits at, which is the display
+ * column less wherever that row's slice began. Unwrapped that is the display
  * column itself, and the caller still subtracts the horizontal scroll -- the two
  * are alternatives, so only one of them is ever nonzero. */
 int drow_cursor_col(const struct cursor *c) {

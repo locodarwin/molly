@@ -166,7 +166,8 @@ void block_extend(int dy, int drx) {
    * row's cursor sits at its end and a keypress would change nothing on
    * screen but the number in the status bar. */
   for (y = (ay < cy ? ay : cy); y <= (ay > cy ? ay : cy); y++)
-    if (row_at(y)->rsize > widest) widest = row_at(y)->rsize;
+    if (editor_row_cx_to_rx(row_at(y), row_at(y)->size) > widest)
+      widest = editor_row_cx_to_rx(row_at(y), row_at(y)->size);
   if (drx > 0 && crx > widest) crx = widest > arx ? widest : arx;
   block_set(ay, arx, cy, crx);
 }
@@ -255,9 +256,10 @@ int block_paste(void) {
       editor_insert_newline();
     }
     CUR.cy = y;
-    if (row_at(y)->rsize < rx) {
+    if (editor_row_cx_to_rx(row_at(y), row_at(y)->size) < rx) {
       CUR.cx = row_at(y)->size;
-      for (j = row_at(y)->rsize; j < rx; j++) editor_insert_char(' ');
+      for (j = editor_row_cx_to_rx(row_at(y), row_at(y)->size); j < rx; j++)
+        editor_insert_char(' ');
     }
     CUR.cx = editor_row_rx_to_cx(row_at(y), rx);
     for (j = 0; j < lens[i]; j++) editor_insert_char((unsigned char)lines[i][j]);

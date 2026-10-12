@@ -2580,27 +2580,33 @@ static void test_indent(void) {
         syntax_set_line("c", "auto indent", "maybe", &err), 0);
   check_str("also with its own", err, "auto indent wants on or off");
 
-  printf("\nindentation: the render follows the width\n");
+  printf("\nindentation: the layout follows the width\n");
   syntax_init();
   free(B.filename);
   B.filename = xstrdup("x.c");
   syntax_retype();
   editor_insert_row(0, "\tx", 2);
-  check("a tab renders at the default width", B.row[0].rsize, 9);
+  check("a tab lays out at the default width",
+        editor_row_cx_to_rx(&B.row[0], 2), 9);
 
-  /* The width a filetype names reaches rows that were already rendered. This
-   * is what the per-buffer `tabw` exists for: without the re-render the cursor
-   * arithmetic would measure against a render string built at the old width. */
+  /* The width a filetype names reaches rows that were already measured. This
+   * is what the per-buffer `tabw` exists for: without the re-measure a wrapped
+   * row would keep slices worked out at the old width. */
   check("giving the filetype a width is accepted",
         syntax_set_line("c", "tab width", "4", &err), 1);
+  B.row[0].wcols = 80;
+  B.row[0].wrows = 7;
   syntax_retype();
-  check("and the row is re-rendered at it", B.row[0].rsize, 5);
+  check("and the row lays out at it", editor_row_cx_to_rx(&B.row[0], 2), 5);
+  check("its wrap measurement dropped", B.row[0].wcols, -1);
   check("which the buffer records", B.tabw, 4);
 
   /* Moving the default does not move a buffer whose filetype named its own. */
+  B.row[0].wcols = 80;
   tab_width_set(2);
   check("the default moved", tab_width_default(), 2);
-  check("but this buffer did not", B.row[0].rsize, 5);
+  check("but this buffer did not", editor_row_cx_to_rx(&B.row[0], 2), 5);
+  check("nor did its measurements", B.row[0].wcols, 80);
   check("because the filetype still answers", tab_width(), 4);
   tab_width_set(8);
 
@@ -3217,8 +3223,8 @@ static void test_wrap(void) {
   check("and all eight columns of it", slice_rcols(1), 8);
   check("what is left is the last slice", slice_rcol0(2), 11);
 
-  /* A tab is a break opportunity without being named one: it is spaces in the
-   * render string by the time this code sees it. */
+  /* A tab is a break opportunity at each of its columns, as it was when it
+   * was spaces in a tab-expanded copy of the row. */
   tab_width_set(8);
   indent_sync();
   wrap_load("\tfoo bar\n", 10);

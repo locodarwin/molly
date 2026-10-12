@@ -50,6 +50,28 @@ static void cursors_clamp(void) {
 }
 
 
+/* One display column's step along a row's stored bytes, for the walks that lay a
+ * row out on the screen: the draw loop and the wrapper.
+ *
+ * Returns the columns the character at byte `i` occupies when it starts at
+ * column `col`, and sets *nb to the bytes to advance past it. A tab is the
+ * exception, and it is taken one column at a time: each call returns 1, and *nb
+ * stays 0 until the column that reaches the tab stop. That is what a row's tab
+ * used to be when rows kept a second, tab-expanded copy of themselves -- a run
+ * of spaces -- so a slice edge or the horizontal scroll can fall inside a tab
+ * and the columns either side of it still draw, with the tab's own role, as
+ * they always did. Without the copy, a row costs its bytes and nothing more.
+ *
+ * `col` is the column the walk has reached, which inside a tab is part-way
+ * along it; the tab's remaining width is a function of that alone. */
+int text_cell(const char *s, int len, int i, int col, int tabw, int *nb) {
+  if (s[i] == '\t') {
+    *nb = ((col + 1) % tabw == 0) ? 1 : 0;
+    return 1;
+  }
+  return utf8_char_cols(s, len, i, nb);
+}
+
 /* Display column of the cursor at byte offset cx: tabs advance to the next
  * tab stop, other characters advance by their display width (0 for combining
  * marks, 2 for wide glyphs). This is what positions the on-screen cursor and

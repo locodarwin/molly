@@ -40,11 +40,10 @@
  * bottom of the screen, and with one cursor the edit is always on screen, so
  * that distance is a screenful.
  *
- * Roles are computed over `render`, not `chars` -- one byte of role per byte of
- * the tab-expanded string, which is what the draw loop walks. Highlighting is a
- * display concern, so it belongs in display space; this is not the same question
- * as what a *search* matches, which is the stored bytes and settled in
- * ROADMAP.md section 7.
+ * Roles are one byte per byte of the row as stored. They were one per byte of
+ * a tab-expanded copy, while rows kept one; the draw loop now walks a tab a
+ * column at a time and asks for the tab's role at each, so the colours land
+ * where they did and the copy is gone.
  */
 
 #include "molly.h"
@@ -625,7 +624,7 @@ static int only_blanks_before(const char *r, int i) {
 
 /* Colour one row.
  *
- * `r`/`rs` is the row's render string, `state_in` the state it is entered with,
+ * `r`/`rs` is the row's text, `state_in` the state it is entered with,
  * `out` receives one role per byte, and `*state_out` the state the next row
  * starts in. Every byte of `out` is written, so a caller never sees a stale role
  * from a previous, longer row.
@@ -857,11 +856,11 @@ done:
 
 /* ---- keeping rows up to date ----------------------------------------------- */
 
-/* Room for one role per byte of the row's render string. At least one byte even
+/* Room for one role per byte of the row. At least one byte even
  * for an empty row, so that `syn != NULL` means "this row has been lexed" and
  * nothing has to carry a separate flag. */
 static void syn_alloc(erow *row) {
-  int need = (row->rsize > 0) ? row->rsize : 1;
+  int need = (row->size > 0) ? row->size : 1;
   if (row->syncap >= need) return;
   row->syn = xrealloc(row->syn, (size_t)need);
   row->syncap = need;
@@ -895,7 +894,7 @@ void syntax_ensure(int upto) {
     int in = (i > 0) ? row_at(i - 1)->syn_out : SYN_ST_NONE;
     syn_alloc(row);
     row->syn_in = in;
-    syntax_row(B.syn, row->render, row->rsize, in, row->syn, &row->syn_out);
+    syntax_row(B.syn, row->chars, row->size, in, row->syn, &row->syn_out);
   }
   if (upto + 1 > B.syn_valid) B.syn_valid = upto + 1;
 }
@@ -912,7 +911,7 @@ void syntax_retype(void) {
   /* The filetype is what the tab width can hang off, so a new name can mean a
    * new width. Here rather than at the call sites, because every one of them
    * changes the name for the same reason. On an open this runs before the rows
-   * are read, so they are rendered at the right width the first time. */
+   * are read, so they are measured at the right width the first time. */
   indent_sync();
 }
 
@@ -938,7 +937,7 @@ void syntax_ensure_view(void) {
   if (last >= 0) syntax_ensure(last);
 }
 
-/* The role for one byte of a row's render string, for the draw loop.
+/* The role for one byte of a row, for the draw loop.
  *
  * Returns ROLE_TEXT for anything not coloured: no filetype, a row that has not
  * been lexed, or a byte past what was lexed. The draw loop therefore needs no
@@ -950,7 +949,7 @@ unsigned char syntax_role_at(const erow *row, int i) {
    * while it was on keep their roles until they are next edited. Checking only
    * at the lexing end left the text coloured after the toggle. */
   if (V.buf == NULL || !V.syntax || B.syn == NULL) return ROLE_TEXT;
-  if (row->syn == NULL || i < 0 || i >= row->rsize || i >= row->syncap)
+  if (row->syn == NULL || i < 0 || i >= row->size || i >= row->syncap)
     return ROLE_TEXT;
   return row->syn[i];
 }

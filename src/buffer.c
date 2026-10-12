@@ -16,10 +16,7 @@ static int mtime_eq(struct timespec a, struct timespec b) {
 
 void saved_snapshot_free(void) {
   int i;
-  for (i = 0; i < B.saved_numrows; i++) {
-    free(B.saved_rows[i].render);
-    free(B.saved_rows[i].chars);
-  }
+  for (i = 0; i < B.saved_numrows; i++) free(B.saved_rows[i].chars);
   free(B.saved_rows);
   B.saved_rows = NULL;
   B.saved_numrows = 0;
@@ -41,9 +38,6 @@ void saved_snapshot_take(void) {
     } else {
       B.saved_rows[i].size = 0;
     }
-    B.saved_rows[i].rsize = 0;
-    B.saved_rows[i].render = NULL;
-    B.saved_rows[i].rcap = 0;
     /* Text only: the snapshot exists to answer "is this buffer really
      * different from the file on disk", and nothing ever draws it. */
     B.saved_rows[i].syn = NULL;
@@ -143,15 +137,12 @@ void write_recovery_file(void) {
 /* How many columns a tab occupies: the `[editor] tab width` default, and the
  * width in force for the current buffer once a filetype has had its say.
  *
- * The default lives here because this is where the render string that depends
- * on it is built. The resolution lives in indent.c, which is also what knows
- * when a buffer's rows have to be re-rendered to match -- see indent_sync().
+ * The resolution lives in indent.c, which is also what knows when a buffer's
+ * wrap measurements have to be redone to match -- see indent_sync().
  *
- * Changing the default re-renders the current buffer, so the Options dialog can
- * change it on a live buffer and see the result rather than it taking effect at
- * the next start. That is O(bytes in the buffer) for a setting nobody changes
- * twice -- cheaper than the alternative, which is a stale `render` that
- * disagrees with the cursor arithmetic measured against the new width. */
+ * Changing the default re-measures the current buffer, so the Options dialog
+ * can change it on a live buffer and see the result rather than it taking
+ * effect at the next start. */
 static int tabw_default = KILO_TAB_STOP;
 
 int tab_width(void) {
@@ -172,12 +163,12 @@ void tab_width_set(int n) {
   indent_sync();
 }
 
-/* Re-render every row of the current buffer. Only indent_sync() wants this, and
- * only when the width those rows were built at has stopped being the right
- * one. */
-void editor_rerender_all(void) {
+/* Drop every row's wrap measurement in the current buffer. Only indent_sync()
+ * wants this, and only when the tab width those rows were measured at has
+ * stopped being the right one. */
+void editor_remeasure_all(void) {
   int i;
-  for (i = 0; i < B.numrows; i++) editor_update_row(&B.row[i]);
+  for (i = 0; i < B.numrows; i++) wrap_row_invalidate(&B.row[i]);
 }
 
 void editor_update_row(erow *row) {
@@ -190,55 +181,9 @@ void editor_update_row(erow *row) {
   if (V.buf != NULL && B.row != NULL && row >= B.row && row < B.row + B.rowcap)
     syntax_invalidate_from((int)(row - B.row));
 
-  /* Whatever this row wrapped to, it was measured from the render string about
-   * to be replaced. Before the early return below, which is a path that leaves
-   * with the row's width changed just as much as the other one. */
+  /* Whatever this row wrapped to, it was measured from the text that just
+   * changed. */
   wrap_row_invalidate(row);
-
-  int tabs = 0;
-  int j;
-  /* The width this buffer's rows are rendered at, not the one in force: a row
-   * updated mid-frame has to agree with the rows beside it, and indent_sync()
-   * is what moves the two together. Zero only before the first sync, where the
-   * resolved width is the honest answer. */
-  int tabw = (V.buf != NULL && B.tabw > 0) ? B.tabw : tab_width();
-
-  for (j = 0; j < row->size; j++)
-    if (row->chars[j] == '\t') tabs++;
-
-  /* With no tabs, render is byte-for-byte chars, so alias it rather than keep
-   * a second copy of every line. rcap > 0 marks an owned render buffer (always
-   * a distinct allocation); rcap == 0 marks an alias to chars -- or a stale
-   * pointer to a chars block a mutator just reallocated, which is why the
-   * alias case must never free it. editor_free_row keys off rcap the same way. */
-  if (tabs == 0) {
-    if (row->rcap > 0) free(row->render);
-    row->render = row->chars;
-    row->rsize = row->size;
-    row->rcap = 0;
-    return;
-  }
-
-  if (row->rcap == 0) row->render = NULL;
-  {
-    int need = row->size + tabs * (tabw - 1) + 1;
-    if (row->rcap < need) {
-      row->render = xrealloc(row->render, (size_t)need);
-      row->rcap = need;
-    }
-  }
-
-  int idx = 0;
-  for (j = 0; j < row->size; j++) {
-    if (row->chars[j] == '\t') {
-      row->render[idx++] = ' ';
-      while (idx % tabw != 0) row->render[idx++] = ' ';
-    } else {
-      row->render[idx++] = row->chars[j];
-    }
-  }
-  row->render[idx] = '\0';
-  row->rsize = idx;
 }
 
 void editor_insert_row(int at, char *s, size_t len) {
@@ -262,9 +207,6 @@ void editor_insert_row(int at, char *s, size_t len) {
 
   (*row_at(at)).size = len;
   (*row_at(at)).chars = chars;
-  (*row_at(at)).rsize = 0;
-  (*row_at(at)).render = NULL;
-  (*row_at(at)).rcap = 0;
   (*row_at(at)).syn = NULL;
   (*row_at(at)).syncap = 0;
   (*row_at(at)).syn_in = 0;
@@ -279,7 +221,6 @@ void editor_insert_row(int at, char *s, size_t len) {
 }
 
 void editor_free_row(erow *row) {
-  if (row->rcap > 0) free(row->render);  /* rcap > 0 => render is owned */
   free(row->chars);
   free(row->syn);
 }

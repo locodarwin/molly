@@ -113,18 +113,20 @@ static void gutter_draw_tilde(int y, int gutter_w) {
  * that occupy no columns. */
 void editor_draw_text_row(int y, erow *row, const struct drow *d,
                           int sel0, int sel1) {
-  const char *r = row->render;
-  int rs = row->rsize;
+  const char *r = row->chars;
+  int rs = row->size;
+  int tabw = tab_width();
   int col = 0, i = 0;
 
-  /* First render column to show: where this slice starts, plus the horizontal
+  /* First display column to show: where this slice starts, plus the horizontal
    * scroll. Wrap and horizontal scrolling are alternatives -- a wrapped view has
    * nothing to scroll sideways to -- so only one of the two is ever nonzero. */
   int skip = d->rcol0 + V.coloff;
 
-  /* Skip whole characters that lie entirely left of the viewport. */
+  /* Skip whole characters that lie entirely left of the viewport. A tab is
+   * walked a column at a time (see text_cell), so its visible part draws. */
   while (i < rs && col < skip) {
-    int nb, w = utf8_char_cols(r, rs, i, &nb);
+    int nb, w = text_cell(r, rs, i, col, tabw, &nb);
     if (col + w > skip) break;
     col += w;
     i += nb;
@@ -133,7 +135,7 @@ void editor_draw_text_row(int y, erow *row, const struct drow *d,
    * becomes that many blank columns. */
   int left_pad = 0;
   if (i < rs && col < skip) {
-    int nb, w = utf8_char_cols(r, rs, i, &nb);
+    int nb, w = text_cell(r, rs, i, col, tabw, &nb);
     left_pad = (col + w) - skip;
     i += nb;
     col += w;
@@ -152,7 +154,7 @@ void editor_draw_text_row(int y, erow *row, const struct drow *d,
   int dcol = col;         /* absolute display column of the character at i */
   int vis = left_pad;     /* visible columns emitted so far */
   while (i < rs && vis < text_cols) {
-    int nb, w = utf8_char_cols(r, rs, i, &nb);
+    int nb, w = text_cell(r, rs, i, dcol, tabw, &nb);
     if (vis + w > text_cols) break;  /* would overflow the right edge */
     /* A selection outranks the syntax colouring rather than blending with it:
      * reverse video over a keyword's own colour is unreadable, and what the
@@ -161,7 +163,10 @@ void editor_draw_text_row(int y, erow *row, const struct drow *d,
      * this is the line it always was. */
     grid_role((has_sel && dcol >= sel0 && dcol < sel1) ? ROLE_SELECTION
                                                        : syntax_role_at(row, i));
-    grid_put_char(y, x, r + i, nb, w);
+    if (r[i] == '\t')
+      grid_put_char(y, x, " ", 1, 1);
+    else
+      grid_put_char(y, x, r + i, nb, w);
     x += w;    /* a combining mark has w == 0 and joins the cell to its left */
     vis += w;
     dcol += w;

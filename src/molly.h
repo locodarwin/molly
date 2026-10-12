@@ -126,17 +126,10 @@ struct mouse_event {
 
 typedef struct erow {
   int size;
-  int rsize;
-  int rcap;
   char *chars;
-  char *render;
 
-  /* Syntax highlighting: one cell role per byte of `render`, and the lexer state
+  /* Syntax highlighting: one cell role per byte of `chars`, and the lexer state
    * this row was entered and left with. See syntax.c.
-   *
-   * Parallel to `render` rather than to `chars` because that is what the draw
-   * loop walks, and because highlighting is a display question -- unlike what a
-   * search matches, which is the stored bytes (ROADMAP.md section 7).
    *
    * `syn` is NULL until the row is first lexed, and stays NULL for a buffer with
    * no filetype, which is what makes highlighting cost nothing when it is off.
@@ -149,11 +142,11 @@ typedef struct erow {
 
   /* Soft wrap: how many display rows this row occupies, and the text width that
    * was measured at. A row is its own cache because the answer depends on its
-   * render string and on nothing else about the file -- so a row keeps it
+   * text, the tab width and nothing else about the file -- so a row keeps it
    * across an insert above that moves it, and a window of another width
    * invalidates it by disagreeing with `wcols`. editor_update_row() clears it,
-   * which is every path that can change the answer at a fixed width. See
-   * wrap.c. */
+   * which is every path that changes the row's text, and indent_sync() clears
+   * every row's when the tab width moves. See wrap.c. */
   int wcols;
   int wrows;
 } erow;
@@ -254,9 +247,9 @@ struct buffer {
   const struct syntax *syn;
   int syn_valid;
 
-  /* The tab width this buffer's render strings were built at. Per buffer and
-   * not one global, because the width can come from the filetype and two
-   * windows can be showing two filetypes in the same frame. indent_sync()
+  /* The tab width this buffer's rows were last measured for wrap at. Per
+   * buffer and not one global, because the width can come from the filetype
+   * and two windows can be showing two filetypes in the same frame. indent_sync()
    * reconciles it with the width in force. */
   int tabw;
 
@@ -464,13 +457,13 @@ static inline erow *row_at(int i) { return &V.buf->row[i]; }
  * on later means changing these three functions rather than every caller.
  *
  * Wrap will make a file row produce ceil(width / text_cols) display rows, each
- * covering a range of render columns. That is why a slice is expressed in render
- * columns and not byte offsets: wrapping happens where the glyphs land on screen,
+ * covering a range of display columns. That is why a slice is expressed in
+ * display columns and not byte offsets: wrapping happens where the glyphs land on screen,
  * not where the bytes fall. */
 struct drow {
   int filerow;  /* file row this slice belongs to; may be >= numrows past EOF */
-  int rcol0;    /* first render column of that row shown on this line */
-  int rcols;    /* render columns shown; DROW_ALL means to the end of the row */
+  int rcol0;    /* first display column of that row shown on this line */
+  int rcols;    /* display columns shown; DROW_ALL means to the end of the row */
   int frag;     /* 0 for the first slice of a file row, 1.. for continuations */
 };
 
@@ -836,7 +829,7 @@ void editor_row_delete_n(erow *row, int at, int n);
 void editor_row_insert_char(erow *row, int at, int c);
 void editor_row_insert_n(erow *row, int at, const char *s, size_t n);
 void editor_save(void);
-void editor_rerender_all(void);
+void editor_remeasure_all(void);
 void editor_update_row(erow *row);
 int tab_width(void);
 int tab_width_default(void);
@@ -1172,6 +1165,7 @@ void wrap_step(struct cursor *c, int dir);
 /* view.c */
 int editor_row_cx_to_charcol(erow *row, int cx);
 int editor_row_cx_to_rx(erow *row, int cx);
+int text_cell(const char *s, int len, int i, int col, int tabw, int *nb);
 int editor_row_rx_to_cx(erow *row, int rx);
 void cursors_collapse(void);
 int cursors_newest(void);

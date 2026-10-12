@@ -40,13 +40,15 @@ int indent_auto(void) {
   return (v >= 0) ? v : auto_indent;
 }
 
-/* Bring the current buffer's render strings up to date with the tab width now
- * in force.
+/* Bring the current buffer's wrap measurements up to date with the tab width
+ * now in force.
  *
- * A buffer carries the width its rows were rendered at, because the width is a
+ * A buffer carries the width its rows were measured at, because the width is a
  * function of the *filetype* and two windows can show two filetypes in one
- * frame. A single global "current width" re-rendered whole files twice per
- * frame in that arrangement, each window undoing the other's work.
+ * frame. A single global "current width" re-measured whole files twice per
+ * frame in that arrangement, each window undoing the other's work. The draw
+ * loop reads the width itself, row by row, so the measurements are all that can
+ * go stale.
  *
  * Called from three places, and a no-op in all of them unless something moved:
  * syntax_retype() (the name, so the filetype, changed), tab_width_set() (the
@@ -58,14 +60,14 @@ void indent_sync(void) {
   w = tab_width();
   if (w == B.tabw) return;
   B.tabw = w;
-  editor_rerender_all();
+  editor_remeasure_all();
 }
 
 /* ---- the editing operations ------------------------------------------------ */
 
 /* How many spaces reach the next tab stop from where the cursor is.
  *
- * Measured in render columns rather than bytes, because a row indented with
+ * Measured in display columns rather than bytes, because a row indented with
  * literal tabs puts the cursor at a column its byte offset does not give. */
 static int to_next_stop(void) {
   int w = tab_width(), rx = 0;

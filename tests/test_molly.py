@@ -3050,6 +3050,56 @@ def test_tabbar(tmpdir):
 
 # --------------------------------------------------- syntax highlighting ----
 
+def test_tab_cells(tmpdir):
+    """A tab draws as the columns it covers, each with the tab's own colour.
+
+    Rows used to keep a second, tab-expanded copy of themselves, and the draw
+    loop walked that: a tab was a run of spaces, so a selection or a comment
+    coloured every one of them and the horizontal scroll could cut through the
+    middle of one. The copy is gone and a tab is now walked a column at a time
+    from the stored bytes. What a pty shows is that nothing about the screen
+    moved -- most of all at the left edge, where half a tab is still drawn.
+    """
+    print("\ntabs: each column of a tab is a cell")
+
+    path = os.path.join(tmpdir, "tabs.c")
+    with open(path, "w") as fh:
+        fh.write("ab\tc // x\ty\n")
+        # Scrolled to its end in a 40-column window this line starts drawing
+        # at column 12, four columns into the tab at 10..15.
+        fh.write("// aaaaaa\t" + "b" * 35 + "\n")
+    TEXT = TEXT_ROW - 1
+
+    def go(keys):
+        out = run([MOLLY, path], keys, rows=10, cols=40)
+        scr = Screen(10, 40)
+        scr.feed(out)
+        return scr
+
+    def lean(scr, row, n):
+        return "".join("i" if "i" in m else "." for m in scr.mods[row][:n])
+
+    scr = go([])
+    check("a tab in a comment is drawn as spaces",
+          scr.text()[TEXT], "ab      c // x  y")
+    check("and leans with the comment across all its columns",
+          lean(scr, TEXT, 18), "." * 10 + "i" * 7 + ".")
+
+    scr = go(["\x1b[1;2F"])
+    check("a selection covers every column of a tab",
+          "".join(scr.attrs[TEXT][:18]), "R" * 17 + ".")
+
+    scr = go([DOWN, END])
+    check("scrolled into the middle of a tab, its visible half is drawn",
+          scr.text()[TEXT + 1], "    " + "b" * 35)
+    check("in the comment's colours",
+          lean(scr, TEXT + 1, 40), "i" * 39 + ".")
+
+    scr = go([DOWN, "\x1b[1;2F"])
+    check("and selected, the half tab is selected too",
+          "".join(scr.attrs[TEXT + 1][:5]), "RRRRR")
+
+
 def test_italic(tmpdir):
     """Comments in italic, and the three ways they are not.
 
@@ -4839,6 +4889,7 @@ def main():
         test_tabbar(tmpdir)
         test_syntax(tmpdir)
         test_italic(tmpdir)
+        test_tab_cells(tmpdir)
         test_splits(tmpdir)
         test_split_resize(tmpdir)
         test_filter(tmpdir)

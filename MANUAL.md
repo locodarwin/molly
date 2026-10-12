@@ -1465,6 +1465,7 @@ names the first time you open such a file, tells it about every change, and
 shows you what it says.
 
     F2 / Shift-F2  Next / previous problem
+    Ctrl-F2        The problems list: every problem in every open file
     F12            Go to the definition of what is under the cursor
     Alt-Left       Back to where F12 jumped from
     Shift-F12      Every place the name under the cursor is used
@@ -1533,6 +1534,21 @@ text when you insert or delete lines above it, and the server's next opinion
 replaces it a moment after you stop typing — molly sends the server your
 changes when the keyboard has been quiet for a tenth of a second, not on
 every key.
+
+### The problems list
+
+`Ctrl-F2` (or `Go ▸ Problems`) opens a window below with every problem in
+every open file, a row each — `src/a.c:12:5: error: expected ';'` — errors
+red and warnings amber, sorted by file and line, and the totals on the list's
+status bar. **It keeps up**: fix something and, a moment after you stop
+typing, it is off the list; a server's new opinion of any open file rewrites
+it. `Enter` on a row goes to that problem, in the window you opened the list
+from, opening the file's buffer if it is not the one there. `Ctrl-F2` again,
+from anywhere, goes back to the list.
+
+The list is a buffer called `problems`: it scrolls, searches and splits like
+any other, and it is never unsaved work. Editing it does nothing useful — the
+next refresh writes over it — and `Enter` in it never inserts a line.
 
 ### Going to a definition, and back
 
@@ -1619,8 +1635,10 @@ delete a file is not done at all, rather than done in part.
   its name, not its name with placeholders for the arguments.
 - **One cursor.** Completion is offered at the main cursor only; with several,
   `Alt-/` says so.
-- **Not yet:** formatting, code actions, and a list of every problem in a
-  buffer of its own.
+- **Problems only from open files.** A server reports on what it has been
+  sent, and molly sends the files you have open; a project-wide check is the
+  build's job, in the [terminal](#the-terminal).
+- **Not yet:** formatting and code actions.
 
 ## Saving and Quitting
 
@@ -1727,6 +1745,7 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     Alt-K    What is under the cursor, from the language server
     Alt-/    Complete the word before the cursor
     Shift-F12  Every place the name under the cursor is used
+    Ctrl-F2  Every problem in every open file, kept up to date
     Alt-P    The signature of the call the cursor is in
     Alt-N    Rename what is under the cursor, everywhere
     Ctrl-A   Select everything

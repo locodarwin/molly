@@ -1150,9 +1150,13 @@ and is genuinely useful. Not core, and gated on panels.
   characters, above the line, asked again after every key so the active
   parameter follows; Alt-P asks by hand). F2, VS Code's rename, was already
   the problems' here, hence Alt-N.
-- **Left for later:** formatting, code actions, a
-  problems list in a buffer of its own (the grep results buffer is the
-  model, and now has a second user), completion that opens as a word is typed, snippets, range edits for
+- **And the problems list** (Ctrl-F2), which Shawn queued after those three:
+  a buffer of its own rather than the find-in-files results, because it is
+  kept up to date -- a server's new diagnostics mark it stale and the main
+  loop rewrites it. Each row carries a diagnostic over its severity word, so
+  the existing underline drawing colours it and the list's status bar counts
+  the totals. Only open files, because those are what a server is sent.
+- **Left for later:** formatting, code actions, completion that opens as a word is typed, snippets, range edits for
   very large files, and finding the project root from a marker file rather
   than the working directory. None of them needs anything the client does not
   already have: each is a request, an answer and a way to show it.

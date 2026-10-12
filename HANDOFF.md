@@ -15,7 +15,16 @@ This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
 
-**Latest:** the three language-server features Shawn queued after the
+**Latest:** the problems list (Ctrl-F2), which Shawn asked for next on
+2026-10-12. A buffer flagged `problems`, rewritten from the main loop
+(`lspui_problems_refresh()`) whenever `lsp.c` says diagnostics changed
+(`lspui_problems_changed()`), by borrowing the view's buffer pointer as
+`buf_free` does, so no other window's cursor moves. Rows are `path:line:col:
+severity: message`; each carries its own diagnostic over the severity word, so
+the ordinary underline drawing colours it. Enter goes to the problem and never
+inserts. Pty checks `test_lsp_problems`; goldens `lsp-problems*`.
+
+**Before that:** the three language-server features Shawn queued after the
 terminal on 2026-10-12, in his order. `dc16047` is rename (Alt-N): the
 server's WorkspaceEdit applied a file at a time, last edit first, as one undo
 step per file; a file that is not open is opened and left unsaved; a rename
@@ -231,7 +240,7 @@ drop-down item that was the best value-to-work ratio left. What is left is the
 smaller work under "Next by dependency", none of it confirmed as next — ask
 before starting any of it. The big-file rewrite and the language server are
 both done, and so are the integrated terminal, rename, find references and
-signature help; what Shawn queued next is a problems list.
+signature help, and the problems list he queued after them.
 
 ---
 

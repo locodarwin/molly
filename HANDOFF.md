@@ -15,7 +15,14 @@ This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
 
-**Latest:** the problems list (Ctrl-F2), which Shawn asked for next on
+**Latest:** formatting (Alt-Q), which Shawn picked next on 2026-10-12. The
+whole file, or the selection where the server does ranges (else the file,
+said so), with the file's tab width and spaces sent as the options; the edits
+go through `apply_edits()`, shared with rename, which now carries the cursor's
+row and skips edits that would put back what is there. Pty checks
+`test_lsp_format`; checked against clangd. No format-on-save.
+
+**Before that:** the problems list (Ctrl-F2), which Shawn asked for next on
 2026-10-12. A buffer flagged `problems`, rewritten from the main loop
 (`lspui_problems_refresh()`) whenever `lsp.c` says diagnostics changed
 (`lspui_problems_changed()`), by borrowing the view's buffer pointer as

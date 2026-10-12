@@ -1156,7 +1156,14 @@ and is genuinely useful. Not core, and gated on panels.
   loop rewrites it. Each row carries a diagnostic over its severity word, so
   the existing underline drawing colours it and the list's status bar counts
   the totals. Only open files, because those are what a server is sent.
-- **Left for later:** formatting, code actions, completion that opens as a word is typed, snippets, range edits for
+- **And formatting** (Alt-Q, Edit ▸ Format), the next Shawn picked:
+  `textDocument/formatting`, or `rangeFormatting` for a selection where the
+  server has it, sent the file's own tab width and spaces setting; the edits
+  go through rename's `apply_edits()`, which learned to carry the cursor's
+  row and to skip an edit that changes nothing, so a tidy file stays
+  unmodified. Alt-Q after Emacs's fill-paragraph, Alt-F being the File menu.
+- **Left for later:** format on save (the first thing a save would wait on a
+  server for), code actions, completion that opens as a word is typed, snippets, range edits for
   very large files, and finding the project root from a marker file rather
   than the working directory. None of them needs anything the client does not
   already have: each is a request, an answer and a way to show it.

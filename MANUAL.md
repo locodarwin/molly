@@ -1473,6 +1473,7 @@ shows you what it says.
     Alt-/          Complete the word before the cursor
     Alt-P          The signature of the call the cursor is in
     Alt-N          Rename what is under the cursor, everywhere
+    Alt-Q          Format the file, or the selection
 
 The navigation ones are also in the **Go** menu, and all of them are in the
 command palette, along with **Language server status** and **Restart
@@ -1600,6 +1601,19 @@ parameter is picked out, and closing the call closes it, as do `Esc` and
 leaving the line. `Alt-P` opens it again. Where there is no room above, it goes
 below; where there is room for neither, it drops the note.
 
+### Formatting
+
+`Alt-Q` (or `Edit ▸ Format`) asks the server to format the file — or, with a
+selection, only that, where the server can format part of a file; where it
+cannot, the whole file is formatted and the message says so. The server is told
+the tab width and whether `Tab` inserts spaces, as they are for that file's
+language (see [Indentation](#indentation)), and most formatters start from
+those. The changes are one undo step, the cursor stays on its line, and a file
+that needs nothing is left unmodified: "Already formatted."
+
+clangd formats by a `.clang-format` file when it finds one above the file, and
+in LLVM's style when it does not.
+
 ### Renaming
 
 `Alt-N` asks for a new name for what is under the cursor, and the server says
@@ -1638,7 +1652,9 @@ delete a file is not done at all, rather than done in part.
 - **Problems only from open files.** A server reports on what it has been
   sent, and molly sends the files you have open; a project-wide check is the
   build's job, in the [terminal](#the-terminal).
-- **Not yet:** formatting and code actions.
+- **Not on save.** Formatting is something you ask for; a save that waited on
+  a server would be the first thing in molly to wait on one.
+- **Not yet:** code actions.
 
 ## Saving and Quitting
 
@@ -1748,6 +1764,7 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     Ctrl-F2  Every problem in every open file, kept up to date
     Alt-P    The signature of the call the cursor is in
     Alt-N    Rename what is under the cursor, everywhere
+    Alt-Q    Format the file, or the selection, with the language server
     Ctrl-A   Select everything
     Ctrl-L   Select the current line
     Ctrl-C   Copy the selection

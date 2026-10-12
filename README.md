@@ -16,7 +16,7 @@ as well as the keyboard — and the features it was groundwork *for* have starte
 landing: a configuration file with a rebindable keymap, any number of files open
 at once with a tab bar, syntax highlighting for seven languages, window splits,
 a shell filter, per-filetype indentation, multiple cursors, soft wrap, a
-language-server client and an integrated terminal. 2,399 checks pass,
+language-server client and an integrated terminal. 2,407 checks pass,
 including golden screenshots taken before the renderer was replaced and still
 compared against today. What comes next, and why, is in
 [`ROADMAP.md`](ROADMAP.md).
@@ -120,8 +120,8 @@ Everything olly does, molly does. These all work today:
   definition and `Alt-Left` comes back; `Alt-K` shows what a name is; `Alt-/`
   completes the word, and `.` asks by itself; `Shift-F12` lists every use; `(`
   shows the signature you are filling in; `Alt-N` renames across files, leaving
-  them unsaved to review. Any other server is one `language server =` line in
-  the config. Hand-rolled JSON, no library.
+  them unsaved to review; `Alt-Q` formats. Any other server is one `language
+  server =` line in the config. Hand-rolled JSON, no library.
 - **Keyboard reference built in**: press `F1` at any time.
 - **Configurable**: `~/.config/molly/mollyrc` holds the settings and the
   keymap; `View ▸ Options…` changes any setting in place, and

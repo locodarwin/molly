@@ -787,6 +787,7 @@ void lsp_buffer_saved(struct buffer *b) {
 void lsp_buffer_closed(struct buffer *b) {
   int i, k;
   doc_close(b);
+  lspui_forget(b);
   for (i = 0; i < LSP_MAX_SERVERS; i++)
     for (k = 0; k < servers[i].npend; k++)
       if (servers[i].pend[k].buf == b) servers[i].pend[k].buf = NULL;
@@ -959,7 +960,11 @@ static void on_response(struct server *s, const struct json *msg) {
     on_initialized(s, json_get(msg, "result"));
     return;
   }
-  /* Nothing else is asked yet but `shutdown`, whose answer is only manners. */
+  if (p.kind == LSP_REQ_SHUTDOWN || p.kind < 0 || p.buf == NULL) return;
+  /* An error is an answer of nothing: "no definition here" and "I could not
+   * work that out" leave the user in the same place. */
+  lsp_answer(p.kind, p.buf, p.edits, p.cy, p.cx,
+             err != NULL ? NULL : json_get(msg, "result"), s->utf8);
 }
 
 static void dispatch(struct server *s, const char *body, size_t len) {
@@ -1089,6 +1094,78 @@ static void on_stderr(void *user) {
       if ((unsigned char)buf[i] < 0x20) buf[i] = ' ';
     snprintf(s->lasterr, sizeof(s->lasterr), "%.*s", (int)(end - start), buf + start);
   }
+}
+
+/* ---- asking -------------------------------------------------------------- */
+
+/* The server open with this buffer, ready for a question, or NULL -- with the
+ * buffer's latest text sent first, so the answer is about what is on screen. */
+static struct server *ready_for(struct buffer *b) {
+  sync_buffer(b);
+  if (b->lsp_srv <= 0) return NULL;
+  if (servers[b->lsp_srv - 1].state != SRV_READY) return NULL;
+  return &servers[b->lsp_srv - 1];
+}
+
+int lsp_can(struct buffer *b, int kind) {
+  struct server *s;
+  if (b->lsp_srv <= 0) return 0;
+  s = &servers[b->lsp_srv - 1];
+  if (s->state != SRV_READY) return 0;
+  switch (kind) {
+  case LSP_REQ_DEFINITION: return s->definition;
+  case LSP_REQ_HOVER: return s->hover;
+  case LSP_REQ_COMPLETION: return s->completion;
+  }
+  return 0;
+}
+
+/* Is `c` one of the characters after which this buffer's server offers to
+ * complete without being asked? */
+int lsp_is_trigger(struct buffer *b, int c) {
+  struct server *s;
+  if (b->lsp_srv <= 0 || c <= 0 || c > 127) return 0;
+  s = &servers[b->lsp_srv - 1];
+  return s->state == SRV_READY && s->completion && strchr(s->triggers, c) != NULL;
+}
+
+/* Ask about the position (cy, cx) in `b`. Returns 1 when the question went,
+ * 0 when there is nobody to ask. The answer arrives through lsp_answer(). */
+int lsp_ask(struct buffer *b, int kind, int cy, int cx, int trigger) {
+  static const char *const methods[] = {
+    [LSP_REQ_DEFINITION] = "textDocument/definition",
+    [LSP_REQ_HOVER] = "textDocument/hover",
+    [LSP_REQ_COMPLETION] = "textDocument/completion",
+  };
+  struct server *s = ready_for(b);
+  struct abuf ab = ABUF_INIT;
+  int k, units = 0;
+
+  if (s == NULL || !lsp_can(b, kind)) return 0;
+  if (cy < b->numrows) {
+    erow *r = buf_row(b, cy);
+    units = lsp_col_to_units(r->chars, r->size, cx, s->utf8);
+  }
+  /* One question of each kind at a time: the answer to an older one is about
+   * a cursor that has since moved. */
+  for (k = 0; k < s->npend; k++)
+    if (s->pend[k].kind == kind) s->pend[k].buf = NULL, s->pend[k].kind = -1;
+
+  text_document(&ab, b);
+  json_putf(&ab, "},\"position\":{\"line\":%d,\"character\":%d}", cy, units);
+  if (kind == LSP_REQ_COMPLETION) {
+    if (trigger > 0)
+      json_putf(&ab, ",\"context\":{\"triggerKind\":2,\"triggerCharacter\":\"%c\"}",
+                trigger);
+    else
+      ab_append(&ab, ",\"context\":{\"triggerKind\":1}", 28);
+  }
+  ab_append(&ab, "}", 1);
+  request(s, methods[kind], &ab, kind, b);
+  free(ab.b);
+  s->pend[s->npend - 1].cx = cx;
+  s->pend[s->npend - 1].cy = cy;
+  return 1;
 }
 
 /* ---- the switch, and the end --------------------------------------------- */

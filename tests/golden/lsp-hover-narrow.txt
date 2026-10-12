@@ -1,0 +1,29 @@
+--- screen ---
+ F E S V G W H
+int widget;
+int y = widget;
+┌──────────────────┐
+│ int widget       │
+└──────────────────┘
+sample.c - 2 lines [
+HELP: Ctrl-S = save
+--- attrs ---
+gggggggggggggggggggg
+ggg
+ggg
+gggggggggggggggggggg
+gggggggggggggggggggg
+gggggggggggggggggggg
+RRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-19 7/0
+2: 0-2 14/-
+3: 0-2 14/-
+4: 0-19 7/8
+5: 0-0 7/8  1-18 15/8  19-19 7/8
+6: 0-19 7/8
+--- modifiers ---
+1: 1-1 u  3-3 u  5-5 u  7-7 u  9-9 u  11-11 u  13-13 u
+--- cursor ---
+row 3 col 10 visible 1

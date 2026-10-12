@@ -289,6 +289,13 @@ static int cmd_problem_prev(void) { lspui_problem_jump(-1); return 0; }
 static int have_problems(void) { return B.ndiag > 0; }
 static int cmd_lsp_status(void) { lspui_status(); return 0; }
 static int cmd_lsp_restart(void) { lspui_restart(); return 0; }
+static int cmd_definition(void) { return lspui_definition(); }
+static int cmd_back(void) { lspui_back(); return 0; }
+static int cmd_hover(void) { return lspui_hover(); }
+static int can_define(void) { return lspui_can(LSP_REQ_DEFINITION); }
+static int can_hover(void) { return lspui_can(LSP_REQ_HOVER); }
+static int cmd_complete(void) { return lspui_complete(); }
+static int can_complete(void) { return lspui_can(LSP_REQ_COMPLETION); }
 static int cmd_help(void) { editor_help(); return 0; }
 
 /* Each cursor to its own row's edge, which is the point of a column of them:
@@ -710,6 +717,18 @@ static const struct command commands[] = {
   {.name = "goto.prev-problem", .label = "Previous problem",
    .help = "Previous problem", .group = "CODE", .run = cmd_problem_prev,
    .enabled = have_problems},
+  {.name = "goto.definition", .label = "Go to definition",
+   .help = "Go to definition", .group = "CODE", .run = cmd_definition,
+   .enabled = can_define},
+  {.name = "goto.back", .label = "Back",
+   .help = "Back from there", .group = "CODE", .run = cmd_back,
+   .enabled = lspui_can_back},
+  {.name = "code.hover", .label = "Info at cursor",
+   .help = "Info at cursor", .group = "CODE", .run = cmd_hover,
+   .enabled = can_hover},
+  {.name = "code.complete", .label = "Complete word",
+   .help = "Complete word", .group = "CODE", .run = cmd_complete,
+   .enabled = can_complete},
   {.name = "lsp.status", .label = "Language server status",
    .run = cmd_lsp_status},
   {.name = "lsp.restart", .label = "Restart language servers",
@@ -1274,6 +1293,16 @@ static const struct binding default_bindings[] = {
    * and F2 is free until molly renames anything. */
   {"f2",       "goto.next-problem"},
   {"shift-f2", "goto.prev-problem"},
+  /* F12 is VS Code's and Visual Studio's. Back is Alt-Left, as in a browser
+   * and in VS Code on Windows; Alt-K for what is under the cursor, after vi's
+   * K, because Ctrl-K is a chord a terminal cannot follow with a second. */
+  {"f12",      "goto.definition"},
+  {"alt-left", "goto.back"},
+  {"alt-k",    "code.hover"},
+  /* Alt-/ for completion, as in Emacs and the editors that took it from
+   * there: Ctrl-Space is the palette's, and a terminal cannot tell it from
+   * Ctrl-@ to give it a second meaning. */
+  {"alt-/",    "code.complete"},
 
   {"left",   "move.left"},
   {"right",  "move.right"},
@@ -1555,6 +1584,10 @@ void editor_process_key(int c) {
   int shift = input_last_key_had_shift();
   int pre_cx = CUR.cx, pre_cy = CUR.cy;
 
+  /* A popup over the text closes on the next key, which then goes on to do
+   * what it does -- unless it was Esc, which was only for the popup. */
+  if (lspui_key(c)) return;
+
   /* A mouse event carries coordinates, so it cannot be a chord the keymap binds to
    * a command: it goes to whichever layer is on top where it landed. It also must
    * not fall through to the selection handling below, which would clear the
@@ -1618,6 +1651,11 @@ void editor_process_key(int c) {
   if (!(res & CMD_KEEP_QUIT_COUNT)) {
     close_warned_id = -1;
   }
+
+  /* A completion list follows the word it is completing; a typed trigger
+   * character asks for one. After the key, because both are about what the
+   * key did to the text. */
+  lspui_after_key(c);
 }
 
 /* ---- the help screen's data ---------------------------------------------- */
@@ -1725,6 +1763,10 @@ static const struct help_entry help_entries[] = {
    * VIEW by paging down to it. */
   {"CODE",      NULL, NULL, "goto.next-problem"},
   {NULL,        NULL, NULL, "goto.prev-problem"},
+  {NULL,        NULL, NULL, "goto.definition"},
+  {NULL,        NULL, NULL, "goto.back"},
+  {NULL,        NULL, NULL, "code.hover"},
+  {NULL,        NULL, NULL, "code.complete"},
 };
 
 int help_entry_count(void) {

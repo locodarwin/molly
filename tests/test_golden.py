@@ -384,15 +384,17 @@ def main():
 
     # The Go menu, which the two buffer commands joined and which nothing had
     # captured. Both of them grey out with one buffer open, so this snapshot is
-    # the dimmed state and the one below is the live one.
-    check("menu-go", ["\x1bg"], rows=16, cols=64,
+    # the dimmed state and the one below is the live one. Twenty rows since
+    # the language server's five commands joined it, for the reason the Edit
+    # menu's are: the snapshot is of the menu, and at sixteen it scrolls.
+    check("menu-go", ["\x1bg"], rows=20, cols=64,
           files={"sample.txt": THREE_LINES})
-    check("menu-go-buffers", ["\x1bg"], rows=16, cols=64,
+    check("menu-go-buffers", ["\x1bg"], rows=20, cols=64,
           files={"sample.txt": THREE_LINES, "second.txt": "two\n"},
           args=["sample.txt", "second.txt"])
     check("menu-go-narrow", ["\x1bg"], rows=12, cols=26,
           files={"sample.txt": THREE_LINES})
-    check("menu-go-256", ["\x1bg"], rows=16, cols=64,
+    check("menu-go-256", ["\x1bg"], rows=20, cols=64,
           files={"sample.txt": THREE_LINES},
           env={"TERM": "xterm-256color"})
 
@@ -676,6 +678,31 @@ def main():
     # bar keeps of its right-hand side or loses.
     check("lsp-narrow", [2.0, "\x1b[B", "\x1b[C"], rows=8, cols=24,
           files=lsp_files, args=["sample.c"], env=lsp_env)
+    # Alt-K over a word: the fake server's Markdown, read for a terminal --
+    # the fence's code without the fence, the paragraph without its emphasis --
+    # in a box under the cursor, in the menu's colours.
+    hover_files = dict(lsp_files, **{"sample.c": "int widget;\nint y = widget;\n"})
+    hover_keys = [2.0, "\x1b[B"] + ["\x1b[C"] * 9 + ["\x1bk", 0.5]
+    check("lsp-hover", hover_keys, rows=10, cols=50, files=hover_files,
+          args=["sample.c"], env=lsp_env)
+    check("lsp-hover-256", hover_keys, rows=10, cols=50, files=hover_files,
+          args=["sample.c"], env=dict(lsp_env, TERM="xterm-256color"))
+    # Narrower than the text, and with no room below: it goes above, wrapped,
+    # and pushed left to stay on the screen.
+    check("lsp-hover-narrow", hover_keys, rows=8, cols=20,
+          files=hover_files, args=["sample.c"], env=lsp_env)
+    # Alt-/ after "fak": every word the fake server knows that starts so, with
+    # its detail dimmed on the right, the first one chosen, lined up with the
+    # word as nearly as the left edge allows.
+    comp_files = dict(lsp_files, **{"sample.c": "int fake_gamma;\n\n"})
+    comp_keys = [2.0, "\x1b[B", "fak", "\x1b/", 0.5, "\x1b[B"]
+    check("lsp-complete", comp_keys, rows=10, cols=50, files=comp_files,
+          args=["sample.c"], env=lsp_env)
+    check("lsp-complete-256", comp_keys, rows=10, cols=50, files=comp_files,
+          args=["sample.c"], env=dict(lsp_env, TERM="xterm-256color"))
+    # Room for one item under the word: the list scrolls in a box of three.
+    check("lsp-complete-narrow", comp_keys, rows=8, cols=16, files=comp_files,
+          args=["sample.c"], env=lsp_env)
 
     print()
     if failed:

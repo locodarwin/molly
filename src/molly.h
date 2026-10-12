@@ -1060,6 +1060,9 @@ void loop_remove(int id);
 
 /* lsp.c */
 char *lsp_path_to_uri(const char *path);
+int lsp_ask(struct buffer *b, int kind, int cy, int cx, int trigger);
+int lsp_can(struct buffer *b, int kind);
+int lsp_is_trigger(struct buffer *b, int c);
 char *lsp_uri_to_path(const char *uri);
 int lsp_col_to_units(const char *s, int size, int col, int utf8);
 int lsp_enabled(void);
@@ -1076,7 +1079,21 @@ int lsp_setting(void);
 void lsp_stop_all(void);
 
 /* lspui.c */
+int lspui_back(void);
+int lspui_can(int kind);
+int lspui_can_back(void);
 int lspui_cursor_message(char *dst, size_t n);
+int lspui_complete(void);
+int lspui_definition(void);
+int lspui_hover(void);
+int lspui_key(int c);
+int lspui_place(int w, int h, int *px, int *py);
+void lspui_after_key(int c);
+void lspui_box(int x, int y, int w, int h);
+void lspui_deliver(void);
+void lspui_forget(struct buffer *b);
+void lsp_answer(int kind, struct buffer *b, unsigned edits, int cy, int cx,
+                const struct json *result, int utf8);
 int lspui_problem_jump(int dir);
 int lspui_row_spans(const struct buffer *b, int filerow, const erow *row,
                     struct diag_span *out, int max);

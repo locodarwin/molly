@@ -257,6 +257,9 @@ int main(int argc, char *argv[]) {
    * and the repaint below picks up the new size. */
   while (1) {
     editor_process_key(ui_wait_key());
+    /* A language server's answer, if one has come and is still about where
+     * the cursor is. Here and not where it arrives: see lspui_deliver. */
+    lspui_deliver();
     editor_refresh_screen();
   }
 

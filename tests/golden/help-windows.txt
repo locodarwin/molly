@@ -2,11 +2,7 @@
  File  Edit  Search  View  Go  Window  Help
 alpha
 be╔═══════════════════════════ Keyboard Reference ═══════════════════════════╗
-ga║   Alt-D          Cursor: skip matc      Shift-F6       Previous window   ║
-~ ║   Alt-A          Cursor: all match      F9             Close this window ║
-~ ║   Alt-U          Drop last cursor       Ctrl-Shift-←→  Border left/right ║
-~ ║   Ctrl-Down      Cursor below           Ctrl-Shift-↑↓  Border up/down    ║
-~ ║   Ctrl-Up        Cursor above                                            ║
+ga║   Ctrl-Up        Cursor above                                            ║
 ~ ║   Esc            Back to one curso    VIEW                               ║
 ~ ║   Alt-Shift-←↑→↓ Block selection        F5             Redraw screen     ║
 ~ ║   Alt+drag       Block selection        Ctrl-U         Line numbers      ║
@@ -18,6 +14,10 @@ ga║   Alt-D          Cursor: skip matc      Shift-F6       Previous window   �
 ~ ║                                       CODE                               ║
 ~ ║                                         F2             Next problem      ║
 ~ ║                                         Shift-F2       Previous problem  ║
+~ ║                                         F12            Go to definition  ║
+~ ║                                         Alt-Left       Back from there   ║
+~ ║                                         Alt-K          Info at cursor    ║
+~ ║                                         Alt-/          Complete word     ║
 ~ ║ In prompts: Enter accepts   Esc cancels                                  ║
 ~ ║ PgUp/PgDn scroll   any other key returns                                 ║
 ~ ╚══════════════════════════════════════════════════════════════════════════╝

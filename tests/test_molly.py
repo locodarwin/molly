@@ -4980,6 +4980,226 @@ def test_lsp(tmpdir):
         os.chdir(here)
 
 
+def test_lsp_questions(tmpdir):
+    """F12, Alt-Left and Alt-K: asking a language server where and what.
+
+    The fake server defines a word on the first line that says `define
+    <word>`, in any open document or any file in the working directory, and
+    describes a word as a Markdown paragraph naming it. An answer acts only if
+    the cursor is still where it was asked from, which FAKE_LSP_SLOW makes
+    checkable: the answer is held back while the cursor moves on.
+    """
+    print("\nlanguage server: definitions and hover")
+
+    work = os.path.join(tmpdir, "lspask")
+    os.makedirs(work, exist_ok=True)
+    rc = os.path.join(work, "lsprc")
+    with open(rc, "w") as fh:
+        fh.write("[syntax c]\nlanguage server = python3 -I %s\n" % FAKE_LSP)
+    F12, BACK, HOVER = "\x1b[24~", "\x1b[1;3D", "\x1bk"
+    DOWN, RIGHT, ESC = "\x1b[B", "\x1b[C", "\x1b"
+    WAIT = 2.0
+
+    def screen(keys, files=("main.c",), env=None, rows=16, cols=60):
+        e = {"MOLLY_CONFIG": rc, "MOLLY_LSP": ""}
+        e.update(env or {})
+        scr = Screen(rows, cols)
+        scr.feed(run([MOLLY] + list(files), keys, rows=rows, cols=cols, env=e))
+        return scr
+
+    def write(name, text):
+        with open(name, "w") as fh:
+            fh.write(text)
+
+    here = os.getcwd()
+    os.chdir(work)
+    try:
+        write("main.c", "int x;\n// define widget\n\nint y = widget;\nint z = gadget;\n")
+        write("other.c", "/* the other file */\n\nstatic int define gadget;\n")
+
+        # From `widget` on row 4 to its definition on row 2, column 11.
+        to_widget = [WAIT, DOWN, DOWN, DOWN] + [RIGHT] * 9
+        scr = screen(to_widget + [F12, 0.5])
+        check("F12 goes to the definition", scr.cy * 100 + scr.cx, 2 * 100 + 10)
+        check("and says where", "Definition: main.c:2" in scr.text()[15], True)
+        scr = screen(to_widget + [F12, 0.5, BACK])
+        check("Alt-Left comes back", scr.cy * 100 + scr.cx, 4 * 100 + 9)
+        scr = screen(to_widget + [F12, 0.5, BACK, BACK])
+        check("and then has nowhere to go",
+              "Nowhere to go back to." in scr.text()[15], True)
+
+        # Into another file, which opens in a buffer of its own.
+        to_gadget = [WAIT, DOWN, DOWN, DOWN, DOWN] + [RIGHT] * 9
+        scr = screen(to_gadget + [F12, 0.5])
+        text = scr.text()
+        check("a definition in another file opens it",
+              "other.c - 3 lines" in text[14], True)
+        # Row 3 of the file is row 4 of the screen: with two buffers open the
+        # tab bar has taken a row under the menu bar.
+        check("at the definition", scr.cy * 100 + scr.cx, 4 * 100 + 18)
+        check("by the name it has under the working directory",
+              "Definition: other.c:3" in text[15], True)
+        scr = screen(to_gadget + [F12, 0.5, BACK])
+        check("Alt-Left goes back to the file it came from",
+              "main.c - 5 lines" in scr.text()[14] and scr.cy == 6, True)
+        scr = screen(to_gadget + [F12, 0.5], files=("main.c", "other.c"))
+        check("an open file is switched to, not opened twice",
+              "[2/2] other.c" in scr.text()[14], True)
+        scr = screen(to_gadget + [F12, 0.5], env={"FAKE_LSP_LINKS": "1"})
+        check("a LocationLink is followed as a Location is",
+              scr.cy * 100 + scr.cx, 4 * 100 + 18)
+
+        scr = screen([WAIT, F12, 0.5])
+        check("a word with no definition says so",
+              "No definition found." in scr.text()[15], True)
+
+        # The answer arrives after the cursor has moved: it is dropped.
+        scr = screen(to_widget + [F12, RIGHT, 2.0], env={"FAKE_LSP_SLOW": "1"})
+        check("an answer about where the cursor was is dropped",
+              scr.cy * 100 + scr.cx, 4 * 100 + 10)
+
+        # Hover: a box under the cursor with the Markdown read for a terminal.
+        scr = screen(to_widget + [HOVER, 0.5])
+        text = scr.text()
+        box = "\n".join(text[5:12])
+        check("Alt-K opens a box under the cursor", text[5][9], "\u250c")
+        check("with the signature from the code fence, fences gone",
+              "int widget" in box and "```" not in box, True)
+        check("and the paragraph, emphasis gone",
+              "The thing called widget." in box and "**" not in box, True)
+        scr = screen(to_widget + [HOVER, 0.5, RIGHT])
+        check("any key closes it", "\u250c" in "".join(scr.text()), False)
+        check("and does what it does", scr.cx, 10)
+        scr = screen(to_widget + [HOVER, 0.5, ESC])
+        check("Esc only closes it", "\u250c" not in "".join(scr.text()) and scr.cx == 9,
+              True)
+        scr = screen([WAIT, DOWN, DOWN, HOVER, 0.5])
+        check("hovering over nothing says so",
+              "Nothing to show here." in scr.text()[15], True)
+
+        # No server at all: the keys say why they do nothing.
+        write("notes.txt", "widget\n")
+        scr = screen([WAIT, F12], files=("notes.txt",))
+        check("F12 without a server says why",
+              "No language server for this file." in scr.text()[15], True)
+    finally:
+        os.chdir(here)
+
+
+def test_lsp_complete(tmpdir):
+    """Alt-/ and trigger characters: a list of what could come next.
+
+    The fake server offers every word in the file that starts with what is
+    before the cursor, plus fake_alpha and fake_beta, and names `.` as a
+    trigger. What is checked is the editor's half: the list appears under the
+    word, narrows as the word is typed, is chosen from with the arrows and
+    Enter, and replaces the word typed so far rather than adding to it.
+    """
+    print("\nlanguage server: completion")
+
+    work = os.path.join(tmpdir, "lspcomplete")
+    os.makedirs(work, exist_ok=True)
+    rc = os.path.join(work, "lsprc")
+    with open(rc, "w") as fh:
+        fh.write("[syntax c]\nlanguage server = python3 -I %s\n" % FAKE_LSP)
+    COMPLETE, DOWN, UP, ESC = "\x1b/", "\x1b[B", "\x1b[A", "\x1b"
+    WAIT = 2.0
+    BOX = "\u250c"
+
+    def session(keys, text="int fake_gamma;\n\n", env=None):
+        with open("c.c", "w") as fh:
+            fh.write(text)
+        e = {"MOLLY_CONFIG": rc, "MOLLY_LSP": ""}
+        e.update(env or {})
+        scr = Screen(16, 60)
+        scr.feed(run([MOLLY, "c.c"], keys, rows=16, cols=60, env=e))
+        return scr
+
+    def saved():
+        with open("c.c") as fh:
+            return fh.read()
+
+    def has_box(scr):
+        return BOX in "".join(scr.text())
+
+    here = os.getcwd()
+    os.chdir(work)
+    try:
+        to_blank = [WAIT, DOWN]
+        scr = session(to_blank + ["fak", COMPLETE, 0.5])
+        rows = scr.text()
+        check("Alt-/ lists what could come next", has_box(scr), True)
+        # The cursor is on row 2 of the screen, so the box's top is row 3.
+        check("everything that starts with the word",
+              [r[2:].split()[0] for r in rows[4:7]],
+              ["fake_alpha", "fake_beta", "fake_gamma"])
+        check("under it, lined up with it", rows[3][0], BOX)
+        check("the first is chosen", scr.colors[4][3], (15, 4))
+
+        session(to_blank + ["fak", COMPLETE, 0.5, "\r", "\x13"])
+        check("Enter replaces the word with the choice",
+              saved(), "int fake_gamma;\nfake_alpha\n")
+        session(to_blank + ["fak", COMPLETE, 0.5, DOWN, DOWN, "\t", "\x13"])
+        check("Down chooses the next, and Tab takes it too",
+              saved(), "int fake_gamma;\nfake_gamma\n")
+        session(to_blank + ["fak", COMPLETE, 0.5, UP, "\r", "\x13"])
+        check("Up from the first goes round to the last",
+              saved(), "int fake_gamma;\nfake_gamma\n")
+
+        scr = session(to_blank + ["fak", COMPLETE, 0.5, "e_b"])
+        rows = scr.text()
+        check("typing narrows the list", rows[4][2:12], "fake_beta ")
+        check("to what still matches", BOX in rows[3] and "\u2514" in rows[5], True)
+        session(to_blank + ["fak", COMPLETE, 0.5, "e_b", "\r", "\x13"])
+        check("and what it narrows to is what Enter takes",
+              saved(), "int fake_gamma;\nfake_beta\n")
+        scr = session(to_blank + ["fak", COMPLETE, 0.5, "e_bx"])
+        check("a word nothing matches closes it", has_box(scr), False)
+        scr = session(to_blank + ["fak", COMPLETE, 0.5, "\x7f", "\x7f", "\x7f", "\x7f"])
+        check("backspacing out of the word closes it", has_box(scr), False)
+        scr = session(to_blank + ["fak", COMPLETE, 0.5, " "])
+        check("a space closes it", has_box(scr), False)
+        scr = session(to_blank + ["fak", COMPLETE, 0.5, ESC])
+        check("Esc closes it", has_box(scr), False)
+        # A pause after Esc, or the Ctrl-S behind it is read as part of an
+        # escape sequence and swallowed.
+        session(to_blank + ["fak", COMPLETE, 0.5, ESC, 0.3, "\x13"])
+        check("and leaves the word as it was", saved(), "int fake_gamma;\nfak\n")
+        session(to_blank + ["fak", COMPLETE, 0.5, "\x1a", "\x13"])
+        check("Ctrl-Z after taking nothing undoes the typing",
+              saved().startswith("int fake_gamma;\n"), True)
+        session(to_blank + ["fak", COMPLETE, 0.5, "\r", "\x1a", "\x13"])
+        check("one Ctrl-Z takes the completion back whole",
+              saved(), "int fake_gamma;\nfak\n")
+
+        # Typed after the question, before the answer: the list still comes,
+        # for the longer word.
+        scr = session(to_blank + ["fak", COMPLETE, "e_g", 2.0],
+                      env={"FAKE_LSP_SLOW": "1"})
+        check("typing on while it is asked still gets the list, for the word now",
+              scr.text()[4][2:13], "fake_gamma ")
+        # But not once the cursor has left the word.
+        scr = session(to_blank + ["fak", COMPLETE, " ", 2.0], env={"FAKE_LSP_SLOW": "1"})
+        check("an answer for a word the cursor has left is dropped", has_box(scr), False)
+
+        # A trigger character asks by itself.
+        scr = session(to_blank + ["x.", 0.8])
+        check("a typed trigger character opens the list unasked", has_box(scr), True)
+        scr = session(to_blank + ["zzz", COMPLETE, 0.5])
+        check("asked where nothing matches, it says so",
+              "No completions here." in scr.text()[15], True)
+
+        with open("notes.txt", "w") as fh:
+            fh.write("\n")
+        scr = Screen(16, 60)
+        scr.feed(run([MOLLY, "notes.txt"], [WAIT, COMPLETE], rows=16, cols=60,
+                     env={"MOLLY_CONFIG": rc, "MOLLY_LSP": ""}))
+        check("Alt-/ without a server says why",
+              "No language server for this file." in scr.text()[15], True)
+    finally:
+        os.chdir(here)
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -5047,6 +5267,8 @@ def main():
         test_block(tmpdir)
         test_soft_wrap(tmpdir)
         test_lsp(tmpdir)
+        test_lsp_questions(tmpdir)
+        test_lsp_complete(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

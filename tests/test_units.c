@@ -4278,7 +4278,9 @@ static void test_lsp(void) {
   check("and moves the warning up", lsp_buf->diag[1].y0, 2);
 
   editor_save();
-  lsp_logneedle = "didSave";
+  /* The method, not the word: "didSave" alone is in the capabilities that
+   * initialize sent, so it was in the log before anything was saved. */
+  lsp_logneedle = "textDocument/didSave";
   check("a save is told", lsp_pump(lsp_log_has, 5000), 1);
 
   /* Nothing is sent while the text has not changed: a sweep is cheap only if
@@ -4393,6 +4395,153 @@ static void test_lsp(void) {
   syntax_init();
 }
 
+/* Hand lspui an answer the way lsp.c does, and open the mailbox the way the
+ * main loop does. `json` is the result; NULL for an error. */
+static void answer(int kind, const char *json) {
+  struct json_doc *d = json != NULL ? json_parse(json, strlen(json)) : NULL;
+  lsp_answer(kind, V.buf, V.buf->edits, CUR.cy, CUR.cx, json_root(d), 1);
+  json_free(d);
+  lspui_deliver();
+}
+
+static void test_lsp_answers(void) {
+  char tmpl[] = "/tmp/molly-answer-XXXXXX";
+  char here[4096], json[8192], *real;
+  int i;
+
+  printf("\nlanguage server: what an answer does\n");
+  if (getcwd(here, sizeof(here)) == NULL || mkdtemp(tmpl) == NULL ||
+      chdir(tmpl) != 0) {
+    check("a scratch directory to work in", 0, 1);
+    return;
+  }
+  window_init();
+  buflist_init();
+  syntax_init();
+  lsp_write("a.c", "zero\none\ntwo two\nthree\n");
+  lsp_open_file("a.c");
+  real = realpath("a.c", NULL);
+
+  snprintf(json, sizeof(json), "{\"uri\":\"file://%s\",\"range\":{\"start\":"
+           "{\"line\":2,\"character\":4},\"end\":{\"line\":2,\"character\":7}}}", real);
+  answer(LSP_REQ_DEFINITION, json);
+  check("a Location moves the cursor to its start", CUR.cy * 100 + CUR.cx, 204);
+  check("and says where", strstr(E.statusmsg, "a.c:3") != NULL, 1);
+  check("Back returns", lspui_back() && CUR.cy == 0 && CUR.cx == 0, 1);
+
+  snprintf(json, sizeof(json), "[{\"uri\":\"file://%s\",\"range\":{\"start\":"
+           "{\"line\":3,\"character\":1}}}, {\"uri\":\"file:///elsewhere\"}]", real);
+  answer(LSP_REQ_DEFINITION, json);
+  check("an array is its first Location", CUR.cy * 100 + CUR.cx, 301);
+
+  snprintf(json, sizeof(json), "[{\"targetUri\":\"file://%s\",\"targetRange\":"
+           "{\"start\":{\"line\":0,\"character\":0}},\"targetSelectionRange\":"
+           "{\"start\":{\"line\":1,\"character\":2}}}]", real);
+  answer(LSP_REQ_DEFINITION, json);
+  check("a LocationLink goes to its selection range", CUR.cy * 100 + CUR.cx, 102);
+
+  snprintf(json, sizeof(json), "{\"uri\":\"file://%s\",\"range\":{\"start\":"
+           "{\"line\":99,\"character\":99}}}", real);
+  answer(LSP_REQ_DEFINITION, json);
+  check("a position past the end of the file is its last row", CUR.cy * 100 + CUR.cx, 300);
+  answer(LSP_REQ_DEFINITION, "null");
+  check_str("null is nowhere", E.statusmsg, "No definition found.");
+  answer(LSP_REQ_DEFINITION, "[]");
+  check_str("so is an empty array", E.statusmsg, "No definition found.");
+  answer(LSP_REQ_DEFINITION, NULL);
+  check_str("and an error", E.statusmsg, "No definition found.");
+  answer(LSP_REQ_DEFINITION, "{\"uri\":\"jdt://contents/x\",\"range\":{}}");
+  check_str("a URI that is not a file is said to be",
+            E.statusmsg, "The definition is not in a file molly can open.");
+
+  /* Stale: the cursor moved between the question and the answer. */
+  {
+    struct json_doc *d;
+    snprintf(json, sizeof(json), "{\"uri\":\"file://%s\",\"range\":{\"start\":"
+             "{\"line\":3,\"character\":0}}}", real);
+    d = json_parse(json, strlen(json));
+    CUR.cy = 0;
+    CUR.cx = 0;
+    lsp_answer(LSP_REQ_DEFINITION, V.buf, V.buf->edits, 0, 0, json_root(d), 1);
+    json_free(d);
+    CUR.cx = 1;
+    lspui_deliver();
+    check("an answer about where the cursor was is dropped", CUR.cy * 100 + CUR.cx, 1);
+    CUR.cx = 0;
+    lspui_deliver();
+    check("and stays dropped when the cursor goes back", CUR.cy, 0);
+  }
+
+  /* Hover's three shapes reach the popup as text. What the popup makes of
+   * Markdown is the pty suite's to check; here, that each one opens it. */
+  for (i = 0; i < 3; i++) {
+    static const char *const shapes[] = {
+      "{\"contents\":{\"kind\":\"markdown\",\"value\":\"**x**\"}}",
+      "{\"contents\":\"plain x\"}",
+      "{\"contents\":[{\"language\":\"c\",\"value\":\"int x\"},\"and words\"]}",
+    };
+    int before = layer_count();
+    answer(LSP_REQ_HOVER, shapes[i]);
+    check(i == 0 ? "MarkupContent opens a popup"
+          : i == 1 ? "a MarkedString does"
+          : "an array of them does", layer_count(), before + 1);
+    check("which the next key closes", lspui_key('a') == 0 && layer_count() == before, 1);
+  }
+  answer(LSP_REQ_HOVER, "{\"contents\":\"\"}");
+  check_str("an empty hover says so", E.statusmsg, "Nothing to show here.");
+
+  /* Completion: the row is "two tw", with the cursor at its end. What is
+   * replaced is the word up to the cursor, and nothing after it. */
+  editor_row_truncate(row_at(2), 6);
+  CUR.cy = 2;
+  CUR.cx = 6;
+  {
+    int before = layer_count();
+    answer(LSP_REQ_COMPLETION, "[{\"label\":\"twelve\"},{\"label\":\"three\"}]");
+    check("a bare array of items opens a list", layer_count(), before + 1);
+    check("Enter takes the first match", lspui_key('\r'), 1);
+    check_str("in place of the word typed so far", row_at(2)->chars, "two twelve");
+    check("the list is gone", layer_count(), before);
+
+    editor_row_truncate(row_at(2), 6);
+    CUR.cx = 6;
+    answer(LSP_REQ_COMPLETION, "{\"isIncomplete\":false,\"items\":["
+           "{\"label\":\"twinkle\",\"textEdit\":{\"range\":{\"start\":"
+           "{\"line\":2,\"character\":0},\"end\":{\"line\":2,\"character\":6}},"
+           "\"newText\":\"whole line\"}}]}");
+    check("a textEdit item opens the list too", layer_count(), before + 1);
+    lspui_key('\t');
+    check_str("and replaces from where its edit starts", row_at(2)->chars,
+              "whole line");
+
+    /* An answer for "tw" delivered after "o" was typed is filtered by "two". */
+    editor_row_truncate(row_at(2), 0);
+    editor_row_insert_n(row_at(2), 0, "tw", 2);
+    CUR.cx = 2;
+    {
+      const char *j = "[{\"label\":\"twin\"},{\"label\":\"twofold\"}]";
+      struct json_doc *d = json_parse(j, strlen(j));
+      lsp_answer(LSP_REQ_COMPLETION, V.buf, V.buf->edits, 2, 2, json_root(d), 1);
+      json_free(d);
+    }
+    editor_row_insert_char(row_at(2), 2, 'o');
+    CUR.cx = 3;
+    lspui_deliver();
+    lspui_key('\r');
+    check_str("an answer for an earlier prefix is filtered by the word now",
+              row_at(2)->chars, "twofold");
+
+    answer(LSP_REQ_COMPLETION, "null");
+    check("null offers nothing", layer_count(), before);
+    check_str("and says so", E.statusmsg, "No completions here.");
+  }
+
+  free(real);
+  if (chdir(here) != 0) check("back to where the tests started", 0, 1);
+  snprintf(json, sizeof(json), "rm -rf %s", tmpl);
+  if (system(json) != 0) printf("  note  could not remove %s\n", tmpl);
+}
+
 int main(void) {
   test_loop_sources();
   test_wait_key_services_sources();
@@ -4438,6 +4587,7 @@ int main(void) {
   test_windows_resize();
   test_grep();
   test_lsp();
+  test_lsp_answers();
   test_windows_buffer_closed();
   test_chords();
   test_config_parse();

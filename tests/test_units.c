@@ -4934,6 +4934,64 @@ static void test_vt(void) {
   check("300 screens of random sequences keep the cursor on them", bad, 0);
 }
 
+static void test_lsp_rename_apply(void) {
+  char tmpl[] = "/tmp/molly-rename-XXXXXX";
+  char here[4096], json[4096], *real;
+  struct json_doc *d;
+
+  printf("\nlanguage server: applying a rename\n");
+  if (getcwd(here, sizeof(here)) == NULL || mkdtemp(tmpl) == NULL ||
+      chdir(tmpl) != 0) {
+    check("a scratch directory to work in", 0, 1);
+    return;
+  }
+  window_init();
+  buflist_init();
+  syntax_init();
+  lsp_write("r.c", "a\xc3\xa9 x\nx y x\nend\n");
+  lsp_open_file("r.c");
+  real = realpath("r.c", NULL);
+
+  /* Out of order, in UTF-16 units (é is one), with the cursor on the second
+   * x of row 1: it has to end up on the new name, two columns further on. */
+  snprintf(json, sizeof(json),
+           "{\"changes\":{\"file://%s\":["
+           "{\"range\":{\"start\":{\"line\":1,\"character\":0},\"end\":{\"line\":1,\"character\":1}},\"newText\":\"zzz\"},"
+           "{\"range\":{\"start\":{\"line\":0,\"character\":3},\"end\":{\"line\":0,\"character\":4}},\"newText\":\"zzz\"},"
+           "{\"range\":{\"start\":{\"line\":1,\"character\":4},\"end\":{\"line\":1,\"character\":5}},\"newText\":\"zzz\"}]}}",
+           real);
+  CUR.cy = 1;
+  CUR.cx = 4;
+  d = json_parse(json, strlen(json));
+  lsp_answer(LSP_REQ_RENAME, V.buf, V.buf->edits, 1, 4, json_root(d), 0);
+  json_free(d);
+  lspui_deliver();
+  check_str("an edit after a two-byte character lands by its units",
+            row_at(0)->chars, "a\xc3\xa9 zzz");
+  check_str("edits sent out of order are all applied", row_at(1)->chars, "zzz y zzz");
+  check("the cursor moves with the edits before it", CUR.cy * 100 + CUR.cx, 106);
+  editor_undo();
+  check_str("and one undo takes them all back", row_at(1)->chars, "x y x");
+  check_str("the first row too", row_at(0)->chars, "a\xc3\xa9 x");
+
+  /* An edit that spans rows. */
+  snprintf(json, sizeof(json),
+           "{\"changes\":{\"file://%s\":["
+           "{\"range\":{\"start\":{\"line\":0,\"character\":4},\"end\":{\"line\":1,\"character\":1}},\"newText\":\"+\"}]}}",
+           real);
+  d = json_parse(json, strlen(json));
+  lsp_answer(LSP_REQ_RENAME, V.buf, V.buf->edits, CUR.cy, CUR.cx, json_root(d), 1);
+  json_free(d);
+  lspui_deliver();
+  check_str("an edit across rows joins them", row_at(0)->chars, "a\xc3\xa9 + y x");
+  check("leaving one row fewer", row_count(), 2);
+
+  free(real);
+  if (chdir(here) != 0) check("back to where the tests started", 0, 1);
+  snprintf(json, sizeof(json), "rm -rf %s", tmpl);
+  if (system(json) != 0) printf("  note  could not remove %s\n", tmpl);
+}
+
 int main(void) {
   test_loop_sources();
   test_wait_key_services_sources();
@@ -4982,6 +5040,7 @@ int main(void) {
   test_grep();
   test_lsp();
   test_lsp_answers();
+  test_lsp_rename_apply();
   test_windows_buffer_closed();
   test_chords();
   test_config_parse();

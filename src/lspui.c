@@ -204,11 +204,39 @@ static struct {
 
   char *text;             /* hover: what to show */
 
+  struct fchange *files;  /* rename: what to change, a file at a time */
+  int nfiles;
+  char *refuse;           /* rename: why it will not be done, when it will not */
+
   struct citem *items;    /* completion: what could go here */
   int nitems;
   int incomplete;         /* the server would say more given more to go on */
   int trigger;            /* asked because this was typed, not Alt-/ */
 } box;
+
+/* One edit a rename asks for: a range, in the server's units until it is
+ * applied, and what goes there. */
+struct fedit {
+  int sl, sc, el, ec;
+  char *text;
+};
+
+/* A file's worth of them. */
+struct fchange {
+  char *path;
+  struct fedit *e;
+  int n;
+};
+
+static void files_free(struct fchange *f, int n) {
+  int i, k;
+  for (i = 0; i < n; i++) {
+    for (k = 0; k < f[i].n; k++) free(f[i].e[k].text);
+    free(f[i].e);
+    free(f[i].path);
+  }
+  free(f);
+}
 
 /* One completion. `start` is where its text replaces from, in the server's
  * units until it is delivered and then in bytes; -1 means "the word before the
@@ -238,6 +266,8 @@ static void box_clear(void) {
   free(box.path);
   free(box.text);
   items_free(box.items, box.nitems);
+  files_free(box.files, box.nfiles);
+  free(box.refuse);
   memset(&box, 0, sizeof(box));
 }
 
@@ -332,6 +362,68 @@ static void read_completions(const struct json *r) {
   box.nitems = n;
 }
 
+/* A list of TextEdits for one file. A file named twice -- the protocol does
+ * not forbid it -- gets both lists. */
+static void add_edits(const char *uri, const struct json *list) {
+  const struct json *k;
+  struct fchange *f;
+  char *path = lsp_uri_to_path(uri);
+  int i;
+  if (path == NULL) {
+    if (box.refuse == NULL) box.refuse = xstrdup("This rename reaches a file molly cannot open.");
+    return;
+  }
+  for (i = 0; i < box.nfiles; i++)
+    if (strcmp(box.files[i].path, path) == 0) break;
+  if (i == box.nfiles) {
+    box.files = xrealloc(box.files, sizeof(*box.files) * (size_t)(box.nfiles + 1));
+    memset(&box.files[i], 0, sizeof(box.files[i]));
+    box.files[i].path = path;
+    box.nfiles++;
+  } else {
+    free(path);
+  }
+  f = &box.files[i];
+  if (list == NULL || list->type != JSON_ARRAY) return;
+  f->e = xrealloc(f->e, sizeof(*f->e) * (size_t)(f->n + list->n));
+  for (k = list->kid; k != NULL; k = k->next) {
+    const struct json *r = json_get(k, "range");
+    const char *t = json_str(json_get(k, "newText"));
+    struct fedit *e = &f->e[f->n];
+    if (r == NULL || t == NULL) continue;
+    e->sl = json_int(json_get(json_get(r, "start"), "line"), 0);
+    e->sc = json_int(json_get(json_get(r, "start"), "character"), 0);
+    e->el = json_int(json_get(json_get(r, "end"), "line"), 0);
+    e->ec = json_int(json_get(json_get(r, "end"), "character"), 0);
+    e->text = xstrdup(t);
+    f->n++;
+  }
+}
+
+/* A WorkspaceEdit: `documentChanges`, a list of edits per document that may
+ * also hold operations on files, or the older `changes`, an object of edit
+ * lists by URI. A rename that would create, move or delete a file is refused
+ * whole: half a rename is worse than none, and molly does not move files. */
+static void read_workspace_edit(const struct json *we) {
+  const struct json *dc = json_get(we, "documentChanges"), *ch, *k;
+  if (dc != NULL && dc->type == JSON_ARRAY) {
+    for (k = dc->kid; k != NULL; k = k->next) {
+      if (json_str(json_get(k, "kind")) != NULL) {
+        free(box.refuse);
+        box.refuse = xstrdup("This rename would create, move or delete files, "
+                             "which molly does not do.");
+        return;
+      }
+      add_edits(json_str(json_get(json_get(k, "textDocument"), "uri")),
+                json_get(k, "edits"));
+    }
+    return;
+  }
+  ch = json_get(we, "changes");
+  if (ch != NULL && ch->type == JSON_OBJECT)
+    for (k = ch->kid; k != NULL; k = k->next) add_edits(k->key, k);
+}
+
 /* Called by lsp.c with an answer; `result` is NULL for an error. */
 void lsp_answer(int kind, struct buffer *b, unsigned edits, int cy, int cx,
                 const struct json *result, int utf8) {
@@ -354,6 +446,9 @@ void lsp_answer(int kind, struct buffer *b, unsigned edits, int cy, int cx,
     box.text = ab.b;
   } else if (kind == LSP_REQ_COMPLETION) {
     read_completions(result);
+  } else if (kind == LSP_REQ_RENAME) {
+    if (result != NULL && result->type == JSON_OBJECT) read_workspace_edit(result);
+    else box.refuse = xstrdup("The language server cannot rename that.");
   }
   ui_request_redraw();
 }
@@ -449,6 +544,177 @@ static void deliver_definition(void) {
   }
   cursor_to(y, x);
   editor_set_status_message("Definition: %s:%d", buf_name(V.buf), CUR.cy + 1);
+}
+
+/* ---- renaming ------------------------------------------------------------ */
+
+static char rename_to[128];   /* the name asked for, for what is said after */
+
+/* Last first: applying an edit moves the text after it, so the edits are
+ * applied from the end of the file back, and every one still to come is
+ * where the server said. */
+static int fedit_cmp(const void *a, const void *b) {
+  const struct fedit *p = a, *q = b;
+  if (p->sl != q->sl) return q->sl < p->sl ? -1 : 1;
+  if (p->sc != q->sc) return q->sc < p->sc ? -1 : 1;
+  return 0;
+}
+
+/* A position from the server in the current buffer, in bytes: a row past
+ * the end is the end of the last row. */
+static void edit_pos(int line, int ch, int utf8, int *y, int *x) {
+  erow *r;
+  if (row_count() == 0) {
+    *y = *x = 0;
+    return;
+  }
+  if (line >= row_count()) {
+    *y = row_count() - 1;
+    *x = row_at(*y)->size;
+    return;
+  }
+  if (line < 0) line = 0;
+  r = row_at(line);
+  *y = line;
+  *x = lsp_units_to_col(r->chars, r->size, ch, utf8);
+}
+
+/* One file's edits, into the current buffer, as one undo step. `track` is a
+ * column on row `track_y` to carry along: where the cursor was, moved by the
+ * edits before it on its row, or to the start of the one it was inside. */
+static int apply_edits(struct fchange *f, int utf8, int track_y, int *track) {
+  int k, n = 0;
+  qsort(f->e, (size_t)f->n, sizeof(*f->e), fedit_cmp);
+  cursors_collapse();
+  B.undo.locked = 1;
+  undo_group_begin();
+  for (k = 0; k < f->n; k++) {
+    struct fedit *e = &f->e[k];
+    int sy, sx, ey, ex, len = (int)strlen(e->text);
+    edit_pos(e->sl, e->sc, utf8, &sy, &sx);
+    edit_pos(e->el, e->ec, utf8, &ey, &ex);
+    if (ey < sy || (ey == sy && ex < sx)) continue;
+    if (track != NULL && sy == track_y && ey == sy && strchr(e->text, '\n') == NULL) {
+      if (ex <= *track) *track += len - (ex - sx);
+      else if (sx <= *track) *track = sx;
+    }
+    CUR.sy = sy;
+    CUR.sx = sx;
+    CUR.cy = ey;
+    CUR.cx = ex;
+    CUR.sel_active = (sy != ey || sx != ex);
+    editor_insert_text(e->text, len);
+    n++;
+  }
+  undo_group_end();
+  CUR.sel_active = 0;
+  return n;
+}
+
+/* A rename's edits, a file at a time: an open file in its buffer, and one
+ * that is not opened into one and left there unsaved -- a rename that wrote
+ * files behind the user's back would be the one edit molly made that undo
+ * could not take back. The user is put back where they were. */
+static void deliver_rename(void) {
+  struct buffer *home = V.buf;
+  int hy = CUR.cy, hx = CUR.cx, i, changes = 0, others = 0, opened = 0;
+  int home_changes = 0;
+
+  if (box.refuse != NULL) {
+    editor_set_status_message("%s", box.refuse);
+    return;
+  }
+  for (i = 0; i < box.nfiles; i++) changes += box.files[i].n;
+  if (changes == 0) {
+    editor_set_status_message("Nothing to rename there.");
+    return;
+  }
+  changes = 0;
+  for (i = 0; i < box.nfiles; i++) {
+    struct fchange *f = &box.files[i];
+    int at = buffer_on(f->path);
+    if (f->n == 0) continue;
+    if (at >= 0) {
+      if (V.buf != buf_at(at)) buf_show(at);
+    } else {
+      char cwd[4096];
+      size_t n;
+      const char *name = f->path;
+      if (getcwd(cwd, sizeof(cwd)) != NULL && (n = strlen(cwd)) > 1 &&
+          strncmp(f->path, cwd, n) == 0 && f->path[n] == '/')
+        name = f->path + n + 1;
+      editor_open_in_new_buffer(xstrdup(name));
+      opened++;
+    }
+    {
+      int n = apply_edits(f, box.utf8, V.buf == home ? hy : -1,
+                          V.buf == home ? &hx : NULL);
+      changes += n;
+      if (V.buf == home) home_changes += n;
+    }
+    if (V.buf != home) others++;
+  }
+  if (V.buf != home) buf_show(buf_index_of(home));
+  cursor_to(hy, hx);
+  /* The other files are what needs saying: they changed where the user is
+   * not looking, and are not saved. Their tabs say which, with a `*`. */
+  (void)opened;
+  if (others > 0)
+    editor_set_status_message("Renamed to %s: %d change%s, %d in %d other file%s, unsaved.",
+                              rename_to, changes, changes == 1 ? "" : "s",
+                              changes - home_changes, others, others == 1 ? "" : "s");
+  else
+    editor_set_status_message("Renamed to %s: %d change%s.", rename_to, changes,
+                              changes == 1 ? "" : "s");
+}
+
+/* Alt-N: ask for the new name of what is under the cursor, then ask the
+ * server what that means everywhere. */
+int lspui_rename(void) {
+  char prompt[200], word[64];
+  char *name;
+  int a, b;
+  erow *r;
+
+  if (!lsp_can(V.buf, LSP_REQ_RENAME)) {
+    char why[160];
+    if (V.buf->lsp_srv > 0)
+      editor_set_status_message("This file's language server cannot rename things.");
+    else {
+      lsp_describe(V.buf, why, sizeof(why));
+      editor_set_status_message("%s", why);
+    }
+    return 0;
+  }
+  word[0] = '\0';
+  if (CUR.cy < row_count()) {
+    r = row_at(CUR.cy);
+    a = b = CUR.cx;
+    while (a > 0 && (isalnum((unsigned char)r->chars[a - 1]) || r->chars[a - 1] == '_' ||
+                     (unsigned char)r->chars[a - 1] >= 0x80)) a--;
+    while (b < r->size && (isalnum((unsigned char)r->chars[b]) || r->chars[b] == '_' ||
+                           (unsigned char)r->chars[b] >= 0x80)) b++;
+    if (b - a > 0 && b - a < (int)sizeof(word)) {
+      memcpy(word, r->chars + a, (size_t)(b - a));
+      word[b - a] = '\0';
+    }
+  }
+  if (word[0] == '\0') {
+    editor_set_status_message("Put the cursor on a name to rename it.");
+    return 0;
+  }
+  snprintf(prompt, sizeof(prompt), "Rename %s to: %%s (ESC to cancel)", word);
+  name = editor_prompt(prompt, NULL);
+  if (name == NULL) return 0;
+  if (name[0] == '\0' || strcmp(name, word) == 0) {
+    free(name);
+    return 0;
+  }
+  snprintf(rename_to, sizeof(rename_to), "%s", name);
+  if (!lsp_ask(V.buf, LSP_REQ_RENAME, CUR.cy, CUR.cx, 0, name))
+    editor_set_status_message("The language server is not ready yet.");
+  free(name);
+  return 0;
 }
 
 /* ---- the hover popup ----------------------------------------------------- */
@@ -897,7 +1163,7 @@ int lspui_key(int c) {
 
 static void comp_ask(int trigger) {
   last_trigger = trigger;
-  lsp_ask(V.buf, LSP_REQ_COMPLETION, CUR.cy, CUR.cx, trigger);
+  lsp_ask(V.buf, LSP_REQ_COMPLETION, CUR.cy, CUR.cx, trigger, NULL);
 }
 
 /* After a key has done what it does. With a list open, the word it edited is
@@ -984,7 +1250,9 @@ void lspui_deliver(void) {
     box_clear();
     return;
   }
-  if (box.kind == LSP_REQ_DEFINITION) {
+  if (box.kind == LSP_REQ_RENAME) {
+    deliver_rename();
+  } else if (box.kind == LSP_REQ_DEFINITION) {
     if (box.path != NULL) deliver_definition();
     else if (box.text != NULL) editor_set_status_message("%s", box.text);
   } else if (box.kind == LSP_REQ_HOVER) {
@@ -999,7 +1267,7 @@ void lspui_deliver(void) {
 /* ---- asking -------------------------------------------------------------- */
 
 static void ask(int kind, const char *what) {
-  if (!lsp_ask(V.buf, kind, CUR.cy, CUR.cx, 0)) {
+  if (!lsp_ask(V.buf, kind, CUR.cy, CUR.cx, 0, NULL)) {
     char why[160];
     if (V.buf->lsp_srv > 0 && !lsp_can(V.buf, kind))
       editor_set_status_message("This file's language server cannot %s.", what);

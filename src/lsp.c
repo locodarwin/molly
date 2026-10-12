@@ -96,7 +96,7 @@ struct server {
   int utf8;                /* columns are bytes, not UTF-16 units */
   int sync;                /* 0 none, 1 full, 2 incremental */
   int save;                /* wants didSave */
-  int hover, definition, completion;
+  int hover, definition, completion, rename;
   char triggers[16];       /* completion trigger characters, the one-byte ones */
 
   char lasterr[160];       /* the last line it wrote to standard error */
@@ -515,9 +515,13 @@ static void send_initialize(struct server *s) {
           "\"hover\":{\"contentFormat\":[\"plaintext\",\"markdown\"]},"
           "\"definition\":{\"linkSupport\":true},"
           "\"completion\":{\"completionItem\":{\"snippetSupport\":false},"
-                         "\"contextSupport\":true}"
+                         "\"contextSupport\":true},"
+          "\"rename\":{\"prepareSupport\":false}"
         "},"
-        "\"workspace\":{\"workspaceFolders\":true,\"configuration\":true}"
+        /* Edits to text only: a rename that wants to create, move or delete
+         * files is declined rather than half done. */
+        "\"workspace\":{\"workspaceFolders\":true,\"configuration\":true,"
+                      "\"workspaceEdit\":{\"documentChanges\":true}}"
       "}}");
   free(uri);
   request(s, "initialize", &ab, LSP_REQ_INIT, NULL);
@@ -922,6 +926,7 @@ static void on_initialized(struct server *s, const struct json *result) {
   s->hover = provided(json_get(caps, "hoverProvider"));
   s->definition = provided(json_get(caps, "definitionProvider"));
   s->completion = provided(json_get(caps, "completionProvider"));
+  s->rename = provided(json_get(caps, "renameProvider"));
   t = json_get(json_get(caps, "completionProvider"), "triggerCharacters");
   if (t != NULL && t->type == JSON_ARRAY) {
     const struct json *k;
@@ -1116,6 +1121,7 @@ int lsp_can(struct buffer *b, int kind) {
   case LSP_REQ_DEFINITION: return s->definition;
   case LSP_REQ_HOVER: return s->hover;
   case LSP_REQ_COMPLETION: return s->completion;
+  case LSP_REQ_RENAME: return s->rename;
   }
   return 0;
 }
@@ -1130,12 +1136,16 @@ int lsp_is_trigger(struct buffer *b, int c) {
 }
 
 /* Ask about the position (cy, cx) in `b`. Returns 1 when the question went,
- * 0 when there is nobody to ask. The answer arrives through lsp_answer(). */
-int lsp_ask(struct buffer *b, int kind, int cy, int cx, int trigger) {
+ * 0 when there is nobody to ask. The answer arrives through lsp_answer().
+ * `trigger` is the character that asked for a completion, 0 for a key; `arg`
+ * is the new name for a rename, NULL otherwise. */
+int lsp_ask(struct buffer *b, int kind, int cy, int cx, int trigger,
+            const char *arg) {
   static const char *const methods[] = {
     [LSP_REQ_DEFINITION] = "textDocument/definition",
     [LSP_REQ_HOVER] = "textDocument/hover",
     [LSP_REQ_COMPLETION] = "textDocument/completion",
+    [LSP_REQ_RENAME] = "textDocument/rename",
   };
   struct server *s = ready_for(b);
   struct abuf ab = ABUF_INIT;
@@ -1159,6 +1169,9 @@ int lsp_ask(struct buffer *b, int kind, int cy, int cx, int trigger) {
                 trigger);
     else
       ab_append(&ab, ",\"context\":{\"triggerKind\":1}", 28);
+  } else if (kind == LSP_REQ_RENAME && arg != NULL) {
+    ab_append(&ab, ",\"newName\":", 11);
+    json_put_str(&ab, arg, (int)strlen(arg));
   }
   ab_append(&ab, "}", 1);
   request(s, methods[kind], &ab, kind, b);

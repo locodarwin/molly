@@ -2,8 +2,7 @@
  File  Edit  Search  View  Go  Window  Help
 alpha
 be╔═══════════════════════════ Keyboard Reference ═══════════════════════════╗
-ga║   Ctrl-Up        Cursor above                                            ║
-~ ║   Esc            Back to one curso    VIEW                               ║
+ga║   Esc            Back to one curso    VIEW                               ║
 ~ ║   Alt-Shift-←↑→↓ Block selection        F5             Redraw screen     ║
 ~ ║   Alt+drag       Block selection        Ctrl-U         Line numbers      ║
 ~ ║                                         Alt-M          Show the menu bar ║
@@ -18,6 +17,7 @@ ga║   Ctrl-Up        Cursor above                                            �
 ~ ║                                         Alt-Left       Back from there   ║
 ~ ║                                         Alt-K          Info at cursor    ║
 ~ ║                                         Alt-/          Complete word     ║
+~ ║                                         Alt-N          Rename symbol     ║
 ~ ║ In prompts: Enter accepts   Esc cancels                                  ║
 ~ ║ PgUp/PgDn scroll   any other key returns                                 ║
 ~ ╚══════════════════════════════════════════════════════════════════════════╝

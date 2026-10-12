@@ -683,6 +683,7 @@ struct json_doc;
 #define LSP_REQ_HOVER      2
 #define LSP_REQ_COMPLETION 3
 #define LSP_REQ_SHUTDOWN   4
+#define LSP_REQ_RENAME     5
 
 /* A piece of a row that a diagnostic covers: bytes [x0, x1). See lspui.c. */
 struct diag_span {
@@ -1107,7 +1108,8 @@ void loop_remove(int id);
 
 /* lsp.c */
 char *lsp_path_to_uri(const char *path);
-int lsp_ask(struct buffer *b, int kind, int cy, int cx, int trigger);
+int lsp_ask(struct buffer *b, int kind, int cy, int cx, int trigger,
+            const char *arg);
 int lsp_can(struct buffer *b, int kind);
 int lsp_is_trigger(struct buffer *b, int c);
 char *lsp_uri_to_path(const char *uri);
@@ -1132,6 +1134,7 @@ int lspui_can_back(void);
 int lspui_cursor_message(char *dst, size_t n);
 int lspui_complete(void);
 int lspui_definition(void);
+int lspui_rename(void);
 int lspui_hover(void);
 int lspui_key(int c);
 int lspui_place(int w, int h, int *px, int *py);

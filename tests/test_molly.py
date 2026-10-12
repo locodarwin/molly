@@ -5327,6 +5327,92 @@ def test_terminal(tmpdir):
         os.chdir(here)
 
 
+def test_lsp_rename(tmpdir):
+    """Alt-N: rename what is under the cursor, everywhere the server says.
+
+    The fake server renames every whole word, in the open documents and in the
+    .c files of the working directory. What is checked: the prompt, the edits
+    in the file on screen and in one that was not open, that each file's
+    change is one undo step, that nothing is saved behind the user's back, and
+    the ways a rename is refused.
+    """
+    print("\nlanguage server: rename")
+
+    work = os.path.join(tmpdir, "lsprename")
+    os.makedirs(work, exist_ok=True)
+    rc = os.path.join(work, "lsprc")
+    with open(rc, "w") as fh:
+        fh.write("[syntax c]\nlanguage server = python3 -I %s\n" % FAKE_LSP)
+    RENAME, DOWN, RIGHT, ESC = "\x1bn", "\x1b[B", "\x1b[C", "\x1b"
+    NEXT_BUF = "\x1b[6;5~"
+    WAIT = 2.0
+    to_word = [WAIT, DOWN] + [RIGHT] * 9
+
+    def fresh():
+        with open("main.c", "w") as fh:
+            fh.write("int widget = 1;\nint y = widget + widget;\n")
+        with open("other.c", "w") as fh:
+            fh.write("extern int widget;\n")
+
+    def session(keys, env=None):
+        e = {"MOLLY_CONFIG": rc, "MOLLY_LSP": ""}
+        e.update(env or {})
+        scr = Screen(12, 72)
+        scr.feed(run([MOLLY, "main.c"], keys, rows=12, cols=72, env=e))
+        return scr
+
+    def disk(name):
+        with open(name) as fh:
+            return fh.read()
+
+    here = os.getcwd()
+    os.chdir(work)
+    try:
+        fresh()
+        scr = session(to_word + [RENAME, 0.3])
+        check("Alt-N asks for the new name, naming the old",
+              "Rename widget to:" in scr.text()[11], True)
+        scr = session(to_word + [RENAME, 0.3, "gadget", "\r", 1.0])
+        text = scr.text()
+        # Two buffers now, so the tab bar has taken row 1.
+        check("every use in the file is renamed",
+              [r.rstrip() for r in text[2:4]], ["int gadget = 1;", "int y = gadget + gadget;"])
+        check("and the message counts them, and the other file",
+              "Renamed to gadget: 4 changes, 1 in 1 other file, unsaved." in text[11], True)
+        check("the cursor stays on the name", scr.cy * 100 + scr.cx, 308)
+        check("the other file is opened, unsaved", "other.c*" in text[1], True)
+        check("and nothing was written to disk", disk("other.c"), "extern int widget;\n")
+        scr = session(to_word + [RENAME, 0.3, "gadget", "\r", 1.0, NEXT_BUF, 0.3])
+        check("the other file has its rename", scr.text()[2].rstrip(), "extern int gadget;")
+        scr = session(to_word + [RENAME, 0.3, "gadget", "\r", 1.0, "\x1a", 0.3])
+        check("one Ctrl-Z takes the file's rename back whole",
+              [r.rstrip() for r in scr.text()[2:4]],
+              ["int widget = 1;", "int y = widget + widget;"])
+
+        fresh()
+        scr = session(to_word + [RENAME, 0.3, "gadget", "\r", 1.0],
+                      env={"FAKE_LSP_DOCCHANGES": "1"})
+        check("documentChanges are applied as changes are",
+              scr.text()[3].rstrip(), "int y = gadget + gadget;")
+        scr = session(to_word + [RENAME, 0.3, "gadget", "\r", 1.0],
+                      env={"FAKE_LSP_MOVE": "1"})
+        check("a rename that would move a file is refused whole",
+              "which molly does not do" in scr.text()[11]
+              and "widget" in scr.text()[2], True)
+        scr = session(to_word + [RENAME, 0.3, "gadget", "\r", 1.0],
+                      env={"FAKE_LSP_NORENAME": "1"})
+        check("a server that says no is said to",
+              "The language server cannot rename that." in scr.text()[11], True)
+        scr = session(to_word + [RENAME, 0.3, "gadget", ESC, 0.5])
+        # One buffer, no tab bar: the second line is row 2.
+        check("Esc at the prompt renames nothing", "widget" in scr.text()[2], True)
+        scr = session([WAIT, DOWN, DOWN, RENAME, 0.3])
+        check("off a name, it says to put the cursor on one",
+              "Put the cursor on a name to rename it." in scr.text()[11], True)
+    finally:
+        os.chdir(here)
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -5397,6 +5483,7 @@ def main():
         test_lsp_questions(tmpdir)
         test_lsp_complete(tmpdir)
         test_terminal(tmpdir)
+        test_lsp_rename(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

@@ -28,6 +28,12 @@ server the same way it asks for a working one:
   FAKE_LSP_ASK=1          ask the client questions of its own once ready
   FAKE_LSP_LINKS=1        answer definitions with LocationLinks
   FAKE_LSP_SLOW=seconds   wait this long before answering a request
+  FAKE_LSP_DOCCHANGES=1   answer renames with documentChanges, not changes
+  FAKE_LSP_MOVE=1         make a rename also move a file, which molly refuses
+  FAKE_LSP_NORENAME=1     answer renames with an error
+
+Renames change every whole-word occurrence, in the open documents and in the
+files in the working directory that are not open.
 """
 
 import json
@@ -146,6 +152,41 @@ def find_definition(word):
     return None
 
 
+def word_edits(text, word, new):
+    out = []
+    for n, s in enumerate(text.split("\n")):
+        for m in re.finditer(r"\b%s\b" % re.escape(word), s):
+            out.append({"range": {"start": {"line": n, "character": units(s[:m.start()])},
+                                  "end": {"line": n, "character": units(s[:m.end()])}},
+                        "newText": new})
+    return out
+
+
+def rename(word, new):
+    if os.environ.get("FAKE_LSP_NORENAME"):
+        raise ValueError("cannot rename that")
+    by_uri = {}
+    for uri, text in docs.items():
+        e = word_edits(text, word, new)
+        if e:
+            by_uri[uri] = e
+    for name in sorted(os.listdir(".")):
+        uri = "file://" + os.path.abspath(name)
+        if uri in docs or not os.path.isfile(name) or not name.endswith(".c"):
+            continue
+        with open(name, encoding="utf-8") as f:
+            e = word_edits(f.read(), word, new)
+        if e:
+            by_uri[uri] = e
+    if os.environ.get("FAKE_LSP_DOCCHANGES") or os.environ.get("FAKE_LSP_MOVE"):
+        dc = [{"textDocument": {"uri": u, "version": None}, "edits": e}
+              for u, e in by_uri.items()]
+        if os.environ.get("FAKE_LSP_MOVE"):
+            dc.append({"kind": "rename", "oldUri": "file:///a", "newUri": "file:///b"})
+        return {"documentChanges": dc}
+    return {"changes": by_uri}
+
+
 def answer(msg):
     method = msg["method"]
     p = msg.get("params", {})
@@ -164,6 +205,8 @@ def answer(msg):
             return [{"targetUri": loc["uri"], "targetRange": loc["range"],
                      "targetSelectionRange": loc["range"]}]
         return loc
+    if method == "textDocument/rename":
+        return rename(word, p["newName"]) if word else None
     if method == "textDocument/hover":
         if not word:
             return None
@@ -216,6 +259,7 @@ def main():
                     "hoverProvider": True,
                     "definitionProvider": True,
                     "completionProvider": {"triggerCharacters": [".", "->"]},
+                    "renameProvider": True,
                 },
                 "serverInfo": {"name": "fake"}}})
         elif method == "initialized":
@@ -243,7 +287,11 @@ def main():
         elif method == "textDocument/didClose":
             docs.pop(msg["params"]["textDocument"]["uri"], None)
         elif "id" in msg and method:
-            send({"jsonrpc": "2.0", "id": msg["id"], "result": answer(msg)})
+            try:
+                send({"jsonrpc": "2.0", "id": msg["id"], "result": answer(msg)})
+            except ValueError as e:
+                send({"jsonrpc": "2.0", "id": msg["id"],
+                      "error": {"code": -32803, "message": str(e)}})
 
 
 main()

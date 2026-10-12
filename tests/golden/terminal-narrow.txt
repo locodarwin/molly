@@ -1,0 +1,42 @@
+--- screen ---
+ F E S V G W H
+‹
+alpha
+beta
+gamma
+~
+~
+~
+[1/2] sample.txt - 3
+orange white on blue
+wide 中文 box ┌──┐
+$
+[2/2] terminal: fake
+HELP: Ctrl-S = save
+--- attrs ---
+gggggggggggggggggggg
+gggggggggggggggggggg
+
+
+
+g
+g
+g
+gggggggggggggggggggg
+gggggg.ggggggggggggg
+
+
+RRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-19 7/0
+2: 0-19 7/0
+6: 0-0 8/-
+7: 0-0 8/-
+8: 0-0 8/-
+9: 0-19 7/8
+10: 0-5 3/-  7-19 7/4
+--- modifiers ---
+1: 1-1 u  3-3 u  5-5 u  7-7 u  9-9 u  11-11 u  13-13 u
+--- cursor ---
+row 12 col 3 visible 1

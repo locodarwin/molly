@@ -99,7 +99,9 @@ static const struct menu_item go_items[] = {
  * which. N and P for the pair that walks them, as in the Go menu. C for Close,
  * and O for Only, which is the whole of what is left. */
 static const struct menu_item window_items[] = {
-  {"window.split-right", 6}, {"window.split-below", 6}, SEP,
+  {"window.split-right", 6}, {"window.split-below", 6},
+  /* T, which nothing else in this menu starts with. */
+  {"terminal.toggle", 0}, SEP,
   {"window.next", 0}, {"window.prev", 0}, SEP,
   {"window.close", 0}, {"window.only", 0}, SEP,
   /* L, I, U and D: R is Split right's, so Right takes the I after it. */
@@ -786,6 +788,6 @@ int menu_open(int index) {
    * drop-down covered has to come back either way. */
   screen_force_repaint();
 
-  if (chosen != NULL && chosen->run != NULL) return chosen->run();
+  if (chosen != NULL && chosen->run != NULL) return cmd_run(chosen);
   return 0;
 }

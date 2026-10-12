@@ -522,6 +522,10 @@ static int editor_write_rows(int fd, size_t *total) {
 /* A rename is only durable once the directory entry itself is on disk. */
 
 void editor_save(void) {
+  if (B.tty != NULL) {
+    editor_set_status_message("A terminal is not a file to save.");
+    return;
+  }
   if (B.filename == NULL) {
     char *name = editor_prompt("Save as: %s (ESC to cancel)", NULL);
     if (name == NULL) {

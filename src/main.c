@@ -10,6 +10,8 @@ void editor_cleanup(void) {
    * clangd running behind it. Before the buffers, whose frees would otherwise
    * be telling servers about each one on the way out. */
   lsp_cleanup();
+  /* And every terminal's shell, for the same reason. */
+  tty_cleanup();
   free(E.clipboard);
   E.clipboard = NULL;
   E.clipsize = 0;
@@ -260,6 +262,8 @@ int main(int argc, char *argv[]) {
     /* A language server's answer, if one has come and is still about where
      * the cursor is. Here and not where it arrives: see lspui_deliver. */
     lspui_deliver();
+    /* Terminals whose shells have exited close here, for the same reason. */
+    tty_tidy();
     editor_refresh_screen();
   }
 

@@ -5200,6 +5200,133 @@ def test_lsp_complete(tmpdir):
         os.chdir(here)
 
 
+def test_terminal(tmpdir):
+    """Alt-T: a shell in a window, and the keys between it and molly.
+
+    The emulator is unit-tested by the sequence; what is here is the whole
+    loop with a real /bin/sh on a real pty: the window it opens in, what is
+    typed reaching the shell and what it prints reaching the screen, the ways
+    back out, the scrollback, a resize the program hears about, paste, the
+    commands it refuses, and what quitting does while something is running.
+    PS1 is pinned and ENV emptied so that dash and bash draw the same prompt.
+    """
+    print("\nterminal: a shell in a window")
+
+    work = os.path.join(tmpdir, "termwork")
+    os.makedirs(work, exist_ok=True)
+    TERMINAL, F9 = "\x1bt", "\x1b[20~"
+    SH_PGUP, SH_PGDN = "\x1b[5;2~", "\x1b[6;2~"
+    PALETTE = "\x00"
+    WAIT = 0.6
+
+    def session(keys, rows=16, cols=60, text="hello\n", status=False, env=None):
+        with open("f.txt", "w") as fh:
+            fh.write(text)
+        e = {"SHELL": "/bin/sh", "PS1": "$ ", "ENV": ""}
+        e.update(env or {})
+        got = run([MOLLY, "f.txt"], keys, rows=rows, cols=cols, env=e, status=status)
+        out = got[0] if status else got
+        scr = Screen(rows, cols)
+        scr.feed(out)
+        return (scr, got[1]) if status else scr
+
+    def joined(scr):
+        return "\n".join(scr.text())
+
+    here = os.getcwd()
+    os.chdir(work)
+    try:
+        scr = session([TERMINAL, WAIT])
+        text = scr.text()
+        check("Alt-T opens a terminal in a window below",
+              any(r.startswith("[2/2] terminal: sh") for r in text), True)
+        check("a third of the height", sum(1 for r in text if r.startswith("[")), 2)
+        check("with the shell's prompt in it", "$" in joined(scr), True)
+
+        scr = session([TERMINAL, WAIT, "echo one two\r", WAIT])
+        check("what is typed reaches the shell, and its output the screen",
+              "one two" in [r.strip() for r in scr.text()], True)
+        scr = session([TERMINAL, WAIT, "printf '\\033[31mred\\033[m\\n'\r", WAIT])
+        row = [i for i, r in enumerate(scr.text()) if r.strip() == "red"]
+        check("in the colours it asks for",
+              bool(row) and scr.colors[row[0]][0][0] == 1, True)
+
+        scr = session([TERMINAL, WAIT, TERMINAL, "X", "\x13", 0.3])
+        with open("f.txt") as fh:
+            check("Alt-T again goes back to the file, whose keys are its own",
+                  fh.read(), "Xhello\n")
+        scr = session([TERMINAL, WAIT, TERMINAL, TERMINAL, "echo back\r", WAIT])
+        check("and once more returns to the terminal",
+              "back" in [r.strip() for r in scr.text()], True)
+
+        scr = session([TERMINAL, WAIT, "exit\r", 1.0])
+        check("exit closes the terminal and its window",
+              "terminal:" in joined(scr), False)
+        check("and says so", "Terminal closed." in scr.text()[15], True)
+        scr = session([TERMINAL, WAIT, "exit 3\r", 1.0])
+        check("with the status when it was not 0",
+              "the shell exited 3." in scr.text()[15], True)
+
+        # Scrollback: a hundred lines through a terminal a few rows tall.
+        scr = session([TERMINAL, WAIT, "seq 1 100\r", WAIT, SH_PGUP, 0.3])
+        text = scr.text()
+        check("Shift-PgUp goes back into the scrollback",
+              any("lines back" in r for r in text), True)
+        check("and shows what scrolled away", "97" in [r.strip() for r in text], True)
+        scr = session([TERMINAL, WAIT, "seq 1 100\r", WAIT, SH_PGUP, SH_PGDN, 0.3])
+        check("Shift-PgDn comes forward again",
+              any("lines back" in r for r in scr.text()), False)
+        scr = session([TERMINAL, WAIT, "seq 1 100\r", WAIT, SH_PGUP, "echo x\r", WAIT])
+        check("and typing goes back to the bottom",
+              any("lines back" in r for r in scr.text()), False)
+
+        # The program is told the window's size, and told again on a resize.
+        scr = session([TERMINAL, WAIT, "\x1bt", F9, WAIT, "stty size\r", WAIT])
+        # Sixteen rows less the menu bar, the tab bar, the status bar and the
+        # message line.
+        check("the program is told the window's size",
+              "12 60" in [r.strip() for r in scr.text()], True)
+        scr2 = Screen(20, 70)
+        scr2.feed(run([MOLLY, "f.txt"], [TERMINAL, WAIT, "\x1bt", F9, WAIT, (20, 70),
+                                         WAIT, "stty size\r", WAIT],
+                      rows=16, cols=60, env={"SHELL": "/bin/sh", "PS1": "$ ", "ENV": ""}))
+        check("and again when the window changes size",
+              "16 70" in [r.strip() for r in scr2.text()], True)
+
+        # Ctrl-C is the shell's: it interrupts what is running.
+        scr = session([TERMINAL, WAIT, "sleep 30\r", WAIT, "\x03", WAIT, "echo after\r", WAIT])
+        check("Ctrl-C reaches the program running in it",
+              "after" in [r.strip() for r in scr.text()], True)
+
+        # Paste, from the palette, goes to the shell as typing.
+        scr = session(["\x1b[1;2F", "\x03", TERMINAL, WAIT, PALETTE, "paste", "\r", "\r", WAIT],
+                      text="echo pasted\n")
+        check("paste sends the clipboard to the shell",
+              "pasted" in [r.strip() for r in scr.text()], True)
+        scr = session([TERMINAL, WAIT, PALETTE, "insert output", "\r", 0.3])
+        check("a command that edits text refuses",
+              "A terminal is not text to edit." in scr.text()[15], True)
+        scr = session([TERMINAL, WAIT, PALETTE, "save", "\r", 0.3])
+        check("and so does saving",
+              "A terminal is not a file to save." in scr.text()[15], True)
+
+        # Quitting with something running asks first.
+        scr = session([TERMINAL, WAIT, "sleep 30\r", WAIT, PALETTE, "quit", "\r", 0.3])
+        check("quitting while a program runs asks",
+              "still running in a terminal" in scr.text()[15], True)
+        scr, st = session([TERMINAL, WAIT, "sleep 30\r", WAIT, PALETTE, "quit", "\r",
+                           0.3, "n", "\r", 0.3], status=True)
+        check("n keeps molly running", os.WIFSIGNALED(st), True)
+        scr, st = session([TERMINAL, WAIT, "sleep 30\r", WAIT, PALETTE, "quit", "\r",
+                           0.3, "y", "\r", 1.0], status=True)
+        check("y quits", os.WIFEXITED(st) and os.WEXITSTATUS(st) == 0, True)
+        scr, st = session([TERMINAL, WAIT, "\x11", 1.0], status=True)
+        check("at a prompt there is nothing to ask about",
+              os.WIFEXITED(st) and os.WEXITSTATUS(st) == 0, True)
+    finally:
+        os.chdir(here)
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -5269,6 +5396,7 @@ def main():
         test_lsp(tmpdir)
         test_lsp_questions(tmpdir)
         test_lsp_complete(tmpdir)
+        test_terminal(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

@@ -332,6 +332,10 @@ struct buffer {
   char *lsp_name;
   struct diag *diag;   /* sorted by start */
   int ndiag;
+
+  /* This buffer is an integrated terminal, and its text is the terminal's
+   * screen rather than rows. See tty.c. */
+  struct tty *tty;
 };
 
 /* One window onto a buffer. */
@@ -713,6 +717,7 @@ struct vt_cell {
 #define VT_MODE_ALT_SCREEN      3
 
 struct vt;
+struct tty;
 
 /* --- the event loop --------------------------------------------------------
  *
@@ -744,6 +749,8 @@ typedef void (*loop_handler)(void *user);
 
 /* Flags on a command. */
 #define CMD_MOVEMENT 0x01  /* a shifted press of this extends the selection */
+#define CMD_EDITS    0x04  /* changes the text: refused on a terminal's buffer,
+                            * which has none -- see cmd_run() */
 #define CMD_HIDDEN   0x02  /* not offered in the command palette: mechanism, not an
                             * action -- the seven menu openers and the palette
                             * itself, which has no business listing itself */
@@ -982,6 +989,7 @@ void write_recovery_file(void);
 /* cmd.c */
 const struct command *cmd_at(int i);
 const struct command *cmd_find_by_name(const char *name);
+int cmd_run(const struct command *c);
 const struct command *keymap_lookup(int key);
 int chord_parse(const char *s);
 int cmd_count(void);
@@ -1140,6 +1148,22 @@ unsigned char lspui_severity_role(int sev);
 void lspui_counts(const struct buffer *b, int *errors, int *warnings);
 void lspui_restart(void);
 void lspui_status(void);
+
+/* tty.c */
+int tty_busy(const struct tty *t);
+int tty_busy_count(void);
+int tty_cursor(int *sy, int *sx);
+int tty_key(int c);
+int tty_open_here(void);
+int tty_toggle(void);
+void tty_cleanup(void);
+void tty_draw(void);
+void tty_free(struct tty *t);
+void tty_layout(void);
+void tty_mouse(const struct mouse_event *ev);
+void tty_paste(const char *s, int len);
+void tty_status(char *dst, size_t n);
+void tty_tidy(void);
 
 /* main.c */
 void editor_cleanup(void);
@@ -1362,6 +1386,7 @@ int window_index_of(const struct view *v);
 int window_mouse(const struct layer *self, const struct mouse_event *ev);
 int window_move_border(int dx, int dy);
 int window_split(int kind);
+int window_split_share(int kind, int share);
 struct view *view_select(struct view *v);
 struct view *window_view_at(int i);
 void window_cleanup(void);

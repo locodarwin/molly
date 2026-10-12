@@ -48,7 +48,7 @@ static int last_wscols;
  * 3-column terminal never asks the row renderer to fit text into a
  * non-positive width. */
 int screen_gutter_width(void) {
-  if (!V.linenum) return 0;
+  if (!V.linenum || V.buf->tty != NULL) return 0;
   int digits = 1, n = row_count();
   while (n >= 10) { n /= 10; digits++; }
   int w = digits + 3;
@@ -203,6 +203,10 @@ void editor_draw_text_row(int y, erow *row, const struct drow *d,
  * beside, are both changes to the layout rather than to this function. */
 void screen_draw_text_area(void) {
   int y;
+  if (V.buf->tty != NULL) {
+    tty_draw();
+    return;
+  }
   int gw = V.gutter_w;
   int text_cols = TEXT_COLS();
   int x0 = V.screenx, y0 = V.screeny;
@@ -262,6 +266,23 @@ void screen_draw_status_bar(int focused) {
    * bar by answering the question the colours raise: when a file is not
    * highlighted, the useful thing to know is whether molly failed to recognise
    * it or highlighting is off. */
+  if (B.tty != NULL) {
+    /* A terminal has no lines to count or cursor to place: its name, which
+     * the program in it may have set, and what it is doing. */
+    grid_role(focused ? ROLE_STATUS : ROLE_STATUS_UNFOCUSED);
+    grid_fill(y, x, w, ' ');
+    {
+      int len = snprintf(status, sizeof(status), "%s%.40s", which, buf_name(V.buf));
+      int rlen;
+      tty_status(rstatus, sizeof(rstatus));
+      rlen = (int)strlen(rstatus);
+      if (len > w) len = w;
+      grid_puts(y, x, status, len);
+      if (w - len > rlen) grid_puts(y, x + w - rlen, rstatus, rlen);
+    }
+    grid_role(ROLE_TEXT);
+    return;
+  }
   char lang[24] = "";
   if (V.syntax && B.syn != NULL)
     snprintf(lang, sizeof(lang), " [%s]", syntax_name(B.syn));
@@ -425,6 +446,11 @@ static int alt_press_row, alt_press_rx;
  * same whether there is one window or six. */
 void screen_text_mouse(const struct mouse_event *ev) {
   int drow, filerow, rcol;
+
+  if (V.buf->tty != NULL) {
+    tty_mouse(ev);
+    return;
+  }
 
   if (ev->type == MOUSE_WHEEL_UP || ev->type == MOUSE_WHEEL_DOWN) {
     int step = (ev->type == MOUSE_WHEEL_UP) ? -3 : 3;
@@ -590,6 +616,9 @@ void screen_sync_size(void) {
   /* Share the terminal out between the windows, which is also where each view
    * learns its own size and its own gutter width. */
   window_layout();
+  /* Each terminal is told the size of the window showing it, which is only
+   * known once the windows have their sizes. */
+  tty_layout();
   screen_window_area(&wx, &wy, &ww, &wh);
   /* A size change drops the grid's contents, so it repaints in full by itself. */
   grid_resize(wy + wh + chrome_rows_below(), ww);
@@ -614,9 +643,16 @@ void editor_refresh_screen(void) {
   /* The text cursor goes where the cursor in the buffer is -- unless something above
    * claimed it, which an input field does: while a prompt is open the cursor belongs
    * in the prompt, not back in the text behind it. */
-  if (!grid_cursor_claimed())
-    grid_cursor_to(V.screeny + drow_of_cursor(&CUR) - V.drowoff,
-                   V.screenx + (drow_cursor_col(&CUR) - V.coloff) + V.gutter_w);
+  if (!grid_cursor_claimed()) {
+    int ty, tx;
+    if (V.buf->tty == NULL)
+      grid_cursor_to(V.screeny + drow_of_cursor(&CUR) - V.drowoff,
+                     V.screenx + (drow_cursor_col(&CUR) - V.coloff) + V.gutter_w);
+    else if (tty_cursor(&ty, &tx))
+      grid_cursor_to(ty, tx);
+    else
+      grid_cursor_hide();
+  }
   grid_flush();
 }
 

@@ -208,7 +208,11 @@ void window_move_focus(int delta) {
  * undone by the user rather than by the editor. The message says which way it
  * would not fit, because "not enough room" with two directions available tells
  * the user nothing about which one to try. */
-int window_split(int kind) {
+int window_split(int kind) { return window_split_share(kind, WIN_FRAC_HALF); }
+
+/* A split whose new window takes `share` of the space, of WIN_FRAC_ONE: half
+ * for the Window menu's splits, a third for a terminal. */
+int window_split_share(int kind, int share) {
   struct window *cur = current_leaf();
   struct window *node, *leaf, *parent;
   struct view *v;
@@ -243,7 +247,7 @@ int window_split(int kind) {
   leaf = win_leaf(v);
 
   node->kind = kind;
-  node->frac = WIN_FRAC_HALF;
+  node->frac = WIN_FRAC_ONE - share;
   node->parent = parent;
   node->kid[0] = cur;
   node->kid[1] = leaf;

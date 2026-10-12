@@ -701,6 +701,22 @@ def main():
     check("lsp-complete-256", comp_keys, rows=10, cols=50, files=comp_files,
           args=["sample.c"], env=dict(lsp_env, TERM="xterm-256color"))
     # Room for one item under the word: the list scrolls in a box of three.
+    # Alt-T: the integrated terminal, a third of the height, under the file.
+    # Not a real shell, whose prompt is the machine's, but tests/fake_shell.sh,
+    # which prints a fixed screen: bold, reverse, the sixteen colours and the
+    # 256 (orange, which sixteen colours bring down to yellow), a wide
+    # character and DEC line drawing.
+    shell_env = {"SHELL": os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                       "fake_shell.sh")}
+    check("terminal", ["\x1bt", 0.6], rows=20, cols=50,
+          files={"sample.txt": THREE_LINES}, env=shell_env)
+    check("terminal-256", ["\x1bt", 0.6], rows=20, cols=50,
+          files={"sample.txt": THREE_LINES},
+          env=dict(shell_env, TERM="xterm-256color"))
+    # Narrower than the fake shell's lines, which are cut at the window's edge
+    # rather than wrapped: the program was told the width and wrote anyway.
+    check("terminal-narrow", ["\x1bt", 0.6], rows=14, cols=20,
+          files={"sample.txt": THREE_LINES}, env=shell_env)
     check("lsp-complete-narrow", comp_keys, rows=8, cols=16, files=comp_files,
           args=["sample.c"], env=lsp_env)
 

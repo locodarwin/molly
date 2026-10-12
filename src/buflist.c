@@ -128,6 +128,9 @@ static void buf_free(struct buffer *b) {
   /* First, while the buffer is whole: its server is told it has closed, and
    * anything still asked about it is forgotten. */
   lsp_buffer_closed(b);
+  /* Its program goes with it. */
+  tty_free(b->tty);
+  b->tty = NULL;
   V.buf = b;
   editor_free_rows();
   editor_free_undo_redo();

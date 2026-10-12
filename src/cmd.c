@@ -89,6 +89,25 @@ static int cmd_cursor_one(void) {
 }
 static int cursors_several(void) { return V.ncursors > 1; }
 
+/* Ask before killing a program that is running in a terminal. "a build"
+ * because that is what is usually there, and because what the process is
+ * called would take a /proc walk to say. */
+static int confirm_busy_terminals(int n) {
+  char prompt[128];
+  char *ans;
+  snprintf(prompt, sizeof(prompt),
+           "%s still running in %s. Stop %s? (y/N): %%s",
+           n == 1 ? "A program is" : "Programs are",
+           n == 1 ? "a terminal" : "terminals", n == 1 ? "it" : "them");
+  ans = editor_prompt(prompt, NULL);
+  if (ans == NULL) return 0;
+  {
+    int yes = (ans[0] == 'y' || ans[0] == 'Y');
+    free(ans);
+    return yes;
+  }
+}
+
 static int cmd_quit(void) {
   /* Every buffer, not the current one. The roadmap's warning about this feature
    * was that every "are you sure?" multiplies, and this is the first one: quit
@@ -111,6 +130,8 @@ static int cmd_quit(void) {
       }
     }
   }
+  if (tty_busy_count() > 0 && !confirm_busy_terminals(tty_busy_count()))
+    return CMD_KEEP_SELECTION;
   write_all(STDOUT_FILENO, "\x1b[2J", 4);
   write_all(STDOUT_FILENO, "\x1b[H", 3);
   /* Every buffer's recovery file, for the same reason: leaving one behind means
@@ -165,6 +186,8 @@ static int cmd_new(void) {
 static int close_warned_id = -1;
 
 static int cmd_close(void) {
+  if (B.tty != NULL && tty_busy(B.tty) && !confirm_busy_terminals(1))
+    return CMD_KEEP_SELECTION;
   if (B.dirty && close_warned_id != B.id) {
     editor_set_status_message(
         "%s has unsaved changes. Press again to close it anyway.",
@@ -284,6 +307,8 @@ static int cmd_grep_next(void) { grep_jump(1); return 0; }
 static int cmd_grep_prev(void) { grep_jump(-1); return 0; }
 static int have_grep_results(void) { return grep_result_count() > 0; }
 static int cmd_goto_line(void) { editor_goto_line(); return 0; }
+static int cmd_terminal(void) { return tty_toggle(); }
+static int cmd_terminal_new(void) { tty_open_here(); return 0; }
 static int cmd_problem_next(void) { lspui_problem_jump(1); return 0; }
 static int cmd_problem_prev(void) { lspui_problem_jump(-1); return 0; }
 static int have_problems(void) { return B.ndiag > 0; }
@@ -727,7 +752,7 @@ static const struct command commands[] = {
    .help = "Info at cursor", .group = "CODE", .run = cmd_hover,
    .enabled = can_hover},
   {.name = "code.complete", .label = "Complete word",
-   .help = "Complete word", .group = "CODE", .run = cmd_complete,
+   .help = "Complete word", .group = "CODE", .flags = CMD_EDITS, .run = cmd_complete,
    .enabled = can_complete},
   {.name = "lsp.status", .label = "Language server status",
    .run = cmd_lsp_status},
@@ -735,14 +760,14 @@ static const struct command commands[] = {
    .run = cmd_lsp_restart},
 
   {.name = "edit.newline", .label = "Insert line",
-   .help = "Insert new line", .group = "EDITING", .run = cmd_newline},
+   .help = "Insert new line", .group = "EDITING", .flags = CMD_EDITS, .run = cmd_newline},
   {.name = "edit.delete-forward", .label = "Delete",
-   .help = "Delete at cursor", .group = "EDITING", .run = cmd_delete_forward},
-  {.name = "edit.delete-back", .label = "Backspace", .run = cmd_delete_back},
+   .help = "Delete at cursor", .group = "EDITING", .flags = CMD_EDITS, .run = cmd_delete_forward},
+  {.name = "edit.delete-back", .label = "Backspace", .flags = CMD_EDITS, .run = cmd_delete_back},
   {.name = "edit.indent", .label = "Indent",
-   .help = "Indent the lines", .group = "EDITING", .run = cmd_indent},
+   .help = "Indent the lines", .group = "EDITING", .flags = CMD_EDITS, .run = cmd_indent},
   {.name = "edit.dedent", .label = "Dedent",
-   .help = "Dedent the lines", .group = "EDITING", .run = cmd_dedent,
+   .help = "Dedent the lines", .group = "EDITING", .flags = CMD_EDITS, .run = cmd_dedent,
    .enabled = have_rows},
   /* Unbound, like Save settings: converting a file is something done once, from
    * the menu or the palette, not a chord the hand needs to know. The labels
@@ -750,17 +775,17 @@ static const struct command commands[] = {
    * people search the palette for, and the help line says it is only the
    * indentation. */
   {.name = "edit.to-spaces", .label = "Tabs to spaces",
-   .help = "Indent to spaces", .group = "EDITING", .run = cmd_to_spaces,
+   .help = "Indent to spaces", .group = "EDITING", .flags = CMD_EDITS, .run = cmd_to_spaces,
    .enabled = have_rows},
   {.name = "edit.to-tabs", .label = "Spaces to tabs",
-   .help = "Indent to tabs", .group = "EDITING", .run = cmd_to_tabs,
+   .help = "Indent to tabs", .group = "EDITING", .flags = CMD_EDITS, .run = cmd_to_tabs,
    .enabled = have_rows},
   {.name = "edit.transpose", .label = "Transpose characters",
    /* The help column is 17 columns and truncates in silence, so this is written
     * to fit it. "Swap the two characters at the cursor" came out as "Swap the
     * two char". */
    .help = "Swap characters", .group = "EDITING",
-   .run = cmd_transpose, .enabled = on_a_row},
+   .flags = CMD_EDITS, .run = cmd_transpose, .enabled = on_a_row},
 
   /* Not in the Edit menu, for the reason transpose is not: these are keyboard
    * operations, and the palette and the help screen are generated from this
@@ -821,7 +846,7 @@ static const struct command commands[] = {
    .help = "Pattern search", .group = "FIND & REPLACE",
    .run = cmd_regex_toggle, .checked = search_regex_is_on},
   {.name = "search.replace", .label = "Replace…",
-   .help = "Find & replace", .group = "FIND & REPLACE", .run = cmd_replace},
+   .help = "Find & replace", .group = "FIND & REPLACE", .flags = CMD_EDITS, .run = cmd_replace},
   {.name = "search.in-files", .label = "Find in files…",
    .help = "Search all files", .group = "FIND & REPLACE", .run = cmd_grep},
   {.name = "search.next-result", .label = "Next result",
@@ -834,14 +859,14 @@ static const struct command commands[] = {
   {.name = "edit.copy", .label = "Copy",
    .help = "Copy selection", .group = "CLIPBOARD", .run = cmd_copy, .enabled = have_selection},
   {.name = "edit.cut", .label = "Cut",
-   .help = "Cut selection", .group = "CLIPBOARD", .run = cmd_cut, .enabled = have_selection},
+   .help = "Cut selection", .group = "CLIPBOARD", .flags = CMD_EDITS, .run = cmd_cut, .enabled = have_selection},
   {.name = "edit.paste", .label = "Paste",
    .help = "Paste at cursor", .group = "CLIPBOARD", .run = cmd_paste, .enabled = have_clipboard},
 
   {.name = "edit.undo", .label = "Undo",
-   .help = "Undo", .group = "HISTORY", .run = cmd_undo, .enabled = undo_can_undo},
+   .help = "Undo", .group = "HISTORY", .flags = CMD_EDITS, .run = cmd_undo, .enabled = undo_can_undo},
   {.name = "edit.redo", .label = "Redo",
-   .help = "Redo", .group = "HISTORY", .run = cmd_redo, .enabled = undo_can_redo},
+   .help = "Redo", .group = "HISTORY", .flags = CMD_EDITS, .run = cmd_redo, .enabled = undo_can_redo},
 
   {.name = "view.repaint", .label = "Redraw",
    .help = "Redraw screen", .group = "VIEW", .run = cmd_repaint},
@@ -878,14 +903,14 @@ static const struct command commands[] = {
    * next anyway. The help description is seventeen columns and says `sh`
    * because that is the useful part -- it is what makes a pipeline work. */
   {.name = "edit.filter", .label = "Filter through…",
-   .help = "Filter through sh", .group = "EDITING", .run = cmd_filter,
+   .help = "Filter through sh", .group = "EDITING", .flags = CMD_EDITS, .run = cmd_filter,
    .enabled = have_rows},
   /* Not "Insert command output…", for the filter's reason: seven more columns
    * on the widest menu molly has, to say what the prompt then says. No
    * `enabled`: unlike the filter it needs no text, and an empty buffer is a
    * fine place to start from `ls`. */
   {.name = "edit.insert-output", .label = "Insert output…",
-   .help = "Insert sh output", .group = "EDITING", .run = cmd_insert_output},
+   .help = "Insert sh output", .group = "EDITING", .flags = CMD_EDITS, .run = cmd_insert_output},
 
   {.name = "window.split-right", .label = "Split right",
    .help = "New window right", .group = "WINDOWS",
@@ -926,6 +951,12 @@ static const struct command commands[] = {
   /* Hidden from the palette, all of them: the palette has no business offering to
    * open itself, and the menu openers are how you reach commands rather than commands
    * anyone means to run. */
+  /* The integrated terminal. Alt-T goes there and back; a second one is
+   * New terminal, from the palette, in the window you are in. */
+  {.name = "terminal.toggle", .label = "Terminal",
+   .help = "Terminal, and back", .group = "WINDOWS", .run = cmd_terminal},
+  {.name = "terminal.new", .label = "New terminal",
+   .run = cmd_terminal_new},
   {.name = "app.palette", .label = "Command palette…", .flags = CMD_HIDDEN,
    .help = "Command palette", .group = "MENUS", .run = cmd_palette},
 
@@ -1343,6 +1374,9 @@ static const struct binding default_bindings[] = {
   {"f7",       "window.split-right"},
   {"f8",       "window.split-below"},
   {"f9",       "window.close"},
+  /* T for terminal: Ctrl-` is VS Code's, and most terminals send it as the
+   * same NUL as Ctrl-Space, which is the palette's. */
+  {"alt-t",    "terminal.toggle"},
   /* Ctrl-Shift and an arrow. Until now those fell through to Shift and the
    * arrow -- a second spelling of extending the selection, which nobody types
    * on purpose -- and they are the arrows, which is what a border move wants.
@@ -1580,6 +1614,19 @@ int cmd_shortcut(const char *name, char *dst, size_t n) {
 
 /* Act on one key. The key is passed in rather than read here, so that exactly one
  * place in molly waits for input -- see ui_wait_key. */
+/* Run a command, from a key, the menu bar or the palette. One place, so that
+ * one rule covers all three: a command that changes text does nothing on a
+ * terminal, whose screen is not text molly owns. Paste is not refused: on a
+ * terminal it is typing, and editor_paste sends it there. */
+int cmd_run(const struct command *c) {
+  if (c == NULL || c->run == NULL) return 0;
+  if (V.buf->tty != NULL && (c->flags & CMD_EDITS)) {
+    editor_set_status_message("A terminal is not text to edit.");
+    return 0;
+  }
+  return c->run();
+}
+
 void editor_process_key(int c) {
   int shift = input_last_key_had_shift();
   int pre_cx = CUR.cx, pre_cy = CUR.cy;
@@ -1587,6 +1634,9 @@ void editor_process_key(int c) {
   /* A popup over the text closes on the next key, which then goes on to do
    * what it does -- unless it was Esc, which was only for the popup. */
   if (lspui_key(c)) return;
+
+  /* A terminal with the keyboard takes every key but the ways out of it. */
+  if (tty_key(c)) return;
 
   /* A mouse event carries coordinates, so it cannot be a chord the keymap binds to
    * a command: it goes to whichever layer is on top where it landed. It also must
@@ -1614,7 +1664,7 @@ void editor_process_key(int c) {
   int res = 0;
 
   if (cmd != NULL) {
-    res = cmd->run();
+    res = cmd_run(cmd);
   } else if (c == '\t' || (c < 256 && !iscntrl(c))) {
     /* Unbound and printable: it is text. Tab is a control character, so testing
      * iscntrl() alone threw it away and a tab could not be typed at all; key

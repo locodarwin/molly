@@ -381,6 +381,6 @@ int palette_open(void) {
   free(last);
   layer_pop_to(depth);
 
-  if (chosen != NULL && chosen->run != NULL) return chosen->run();
+  if (chosen != NULL && chosen->run != NULL) return cmd_run(chosen);
   return 0;
 }

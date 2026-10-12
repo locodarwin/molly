@@ -219,6 +219,10 @@ void editor_paste(void) {
     editor_set_status_message("Clipboard is empty");
     return;
   }
+  if (B.tty != NULL) {
+    tty_paste(E.clipboard, E.clipsize);
+    return;
+  }
   editor_insert_text(E.clipboard, E.clipsize);
   editor_set_status_message("Pasted %d bytes", E.clipsize);
 }

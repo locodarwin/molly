@@ -307,6 +307,92 @@ static void paint_comment_then_string(void) {
   grid_flush();
 }
 
+/* The integrated terminal's cells: colours the program chose. */
+static void paint_raw_red(void) {
+  grid_begin();
+  grid_color(1, -1, 0);
+  grid_puts(0, 0, "abc", 3);
+  grid_flush();
+}
+
+static void paint_raw_cube(void) {
+  grid_begin();
+  grid_color(196, 21, ATTR_BOLD | ATTR_ITALIC);
+  grid_puts(0, 0, "abc", 3);
+  grid_flush();
+}
+
+static void paint_raw_reverse(void) {
+  grid_begin();
+  grid_color(-1, -1, ATTR_REVERSE);
+  grid_puts(0, 0, "ab", 2);
+  grid_color(-1, -1, 0);
+  grid_puts(0, 2, "c", 1);
+  grid_flush();
+}
+
+static void paint_raw_then_role(void) {
+  grid_begin();
+  grid_color(2, -1, 0);
+  grid_puts(0, 0, "ab", 2);
+  grid_role(ROLE_TEXT);
+  grid_puts(0, 2, "cd", 2);
+  grid_flush();
+}
+
+static void paint_raw_shaded(void) {
+  grid_begin();
+  grid_color(1, 4, ATTR_REVERSE);
+  grid_puts(0, 0, "abc", 3);
+  grid_shade(0, 0, 3, 1, ROLE_GUTTER);
+  grid_flush();
+}
+
+static void test_grid_raw(void) {
+  char out[4096];
+  int r, g, b;
+
+  printf("\ngrid: cells in colours a program chose\n");
+  grid_resize(4, 20);
+
+  grid_capture(out, sizeof(out), paint_raw_red);
+  contains("a colour index reaches the terminal as asked", out,
+           "\x1b[1;1H\x1b[31mabc\x1b[m\x1b[K");
+  grid_capture(out, sizeof(out), paint_raw_reverse);
+  contains("reverse and its end", out, "\x1b[7mab\x1b[27mc");
+  grid_capture(out, sizeof(out), paint_raw_then_role);
+  contains("a role after a raw cell is the role's style", out,
+           "\x1b[32mab\x1b[mcd");
+  grid_capture(out, sizeof(out), paint_raw_shaded);
+  contains("a shadow over a raw cell takes the shadow's style", out,
+           "\x1b[90mabc\x1b[m");
+
+  /* Sixteen colours, which is what is loaded when theme_init has not run: the
+   * cube comes down to the nearest of the sixteen. */
+  grid_capture(out, sizeof(out), paint_raw_cube);
+  contains("sixteen colours: the cube's red is bright red, its blue blue", out,
+           "\x1b[91m\x1b[44m\x1b[1m\x1b[3mabc");
+  check("an index under sixteen is itself", theme_fit_color(5), 5);
+  check("default stays default", theme_fit_color(-1), -1);
+  check("out of range is default", theme_fit_color(300), -1);
+  check("the grey ramp's darkest is black", theme_fit_color(232), 0);
+  check("its lightest is light grey, not white", theme_fit_color(255), 7);
+  theme_index_rgb(16 + 36 * 5 + 6 * 2 + 1, &r, &g, &b);
+  check("the cube's formula", r * 1000000 + g * 1000 + b, 255135095);
+
+  setenv("TERM", "xterm-256color", 1);
+  theme_init();
+  /* The same cells as the last frame, so without this the diff sends none. */
+  grid_invalidate();
+  grid_capture(out, sizeof(out), paint_raw_cube);
+  contains("256 colours: the cube goes out as itself", out,
+           "\x1b[38;5;196m\x1b[48;5;21m\x1b[1m\x1b[3mabc");
+  setenv("TERM", "xterm", 1);
+  theme_init();
+
+  grid_cleanup();
+}
+
 static void test_grid_emission(void) {
   char out[4096];
 
@@ -4547,6 +4633,7 @@ int main(void) {
   test_wait_key_services_sources();
   test_grid_emission();
   test_theme_depth();
+  test_grid_raw();
   test_theme_styles();
   test_theme_italic();
   test_theme_color_bytes();

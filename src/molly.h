@@ -841,6 +841,16 @@ enum cell_role {
 #define ATTR_BOLD      0x01
 #define ATTR_UNDERLINE 0x02
 
+/* The integrated terminal's cells, which are the one thing molly draws whose
+ * colours it does not choose: a program in the terminal asks for red, and red
+ * is what it gets. ATTR_RAW says the cell's colour is the palette index it
+ * carries rather than its role's, and italic and reverse become modifiers for
+ * such cells because the program turns them on character by character. See
+ * grid_color(). Nothing else sets these. */
+#define ATTR_ITALIC    0x04
+#define ATTR_REVERSE   0x08
+#define ATTR_RAW       0x10
+
 /* A resolved style: palette indices, or -1 for the terminal's own default, which
  * is not the same as black -- a light-background user wants their background. */
 struct style {
@@ -1007,6 +1017,7 @@ int grid_put_char(int y, int x, const char *s, int nbytes, int w);
 int grid_puts(int y, int x, const char *s, int len);
 int grid_rows(void);
 void grid_attrs(unsigned char attrs);
+void grid_color(int fg, int bg, unsigned char attrs);
 void grid_begin(void);
 void grid_cleanup(void);
 void grid_cursor_claim(int y, int x);
@@ -1242,6 +1253,8 @@ void enable_raw_mode(void);
 int style_eq(const struct style *a, const struct style *b);
 int style_is_default(const struct style *s);
 int theme_depth(void);
+int theme_fit_color(int c);
+void theme_index_rgb(int c, int *r, int *g, int *b);
 int theme_detect_depth(const char *term, const char *colorterm);
 int theme_detect_italic(const char *term);
 int theme_italic(void);

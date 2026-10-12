@@ -42,6 +42,7 @@ struct cell {
   unsigned char width;  /* columns: 1, 2, or 0 for the tail of a wide glyph */
   unsigned char role;   /* enum cell_role; the theme turns it into a style */
   unsigned char attrs;  /* ATTR_BOLD, ATTR_UNDERLINE: modifiers on top of role */
+  short fg, bg;         /* with ATTR_RAW: palette indices, -1 for default */
 };
 
 static struct cell *cur;
@@ -53,6 +54,7 @@ static int cursor_shown;         /* a dialog hides it; see grid_cursor_hide */
 static int cursor_claimed;       /* an input field took it; see grid_cursor_claim */
 static unsigned char pen;        /* the role new cells are written with */
 static unsigned char pen_attrs;  /* and the modifiers they carry */
+static short pen_fg = -1, pen_bg = -1;  /* with ATTR_RAW in pen_attrs */
 static int want_cy, want_cx;
 
 static struct cell *at(struct cell *plane, int y, int x) {
@@ -62,14 +64,16 @@ static struct cell *at(struct cell *plane, int y, int x) {
 static int cell_eq(const struct cell *a, const struct cell *b) {
   if (a->role != b->role || a->attrs != b->attrs ||
       a->width != b->width || a->len != b->len) return 0;
+  if ((a->attrs & ATTR_RAW) && (a->fg != b->fg || a->bg != b->bg)) return 0;
   return a->len == 0 || memcmp(a->ch, b->ch, a->len) == 0;
 }
 
 /* A cell that would draw as an unstyled space, and so can be produced by
  * erasing rather than by writing. */
 static int cell_blank(const struct cell *c) {
-  return c->len == 0 && c->role == ROLE_TEXT && c->attrs == 0 &&
-         c->width == 1;
+  if (c->len != 0 || c->width != 1) return 0;
+  if (c->attrs == ATTR_RAW) return c->fg < 0 && c->bg < 0;
+  return c->role == ROLE_TEXT && c->attrs == 0;
 }
 
 /* Match the grid to the terminal size. The contents are dropped and the next
@@ -103,9 +107,11 @@ void grid_begin(void) {
     cur[i].width = 1;
     cur[i].role = ROLE_TEXT;
     cur[i].attrs = 0;
+    cur[i].fg = cur[i].bg = -1;
   }
   pen = ROLE_TEXT;
   pen_attrs = 0;
+  pen_fg = pen_bg = -1;
   want_cy = 0;
   want_cx = 0;
   cursor_shown = 1;
@@ -118,6 +124,19 @@ void grid_begin(void) {
 void grid_role(unsigned char role) {
   pen = role;
   pen_attrs = 0;
+  pen_fg = pen_bg = -1;
+}
+
+/* Write in colours the caller chose: palette indices 0-255, or -1 for the
+ * terminal's default, and any of the ATTR_ modifiers. For the integrated
+ * terminal and nothing else -- everything molly draws for itself names a role.
+ * A colour the terminal cannot show is brought down to one it can as the frame
+ * is written, so the cell keeps what was asked for. */
+void grid_color(int fg, int bg, unsigned char attrs) {
+  pen = ROLE_TEXT;
+  pen_attrs = (unsigned char)(attrs | ATTR_RAW);
+  pen_fg = (short)fg;
+  pen_bg = (short)bg;
 }
 
 /* Modifiers for subsequent writes, on top of the current role. */
@@ -194,6 +213,8 @@ int grid_put_char(int y, int x, const char *s, int nbytes, int w) {
     c->width = 1;
     c->role = pen;
     c->attrs = pen_attrs;
+    c->fg = pen_fg;
+    c->bg = pen_bg;
     return 1;
   }
 
@@ -204,12 +225,16 @@ int grid_put_char(int y, int x, const char *s, int nbytes, int w) {
   c->width = (unsigned char)w;
   c->role = pen;
   c->attrs = pen_attrs;
+  c->fg = pen_fg;
+  c->bg = pen_bg;
   if (w == 2) {
     struct cell *t = at(cur, y, x + 1);
     t->len = 0;
     t->width = 0;
     t->role = pen;
     t->attrs = pen_attrs;
+    t->fg = pen_fg;
+    t->bg = pen_bg;
   }
   return w;
 }
@@ -246,6 +271,9 @@ void grid_shade(int x, int y, int w, int h, unsigned char role) {
     for (xx = x; xx < x + w; xx++) {
       if (xx < 0 || xx >= g_cols) continue;
       at(cur, yy, xx)->role = role;
+      /* A terminal's cell keeps its characters and loses its own colours,
+       * or the shadow would not show on it. */
+      at(cur, yy, xx)->attrs &= (unsigned char)~(ATTR_RAW | ATTR_REVERSE | ATTR_ITALIC);
     }
   }
 }
@@ -338,7 +366,15 @@ static void flush_row(struct abuf *ab, int y) {
   for (x = 0; x <= last; x++) {
     struct cell *c = at(cur, y, x);
     if (c->width == 0) continue;  /* tail of a wide glyph, emitted with its head */
-    theme_style(c->role, &want);
+    if (c->attrs & ATTR_RAW) {
+      style_default(&want);
+      want.fg = (short)theme_fit_color(c->fg);
+      want.bg = (short)theme_fit_color(c->bg);
+      want.reverse = (c->attrs & ATTR_REVERSE) != 0;
+      want.italic = (c->attrs & ATTR_ITALIC) != 0;
+    } else {
+      theme_style(c->role, &want);
+    }
     if (c->attrs & ATTR_BOLD) want.bold = 1;
     if (c->attrs & ATTR_UNDERLINE) want.underline = 1;
     emit_style(ab, &have, &want);

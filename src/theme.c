@@ -213,6 +213,54 @@ int theme_depth(void) {
   return active_depth;
 }
 
+/* The xterm palette's sixteen, as red, green and blue: what "nearest" is
+ * measured against when a 256-colour index has to become one of them. */
+static const unsigned char ansi16_rgb[16][3] = {
+  {0, 0, 0},       {205, 0, 0},     {0, 205, 0},     {205, 205, 0},
+  {0, 0, 238},     {205, 0, 205},   {0, 205, 205},   {229, 229, 229},
+  {127, 127, 127}, {255, 0, 0},     {0, 255, 0},     {255, 255, 0},
+  {92, 92, 255},   {255, 0, 255},   {0, 255, 255},   {255, 255, 255},
+};
+
+/* A palette index as red, green and blue, by the xterm formulas: the 6x6x6
+ * cube from 16 and the grey ramp from 232. */
+void theme_index_rgb(int c, int *r, int *g, int *b) {
+  static const int level[6] = {0, 95, 135, 175, 215, 255};
+  if (c < 16) {
+    *r = ansi16_rgb[c][0];
+    *g = ansi16_rgb[c][1];
+    *b = ansi16_rgb[c][2];
+  } else if (c < 232) {
+    c -= 16;
+    *r = level[c / 36];
+    *g = level[(c / 6) % 6];
+    *b = level[c % 6];
+  } else {
+    *r = *g = *b = 8 + (c - 232) * 10;
+  }
+}
+
+/* A colour a program in the integrated terminal asked for, as one this terminal
+ * can show: itself where there are 256, the nearest of the sixteen where there
+ * are not. -1, the terminal's default, is always showable. */
+int theme_fit_color(int c) {
+  int r, g, b, i, best = 0;
+  long bestd = -1;
+  if (c < 0 || c > 255) return -1;
+  if (active_depth >= 256 || c < 16) return c;
+  theme_index_rgb(c, &r, &g, &b);
+  for (i = 0; i < 16; i++) {
+    long dr = r - ansi16_rgb[i][0], dg = g - ansi16_rgb[i][1],
+         db = b - ansi16_rgb[i][2];
+    long d = dr * dr + dg * dg + db * db;
+    if (bestd < 0 || d < bestd) {
+      bestd = d;
+      best = i;
+    }
+  }
+  return best;
+}
+
 void theme_style(unsigned char role, struct style *out) {
   const struct theme_entry *e;
   if (role >= ROLE_COUNT) role = ROLE_TEXT;

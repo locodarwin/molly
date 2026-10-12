@@ -5157,6 +5157,78 @@ static void test_lines(void) {
             "No line comment is known for this file.");
 }
 
+static void type_keys(const char *s) {
+  for (; *s; s++) cursors_edit(MC_INSERT, (unsigned char)*s);
+}
+
+static void test_smart(void) {
+  printf("\nsmart editing: Home, closing pairs, surrounding\n");
+
+  mc_load("    indented");
+  CUR.cx = 8;
+  cursors_line_edge(0);
+  check("smart Home goes to where the text starts", CUR.cx, 4);
+  cursors_line_edge(0);
+  check("and from there to column 0", CUR.cx, 0);
+  cursors_line_edge(0);
+  check("and back", CUR.cx, 4);
+  smart_set_home(0);
+  CUR.cx = 8;
+  cursors_line_edge(0);
+  check("turned off, Home is column 0", CUR.cx, 0);
+  smart_set_home(1);
+
+  mc_load("");
+  type_keys("f(");
+  check_str("with auto-close off, a bracket is a bracket", mc_text(), "f(");
+
+  smart_set_auto_close(1);
+  mc_load("");
+  type_keys("f(");
+  check_str("on: ( types its pair", mc_text(), "f()");
+  check("with the cursor between", CUR.cx, 2);
+  type_keys("x)");
+  check_str("and ) steps over the one that is there", mc_text(), "f(x)");
+  check("leaving the cursor after it", CUR.cx, 4);
+  mc_load("");
+  type_keys("a = \"");
+  check_str("a quote after a blank pairs", mc_text(), "a = \"\"");
+  cursors_edit(MC_DELETE_BACK, 0);
+  check_str("Backspace in an empty pair takes both", mc_text(), "a = ");
+  mc_load("");
+  type_keys("it's");
+  check_str("a quote after a letter is an apostrophe", mc_text(), "it's");
+  mc_load("word");
+  type_keys("(");
+  check_str("not in front of a word", mc_text(), "(word");
+
+  mc_load("say hi now");
+  CUR.sy = 0; CUR.sx = 4; CUR.cy = 0; CUR.cx = 6; CUR.sel_active = 1;
+  cursors_edit(MC_INSERT, '"');
+  check_str("a quote over a selection wraps it", mc_text(), "say \"hi\" now");
+  check("and the selection stays on what it wrapped",
+        CUR.sel_active * 10000 + CUR.sx * 100 + CUR.cx, 10507);
+  cursors_edit(MC_INSERT, '(');
+  check_str("so a second wrap goes round the first's inside", mc_text(),
+            "say \"(hi)\" now");
+  editor_undo();
+  check_str("each wrap is one undo step", mc_text(), "say \"hi\" now");
+
+  /* Two cursors on one row: each pair goes in, and the second cursor ends up
+   * inside its own pair, not one column off. */
+  mc_load("a b");
+  CUR.cx = 1;
+  cursors_add(0, 3);
+  cursors_edit(MC_INSERT, '[');
+  check_str("pairs at two cursors on a row", mc_text(), "a[] b[]");
+  check("each cursor inside its own",
+        V.cursors[0].cx * 100 + V.cursors[1].cx, 206);
+  cursors_edit(MC_INSERT, ']');
+  check_str("and stepping out at both inserts nothing", mc_text(), "a[] b[]");
+  check("but moves both", V.cursors[0].cx * 100 + V.cursors[1].cx, 307);
+  smart_set_auto_close(0);
+}
+
 int main(void) {
   test_loop_sources();
   test_wait_key_services_sources();
@@ -5185,6 +5257,7 @@ int main(void) {
   test_cursors_list();
   test_words();
   test_lines();
+  test_smart();
   test_cursors_edit();
   test_cursors_more();
   test_indent_block();

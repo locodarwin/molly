@@ -307,6 +307,11 @@ static int mc_textlen;
 /* One text per cursor, by index in document order. */
 static const char **mc_each;
 static const int *mc_eachlen;
+/* Columns to move the cursor after its edit has been accounted for at every
+ * cursor -- auto-close's: back into a pair it inserted, or over a closer it
+ * stepped across without inserting anything. Applied after the fixups so that
+ * they see where the text went, not where the cursor ended up. */
+static int mc_adjust;
 
 /* Run one editing operation at the current cursor. The single place that maps a
  * multi-cursor edit onto the ordinary editing functions, so that nothing here
@@ -317,20 +322,24 @@ static void edit_one(int what, int arg) {
    * selection delete the selection and stop, which is what one cursor already
    * does. */
   if (CUR.sel_active) {
+    /* An opener over a selection wraps it, with auto-close on. */
+    if (what == MC_INSERT && smart_surround(arg)) return;
     selection_delete();
     if (what == MC_DELETE_BACK || what == MC_DELETE_FWD || what == MC_DEL_WORD_BACK ||
         what == MC_DEL_WORD_FWD || what == MC_DEL_TO_EOL)
       return;
   }
   switch (what) {
-    case MC_INSERT:      editor_insert_char(arg); break;
+    case MC_INSERT:
+      if (!smart_insert(arg, &mc_adjust)) editor_insert_char(arg);
+      break;
     case MC_INDENT:      indent_insert_step(); break;
     case MC_NEWLINE:     editor_newline_and_indent(); break;
     /* Backspace asks indentation first: in a row's leading whitespace it eats
      * one indent level, and everywhere else it says so and the ordinary
      * character delete runs. */
     case MC_DELETE_BACK:
-      if (!indent_backspace()) editor_delete_char();
+      if (!smart_backspace() && !indent_backspace()) editor_delete_char();
       break;
     case MC_DELETE_FWD:  editor_del_char(); break;
     case MC_DEL_WORD_BACK: {
@@ -369,6 +378,8 @@ void cursors_edit(int what, int arg) {
 
   if (V.ncursors <= 1) {
     edit_one(what, arg);
+    CUR.cx += mc_adjust;
+    mc_adjust = 0;
     return;
   }
 
@@ -403,6 +414,8 @@ void cursors_edit(int what, int arg) {
       for (j = i + 1; j < V.ncursors; j++)
         cursor_shift(&V.cursors[j], r1, c1, CUR.cy, CUR.cx);
     }
+    CUR.cx += mc_adjust;
+    mc_adjust = 0;
   }
 
   undo_group_end();
@@ -835,14 +848,16 @@ void cursors_word(int dir) {
 void cursors_line_edge(int to_end) {
   int i, keep;
   if (V.ncursors <= 1) {
-    CUR.cx = (to_end && CUR.cy < row_count()) ? (*row_at(CUR.cy)).size : 0;
+    if (to_end) CUR.cx = CUR.cy < row_count() ? (*row_at(CUR.cy)).size : 0;
+    else CUR.cx = CUR.cy < row_count() ? smart_home_target(row_at(CUR.cy), CUR.cx) : 0;
     return;
   }
   keep = V.primary;
   pre_record();
   for (i = 0; i < V.ncursors; i++) {
     struct cursor *c = &V.cursors[i];
-    c->cx = (to_end && c->cy < row_count()) ? (*row_at(c->cy)).size : 0;
+    if (to_end) c->cx = c->cy < row_count() ? (*row_at(c->cy)).size : 0;
+    else c->cx = c->cy < row_count() ? smart_home_target(row_at(c->cy), c->cx) : 0;
   }
   V.primary = (keep < V.ncursors) ? keep : 0;
   pre_seed_anchors();

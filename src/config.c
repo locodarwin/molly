@@ -208,6 +208,8 @@ static int live_auto_indent(void) { return indent_auto_default(); }
 static void apply_undo_steps(int v) { undo_set_max_steps(v); }
 static int live_undo_steps(void) { return undo_max_steps(); }
 static void apply_lsp(int v) { lsp_set_enabled(v); }
+static void apply_smart_home(int v) { smart_set_home(v); }
+static void apply_auto_close(int v) { smart_set_auto_close(v); }
 
 /* The shell filter's two limits. Settings rather than constants because what
  * counts as "too slow" is the difference between `sort` and `black`, and
@@ -242,6 +244,15 @@ static struct setting settings[] = {
   {"editor", "auto indent", SET_BOOL, 0, 0, 1, 0,
    "a new line starts at the indentation of the line above it",
    apply_auto_indent, live_auto_indent},
+  /* Smart Home on, because it moves the cursor and changes no text, and a
+   * second press still reaches column zero. Auto-close off, because it
+   * changes what typing a bracket puts in the file. */
+  {"editor", "smart home", SET_BOOL, 0, 0, 1, 0,
+   "Home goes to where the line's text starts, then to column 0",
+   apply_smart_home, smart_home_on},
+  {"editor", "auto close", SET_BOOL, 0, 0, 0, 0,
+   "typing a bracket or quote types its pair, and wraps a selection in it",
+   apply_auto_close, smart_auto_close},
   {"editor", "undo steps", SET_INT, 1, 1000000, 32768, 0,
    "how many undo steps to keep",
    apply_undo_steps, live_undo_steps},

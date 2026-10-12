@@ -5707,6 +5707,34 @@ def test_lines(tmpdir):
     check("and back in", edit(["\x1b;", "\x1b;"]), "one\ntwo\nthree\n")
 
 
+def test_smart(tmpdir):
+    """Smart Home and auto-close, through the keys and the settings."""
+    print("\nsmart editing: the keys and the settings")
+    path = os.path.join(tmpdir, "smart.c")
+    rc = os.path.join(tmpdir, "smartrc")
+
+    def edit(keys, text="    x = 1;\n", conf=""):
+        with open(path, "w") as fh:
+            fh.write(text)
+        with open(rc, "w") as fh:
+            fh.write(conf)
+        run([MOLLY, path], keys + [SAVE], env={"MOLLY_CONFIG": rc})
+        with open(path) as fh:
+            return fh.read()
+
+    HOME, END = "\x1b[H", "\x1b[F"
+    check("Home goes to where the text starts", edit([END, HOME, "y"]), "    yx = 1;\n")
+    check("and Home again to column 0", edit([END, HOME, HOME, "y"]), "y    x = 1;\n")
+    check("[editor] smart home = off makes it column 0",
+          edit([END, HOME, "y"], conf="[editor]\nsmart home = off\n"), "y    x = 1;\n")
+    on = "[editor]\nauto close = on\n"
+    check("auto close = on types a bracket's pair",
+          edit([END, " f(", "a", ")", ";"], conf=on), "    x = 1; f(a);\n")
+    check("and a quote's, around a selection",
+          edit(["\x1b[1;2F", "\""], text="word\n", conf=on), "\"word\"\n")
+    check("it is off unless asked for", edit([END, " ("]), "    x = 1; (\n")
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -5784,6 +5812,7 @@ def main():
         test_lsp_format(tmpdir)
         test_words(tmpdir)
         test_lines(tmpdir)
+        test_smart(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

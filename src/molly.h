@@ -1124,6 +1124,16 @@ void lines_move(int dir);
 void lines_sort(void);
 void lines_trim(void);
 
+/* smart.c */
+int smart_auto_close(void);
+int smart_backspace(void);
+int smart_home_on(void);
+int smart_home_target(const erow *r, int cx);
+int smart_insert(int c, int *adjust);
+int smart_surround(int c);
+void smart_set_auto_close(int on);
+void smart_set_home(int on);
+
 /* lsp.c */
 char *lsp_path_to_uri(const char *path);
 int lsp_ask(struct buffer *b, int kind, int cy, int cx, int trigger,

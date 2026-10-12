@@ -1,0 +1,249 @@
+"""fake_lsp.py -- a language server that knows nothing, predictably.
+
+Molly's language-server client is tested against this rather than against a
+real server, for three reasons: CI has no clangd; a real server's answers
+change with its version and with what it has indexed; and the interesting
+cases -- a server that crashes, writes garbage, insists on UTF-16 or asks the
+client questions of its own -- are ones no real server does on request.
+
+What it "knows", all of it computed from the text it was sent:
+
+  - **Diagnostics.** Every `BAD` is an error, every `WARN` a warning, every
+    `NOTE` an information, each spanning the word. Sent after every open and
+    every change, so the client's idea of the text is what is checked.
+  - **Definitions.** A word is defined on the first line, in any open document
+    or in any file in the working directory, that contains `define <word>`.
+  - **Hover.** `word` hovers as a Markdown paragraph naming it.
+  - **Completion.** Every word in the document that starts with what is
+    before the cursor, plus `fake_alpha` and `fake_beta`, after `.` too.
+
+Behaviour is chosen by environment variables, so a test asks for a broken
+server the same way it asks for a working one:
+
+  FAKE_LSP_LOG=path       append one JSON line per message received
+  FAKE_LSP_ENCODING=x     answer with this position encoding ("utf-16" makes
+                          the client convert); default: the first one offered
+  FAKE_LSP_CRASH=1        print a line to stderr and exit after initializing
+  FAKE_LSP_GARBAGE=1      answer `initialize` with something that is not LSP
+  FAKE_LSP_ASK=1          ask the client questions of its own once ready
+  FAKE_LSP_LINKS=1        answer definitions with LocationLinks
+  FAKE_LSP_SLOW=seconds   wait this long before answering a request
+"""
+
+import json
+import os
+import re
+import sys
+import time
+
+LOG = os.environ.get("FAKE_LSP_LOG")
+docs = {}      # uri -> text
+encoding = "utf-16"
+next_id = 1000
+
+
+def log(entry):
+    if LOG:
+        with open(LOG, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+
+
+def send(msg):
+    body = json.dumps(msg).encode("utf-8")
+    sys.stdout.buffer.write(b"Content-Length: %d\r\n\r\n" % len(body) + body)
+    sys.stdout.buffer.flush()
+
+
+def read():
+    length = None
+    while True:
+        line = sys.stdin.buffer.readline()
+        if not line:
+            return None
+        line = line.strip()
+        if not line:
+            break
+        k, _, v = line.partition(b":")
+        if k.lower() == b"content-length":
+            length = int(v)
+    return json.loads(sys.stdin.buffer.read(length))
+
+
+# Positions: a column is in code units of the negotiated encoding.
+
+def units(s):
+    if encoding == "utf-8":
+        return len(s.encode("utf-8"))
+    if encoding == "utf-32":
+        return len(s)
+    return len(s.encode("utf-16-le")) // 2
+
+
+def col_of(line, n):
+    """The str index that `n` units into `line` reaches."""
+    for i in range(len(line) + 1):
+        if units(line[:i]) >= n:
+            return i
+    return len(line)
+
+
+def word_at(text, line, ch):
+    lines = text.split("\n")
+    if line >= len(lines):
+        return "", 0, ""
+    s = lines[line]
+    i = col_of(s, ch)
+    a = i
+    while a > 0 and (s[a - 1].isalnum() or s[a - 1] == "_"):
+        a -= 1
+    b = i
+    while b < len(s) and (s[b].isalnum() or s[b] == "_"):
+        b += 1
+    return s[a:b], a, s[a:i]
+
+
+def diagnostics(uri):
+    out = []
+    for n, s in enumerate(docs[uri].split("\n")):
+        for word, sev in (("BAD", 1), ("WARN", 2), ("NOTE", 3)):
+            for m in re.finditer(r"\b%s\b" % word, s):
+                out.append({
+                    "range": {"start": {"line": n, "character": units(s[:m.start()])},
+                              "end": {"line": n, "character": units(s[:m.end()])}},
+                    "severity": sev,
+                    "source": "fake",
+                    "message": "%s is not allowed here" % word,
+                })
+    send({"jsonrpc": "2.0", "method": "textDocument/publishDiagnostics",
+          "params": {"uri": uri, "diagnostics": out}})
+
+
+def find_definition(word):
+    def search(uri, text):
+        for n, s in enumerate(text.split("\n")):
+            m = re.search(r"define %s\b" % re.escape(word), s)
+            if m:
+                start = m.start() + len("define ")
+                return {"uri": uri,
+                        "range": {"start": {"line": n, "character": units(s[:start])},
+                                  "end": {"line": n, "character": units(s[:start + len(word)])}}}
+        return None
+    for uri, text in docs.items():
+        hit = search(uri, text)
+        if hit:
+            return hit
+    for name in sorted(os.listdir(".")):
+        if not os.path.isfile(name):
+            continue
+        try:
+            with open(name, encoding="utf-8") as f:
+                text = f.read()
+        except (OSError, UnicodeDecodeError):
+            continue
+        hit = search("file://" + os.path.abspath(name), text)
+        if hit:
+            return hit
+    return None
+
+
+def answer(msg):
+    method = msg["method"]
+    p = msg.get("params", {})
+    if os.environ.get("FAKE_LSP_SLOW"):
+        time.sleep(float(os.environ["FAKE_LSP_SLOW"]))
+    if method == "shutdown":
+        return None
+    uri = p.get("textDocument", {}).get("uri")
+    pos = p.get("position", {})
+    if uri not in docs:
+        return None
+    word, start, before = word_at(docs[uri], pos.get("line", 0), pos.get("character", 0))
+    if method == "textDocument/definition":
+        loc = find_definition(word) if word else None
+        if loc and os.environ.get("FAKE_LSP_LINKS"):
+            return [{"targetUri": loc["uri"], "targetRange": loc["range"],
+                     "targetSelectionRange": loc["range"]}]
+        return loc
+    if method == "textDocument/hover":
+        if not word:
+            return None
+        return {"contents": {"kind": "markdown",
+                             "value": "```c\nint %s\n```\n\nThe thing called **%s**." % (word, word)}}
+    if method == "textDocument/completion":
+        words = sorted(set(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", docs[uri])))
+        words += ["fake_alpha", "fake_beta"]
+        items = [{"label": w, "kind": 6, "detail": "fake"}
+                 for w in words if w.startswith(before) and w != before]
+        return {"isIncomplete": False, "items": items}
+    return None
+
+
+def main():
+    global encoding, next_id
+    while True:
+        msg = read()
+        if msg is None:
+            return
+        method = msg.get("method")
+        entry = {"method": method} if method else {"response": msg.get("id")}
+        if method in ("textDocument/didOpen", "textDocument/didChange"):
+            td = msg["params"]["textDocument"]
+            text = (td.get("text") if method.endswith("didOpen")
+                    else msg["params"]["contentChanges"][-1]["text"])
+            entry.update(uri=td["uri"], version=td.get("version"), text=text,
+                         languageId=td.get("languageId"))
+        elif method in ("textDocument/didSave", "textDocument/didClose"):
+            entry.update(uri=msg["params"]["textDocument"]["uri"])
+        elif method:
+            entry.update(params=msg.get("params"))
+        else:
+            entry.update(result=msg.get("result"))
+        log(entry)
+
+        if method == "initialize":
+            if os.environ.get("FAKE_LSP_GARBAGE"):
+                sys.stdout.buffer.write(b"this is not a header\r\n" * 1000)
+                sys.stdout.buffer.flush()
+                time.sleep(5)
+                return
+            caps = msg["params"]["capabilities"]
+            offered = caps.get("general", {}).get("positionEncodings", ["utf-16"])
+            encoding = os.environ.get("FAKE_LSP_ENCODING", offered[0])
+            send({"jsonrpc": "2.0", "id": msg["id"], "result": {
+                "capabilities": {
+                    "positionEncoding": encoding,
+                    "textDocumentSync": {"openClose": True, "change": 1, "save": True},
+                    "hoverProvider": True,
+                    "definitionProvider": True,
+                    "completionProvider": {"triggerCharacters": [".", "->"]},
+                },
+                "serverInfo": {"name": "fake"}}})
+        elif method == "initialized":
+            if os.environ.get("FAKE_LSP_CRASH"):
+                sys.stderr.write("fake_lsp: something went\nfake_lsp: badly wrong\n")
+                sys.stderr.flush()
+                return
+            if os.environ.get("FAKE_LSP_ASK"):
+                send({"jsonrpc": "2.0", "id": next_id, "method": "workspace/configuration",
+                      "params": {"items": [{"section": "a"}, {"section": "b"}]}})
+                next_id += 1
+                send({"jsonrpc": "2.0", "id": "tok", "method": "window/workDoneProgress/create",
+                      "params": {"token": "x"}})
+                send({"jsonrpc": "2.0", "method": "window/logMessage",
+                      "params": {"type": 3, "message": "hello"}})
+        elif method == "exit":
+            return
+        elif method == "textDocument/didOpen":
+            docs[msg["params"]["textDocument"]["uri"]] = msg["params"]["textDocument"]["text"]
+            diagnostics(msg["params"]["textDocument"]["uri"])
+        elif method == "textDocument/didChange":
+            uri = msg["params"]["textDocument"]["uri"]
+            docs[uri] = msg["params"]["contentChanges"][-1]["text"]
+            diagnostics(uri)
+        elif method == "textDocument/didClose":
+            docs.pop(msg["params"]["textDocument"]["uri"], None)
+        elif "id" in msg and method:
+            send({"jsonrpc": "2.0", "id": msg["id"], "result": answer(msg)})
+
+
+main()

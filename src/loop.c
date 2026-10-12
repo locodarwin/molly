@@ -25,7 +25,9 @@
 #include "molly.h"
 #include <poll.h>
 
-#define LOOP_MAX_SOURCES 16
+/* Three per language server (its input, output and standard error), three for
+ * a running filter, and the room the integrated terminal will want. */
+#define LOOP_MAX_SOURCES 32
 
 /* A free slot is one with in_use == 0, rather than a sentinel in fd. Static
  * storage zero-initializes, and zero is a perfectly good descriptor -- standard

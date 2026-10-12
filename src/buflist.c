@@ -125,6 +125,9 @@ struct buffer *buf_new(void) {
 static void buf_free(struct buffer *b) {
   struct buffer *was = V.buf;
 
+  /* First, while the buffer is whole: its server is told it has closed, and
+   * anything still asked about it is forgotten. */
+  lsp_buffer_closed(b);
   V.buf = b;
   editor_free_rows();
   editor_free_undo_redo();

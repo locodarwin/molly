@@ -231,6 +231,15 @@ struct undoState {
  * at different scroll positions, so none of this can live with the text. The app
  * holds what is shared by everything, like the clipboard. */
 
+/* One thing a language server said is wrong, in the buffer's own terms: rows
+ * and byte offsets, converted from the server's positions when it arrived.
+ * The end is exclusive, and may equal the start for a problem with no width. */
+struct diag {
+  int y0, x0, y1, x1;
+  int severity;        /* 1 error, 2 warning, 3 information, 4 hint */
+  char *msg;
+};
+
 /* One open file. */
 struct buffer {
   /* The rows, as a gap array: row[0 .. gap) are rows 0 .. gap, and the rest sit
@@ -305,6 +314,24 @@ struct buffer {
 
   /* This is the find-in-files results buffer. See grep.c. */
   int grep_results;
+
+  /* Bumped by every change to the text, at the row primitives. What the
+   * language server was last sent is `lsp_sent`, so the two differing is what
+   * "the server is behind" means -- and nothing that edits has to know there
+   * is a server. */
+  unsigned edits;
+
+  /* The language server's side of this buffer. See lsp.c. `lsp_srv` is the
+   * server's slot plus one, 0 for none, and -1 for a file too big to send;
+   * `lsp_name` is the file name the URI was made from, which is how a rename
+   * is noticed. */
+  int lsp_srv;
+  unsigned lsp_sent;
+  int lsp_version;
+  char *lsp_uri;
+  char *lsp_name;
+  struct diag *diag;   /* sorted by start */
+  int ndiag;
 };
 
 /* One window onto a buffer. */
@@ -640,6 +667,14 @@ struct json {
 
 struct json_doc;
 
+/* What a language server can be asked. LSP_REQ_INIT and LSP_REQ_SHUTDOWN are
+ * the client's own; the rest are questions about a position in a buffer. */
+#define LSP_REQ_INIT       0
+#define LSP_REQ_DEFINITION 1
+#define LSP_REQ_HOVER      2
+#define LSP_REQ_COMPLETION 3
+#define LSP_REQ_SHUTDOWN   4
+
 /* --- the event loop --------------------------------------------------------
  *
  * What loop_wait returns. The keyboard is reported; every other source is
@@ -973,6 +1008,7 @@ int input_last_key_had_ctrl(void);
 int input_last_key_had_shift(void);
 int ui_wait_key(void);
 void input_last_mouse(struct mouse_event *out);
+void ui_request_redraw(void);
 
 /* json.c */
 const struct json *json_at(const struct json *arr, int i);
@@ -1003,6 +1039,22 @@ int loop_source_count(void);
 int loop_wait(int timeout_ms);
 void loop_cleanup(void);
 void loop_remove(int id);
+
+/* lsp.c */
+char *lsp_path_to_uri(const char *path);
+char *lsp_uri_to_path(const char *uri);
+int lsp_col_to_units(const char *s, int size, int col, int utf8);
+int lsp_enabled(void);
+int lsp_units_to_col(const char *s, int size, int units, int utf8);
+void lsp_buffer_closed(struct buffer *b);
+void lsp_buffer_saved(struct buffer *b);
+void lsp_cleanup(void);
+void lsp_describe(struct buffer *b, char *dst, size_t n);
+void lsp_diag_clear(struct buffer *b);
+void lsp_idle(void);
+void lsp_rows_moved(struct buffer *b, int at, int delta);
+void lsp_set_enabled(int on);
+void lsp_stop_all(void);
 
 /* main.c */
 void editor_cleanup(void);
@@ -1108,7 +1160,9 @@ int tabbar_rows(void);
 void tabbar_draw(const struct layer *self);
 
 /* syntax.c */
+const char *syntax_lang_id(const struct syntax *s);
 const char *syntax_lang_name(int i);
+const char *syntax_lsp(const struct syntax *s);
 const char *syntax_name(const struct syntax *s);
 const struct syntax *syntax_for_filename(const char *path);
 int syntax_lang_count(void);

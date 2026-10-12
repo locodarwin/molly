@@ -116,6 +116,12 @@ struct syntax {
   int tab_width;      /* 0 = unset */
   int insert_spaces;  /* -1 = unset */
   int auto_indent;    /* -1 = unset */
+
+  /* The language server: the command line that starts it, empty for none, and
+   * the name the protocol knows the language by when that is not molly's own
+   * ("csharp" for `cs`). See lsp.c. */
+  char lsp[256];
+  char lang_id[32];
 };
 
 static struct syntax langs[SYN_MAX_LANGS];
@@ -358,6 +364,23 @@ int syntax_set_line(const char *lang, const char *key, const char *value,
     return 1;
   }
 
+  /* `none` as well as an empty value, because `language server =` reads like a
+   * line someone forgot to finish, and turning off a built-in server is a
+   * thing a person means to do. */
+  if (strcmp(key, "language server") == 0) {
+    if (strlen(value) >= sizeof(s->lsp)) {
+      if (err) *err = "language server command is too long";
+      return 0;
+    }
+    snprintf(s->lsp, sizeof(s->lsp), "%s",
+             strcasecmp(value, "none") == 0 ? "" : value);
+    return 1;
+  }
+  if (strcmp(key, "language id") == 0) {
+    snprintf(s->lang_id, sizeof(s->lang_id), "%s", value);
+    return 1;
+  }
+
   if (err) *err = "unknown syntax rule";
   return 0;
 }
@@ -559,6 +582,17 @@ const struct syntax *syntax_for_filename(const char *path) {
 
 const char *syntax_name(const struct syntax *s) {
   return (s != NULL) ? s->name : NULL;
+}
+
+/* The command that starts this language's server, or "" for none. */
+const char *syntax_lsp(const struct syntax *s) {
+  return (s != NULL) ? s->lsp : "";
+}
+
+/* The protocol's name for the language: its own `language id`, or molly's. */
+const char *syntax_lang_id(const struct syntax *s) {
+  if (s == NULL) return "plaintext";
+  return s->lang_id[0] != '\0' ? s->lang_id : s->name;
 }
 
 /* The indentation a definition asks for, or the unset value. Three functions

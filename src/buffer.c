@@ -318,6 +318,7 @@ void editor_update_row(erow *row) {
   /* Whatever this row wrapped to, it was measured from the text that just
    * changed. */
   wrap_row_invalidate(row);
+  if (V.buf != NULL) B.edits++;
 }
 
 /* Move the gap to just before row `at`, shifting the rows between where it
@@ -373,6 +374,7 @@ void editor_insert_row(int at, char *s, size_t len) {
   /* Inserting shifts every row below, so their stored entry states now belong
    * to the wrong rows. */
   syntax_invalidate_from(at);
+  lsp_rows_moved(V.buf, at, 1);
 
   B.dirty++;
 }
@@ -389,6 +391,8 @@ void editor_delete_row(int at) {
   editor_free_row(&B.row[B.gap + (B.rowcap - B.numrows)]);
   B.numrows--;
   B.dirty++;
+  B.edits++;
+  lsp_rows_moved(V.buf, at, -1);
   /* Deleting shifts every row below up one, so their stored entry states belong
    * to the wrong rows now -- and the deleted row may have opened a comment. */
   syntax_invalidate_from(at);
@@ -400,7 +404,9 @@ void editor_clear_rows(void) {
   for (i = 0; i < row_count(); i++) editor_free_row(row_at(i));
   B.numrows = 0;
   B.gap = 0;
+  B.edits++;
   syntax_invalidate_from(0);
+  lsp_diag_clear(V.buf);
 }
 
 /* Everything the current buffer's text owns: the rows, their array, the block
@@ -619,6 +625,7 @@ void editor_save(void) {
     B.have_disk_mtime = have_after;
     if (have_after) B.on_disk_mtime = st_after.st_mtim;
     if (B.recovery_path[0] != '\0') unlink(B.recovery_path);
+    lsp_buffer_saved(V.buf);
     return;
   }
 
@@ -668,6 +675,7 @@ void editor_save(void) {
   B.have_disk_mtime = have_after;
   if (have_after) B.on_disk_mtime = st_after.st_mtim;
   if (B.recovery_path[0] != '\0') unlink(B.recovery_path);
+  lsp_buffer_saved(V.buf);
 }
 
 /* All of fp, in one allocation with a byte to spare past the end. NULL if the

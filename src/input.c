@@ -278,10 +278,29 @@ int input_escape_pressed(void) {
   return editor_read_key() == '\x1b';
 }
 
+/* Something that is not a keystroke has changed what is on screen -- a language
+ * server's diagnostics arriving, say -- and the frame should be drawn again.
+ *
+ * Reported as WINCH_KEY, which every key loop in molly already treats as "draw
+ * again and keep waiting": the main loop dispatches it to a command that does
+ * nothing, and every modal loop `continue`s on it to the top, where it paints.
+ * A key of its own would have meant teaching all eleven loops about it. */
+static int redraw_wanted;
+
+void ui_request_redraw(void) { redraw_wanted = 1; }
+
 int ui_wait_key(void) {
   for (;;) {
     int ready = loop_wait(LOOP_TICK_MS);
     if (term_take_winch()) return WINCH_KEY;
     if (ready & LOOP_STDIN) return editor_read_key();
+    /* A whole tick with no key in it: the user has paused, which is when the
+     * language servers are told what has changed. Not on every key, so that a
+     * word typed quickly is sent once and not once per letter. */
+    if (ready == 0) lsp_idle();
+    if (redraw_wanted) {
+      redraw_wanted = 0;
+      return WINCH_KEY;
+    }
   }
 }

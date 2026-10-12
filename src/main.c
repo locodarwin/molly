@@ -5,6 +5,11 @@
 #include "molly.h"
 
 void editor_cleanup(void) {
+  /* The language servers first: they are other processes, and the one thing
+   * worse than an editor that takes a moment to exit is one that leaves a
+   * clangd running behind it. Before the buffers, whose frees would otherwise
+   * be telling servers about each one on the way out. */
+  lsp_cleanup();
   free(E.clipboard);
   E.clipboard = NULL;
   E.clipsize = 0;

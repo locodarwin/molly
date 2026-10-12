@@ -4117,6 +4117,282 @@ static void test_json(void) {
   check("2,000 random strings survive the round trip", bad, 0);
 }
 
+/* ---- the language server client ------------------------------------------ */
+
+static long lsp_test_ms(void) {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+/* Run the loop the way the editor does between keys, until `done` says so or
+ * the time runs out. A real server answers in milliseconds; the fake one is a
+ * Python interpreter starting, which on a loaded CI machine is not. */
+static int lsp_pump(int (*done)(void), int ms) {
+  long until = lsp_test_ms() + ms;
+  while (lsp_test_ms() < until) {
+    lsp_idle();
+    loop_wait(20);
+    if (done()) return 1;
+  }
+  return done();
+}
+
+static struct buffer *lsp_buf;
+static int lsp_want;
+static int lsp_ndiag_is(void) { return lsp_buf->ndiag == lsp_want; }
+static int lsp_unopened(void) { return lsp_buf->lsp_srv == 0 && E.statusmsg[0] != '\0'; }
+static int lsp_open(void) { return lsp_buf->lsp_srv > 0; }
+
+/* The fake server's log so far, as one string. */
+static char *lsp_log(const char *path) {
+  FILE *fp = fopen(path, "r");
+  char *s;
+  long n;
+  if (fp == NULL) return xstrdup("");
+  fseek(fp, 0, SEEK_END);
+  n = ftell(fp);
+  fseek(fp, 0, SEEK_SET);
+  s = xmalloc((size_t)n + 1);
+  n = (long)fread(s, 1, (size_t)n, fp);
+  s[n] = '\0';
+  fclose(fp);
+  return s;
+}
+
+static int lsp_logged(const char *path, const char *needle) {
+  char *s = lsp_log(path);
+  int found = strstr(s, needle) != NULL;
+  free(s);
+  return found;
+}
+
+static const char *lsp_logpath;
+static const char *lsp_logneedle;
+static int lsp_log_has(void) { return lsp_logged(lsp_logpath, lsp_logneedle); }
+
+static void lsp_write(const char *name, const char *text) {
+  FILE *fp = fopen(name, "w");
+  fputs(text, fp);
+  fclose(fp);
+}
+
+/* Open `name` in the one buffer, over whatever it held -- which editor_open()
+ * expects to have been emptied first. */
+static void lsp_open_file(const char *name) {
+  char path[64];
+  editor_clear_rows();
+  snprintf(path, sizeof(path), "%s", name);
+  editor_open(path);
+  lsp_buf = V.buf;
+}
+
+static void test_lsp(void) {
+  char tmpl[] = "/tmp/molly-lsp-XXXXXX";
+  char here[4096], cmd[8192], logpath[4200], msg[256];
+  char *s;
+
+  printf("\nlanguage server: positions\n");
+  /* a, é (two bytes, one unit), 😀 (four bytes, two units), b */
+  {
+    const char *t = "a\xc3\xa9\xf0\x9f\x98\x80" "b";
+    int n = 8;
+    check("UTF-8: a byte is a unit", lsp_col_to_units(t, n, 7, 1), 7);
+    check("UTF-16: before é", lsp_col_to_units(t, n, 1, 0), 1);
+    check("UTF-16: é is one unit", lsp_col_to_units(t, n, 3, 0), 2);
+    check("UTF-16: an emoji is two", lsp_col_to_units(t, n, 7, 0), 4);
+    check("UTF-16: past the end is the end", lsp_col_to_units(t, n, 99, 0), 5);
+    check("back: unit 2 is after é", lsp_units_to_col(t, n, 2, 0), 3);
+    check("back: unit 4 is after the emoji", lsp_units_to_col(t, n, 4, 0), 7);
+    check("back: half an emoji is the emoji's start", lsp_units_to_col(t, n, 3, 0), 3);
+    check("back: past the end is the end", lsp_units_to_col(t, n, 40, 0), 8);
+    check("UTF-8 inside a character is its start", lsp_units_to_col(t, n, 5, 1), 3);
+    check("UTF-8 past the end is the end", lsp_units_to_col(t, n, 40, 1), 8);
+    check("a negative column is zero", lsp_units_to_col(t, n, -3, 0), 0);
+  }
+
+  printf("\nlanguage server: file names\n");
+  s = lsp_path_to_uri("/tmp/a b%#.c");
+  check_str("unsafe bytes are escaped", s, "file:///tmp/a%20b%25%23.c");
+  free(s);
+  s = lsp_uri_to_path("file:///tmp/a%20b%25%23.c");
+  check_str("and come back", s, "/tmp/a b%#.c");
+  free(s);
+  s = lsp_uri_to_path("file://localhost/etc/x");
+  check_str("localhost is this machine", s, "/etc/x");
+  free(s);
+  check("another host is not", lsp_uri_to_path("file://elsewhere/x") == NULL, 1);
+  check("another scheme is not a file", lsp_uri_to_path("jdt://x/y") == NULL, 1);
+  check("nor is nothing", lsp_uri_to_path(NULL) == NULL, 1);
+
+  printf("\nlanguage server: a conversation with one\n");
+  if (getcwd(here, sizeof(here)) == NULL || mkdtemp(tmpl) == NULL ||
+      chdir(tmpl) != 0) {
+    check("a scratch directory to work in", 0, 1);
+    return;
+  }
+  snprintf(logpath, sizeof(logpath), "%s/log", tmpl);
+  lsp_logpath = logpath;
+  setenv("FAKE_LSP_LOG", logpath, 1);
+  unsetenv("MOLLY_LSP");
+  snprintf(cmd, sizeof(cmd), "python3 -I %s/tests/fake_lsp.py", here);
+
+  window_init();
+  buflist_init();
+  syntax_init();
+  {
+    const char *err = NULL;
+    check("a [syntax] block can name a server",
+          syntax_set_line("c", "language server", cmd, &err), 1);
+  }
+  lsp_set_enabled(1);
+
+  lsp_write("a.c", "int x;\nBAD here\n  WARN\n");
+  lsp_open_file("a.c");
+  lsp_want = 2;
+  check("its diagnostics arrive", lsp_pump(lsp_ndiag_is, 10000), 1);
+  check("the error is on its row", lsp_buf->diag[0].y0, 1);
+  check("from the word's start", lsp_buf->diag[0].x0, 0);
+  check("to its end", lsp_buf->diag[0].x1, 3);
+  check("as an error", lsp_buf->diag[0].severity, 1);
+  check_str("with the server's words", lsp_buf->diag[0].msg, "BAD is not allowed here");
+  check("the warning is the second", lsp_buf->diag[1].severity * 100 +
+        lsp_buf->diag[1].y0 * 10 + lsp_buf->diag[1].x0, 222);
+  check("it was opened as C", lsp_logged(logpath, "\"languageId\": \"c\""), 1);
+  check("at version 1", lsp_logged(logpath, "\"version\": 1"), 1);
+  check("with the text as it is",
+        lsp_logged(logpath, "\"text\": \"int x;\\nBAD here\\n  WARN\\n\""), 1);
+
+  /* An edit moves the diagnostics below it at once, before the server has
+   * been told, so they stay on their text. */
+  editor_insert_row(0, "NOTE", 4);
+  check("a row inserted above moves them down", lsp_buf->diag[0].y0, 2);
+  lsp_want = 3;
+  check("the server's opinion of the edit arrives", lsp_pump(lsp_ndiag_is, 10000), 1);
+  check("the new note is first", lsp_buf->diag[0].severity * 10 + lsp_buf->diag[0].y0, 30);
+  check("it was sent as version 2", lsp_logged(logpath, "\"version\": 2"), 1);
+  check("with the new text",
+        lsp_logged(logpath, "\"text\": \"NOTE\\nint x;\\nBAD here\\n  WARN\\n\""), 1);
+  editor_delete_row(2);
+  check("deleting the error's row takes it at once", lsp_buf->ndiag, 2);
+  check("and moves the warning up", lsp_buf->diag[1].y0, 2);
+
+  editor_save();
+  lsp_logneedle = "didSave";
+  check("a save is told", lsp_pump(lsp_log_has, 5000), 1);
+
+  /* Nothing is sent while the text has not changed: a sweep is cheap only if
+   * it is a comparison. */
+  {
+    char *before = lsp_log(logpath), *after;
+    lsp_pump(lsp_open, 200);
+    after = lsp_log(logpath);
+    check("an idle sweep sends nothing", strcmp(before, after) == 0, 1);
+    free(before);
+    free(after);
+  }
+
+  lsp_describe(lsp_buf, msg, sizeof(msg));
+  check_str("the status says it is running", msg, "python3 is running: 2 problems here.");
+
+  /* Stopping waits for the server to go, so by the time it returns the server
+   * has read both and logged both -- no pump, which would start another. */
+  lsp_stop_all();
+  check("stopping says shutdown", lsp_logged(logpath, "\"shutdown\""), 1);
+  check("and exit", lsp_logged(logpath, "\"exit\""), 1);
+  check("the buffer forgets its server", lsp_buf->lsp_srv, 0);
+  check("and its diagnostics", lsp_buf->ndiag, 0);
+
+  printf("\nlanguage server: a server that counts in UTF-16\n");
+  setenv("FAKE_LSP_ENCODING", "utf-16", 1);
+  lsp_write("u.c", "\xc3\xa9\xf0\x9f\x98\x80 BAD\n");
+  lsp_open_file("u.c");
+  lsp_want = 1;
+  check("its diagnostic arrives", lsp_pump(lsp_ndiag_is, 10000), 1);
+  check("and lands on the right byte", lsp_buf->diag[0].x0 * 100 + lsp_buf->diag[0].x1, 710);
+  lsp_stop_all();
+  unsetenv("FAKE_LSP_ENCODING");
+
+  printf("\nlanguage server: one that asks questions of its own\n");
+  remove(logpath);
+  setenv("FAKE_LSP_ASK", "1", 1);
+  lsp_open_file("a.c");
+  lsp_logneedle = "\"response\": \"tok\"";
+  check("a request is answered", lsp_pump(lsp_log_has, 10000), 1);
+  check("configuration gets a null per item",
+        lsp_logged(logpath, "{\"response\": 1000, \"result\": [null, null]}"), 1);
+  check("anything else gets null",
+        lsp_logged(logpath, "{\"response\": \"tok\", \"result\": null}"), 1);
+  lsp_stop_all();
+  unsetenv("FAKE_LSP_ASK");
+
+  printf("\nlanguage server: one that dies\n");
+  setenv("FAKE_LSP_CRASH", "1", 1);
+  E.statusmsg[0] = '\0';
+  lsp_open_file("a.c");
+  check("its death is noticed", lsp_pump(lsp_unopened, 10000), 1);
+  check_str("with its last words", E.statusmsg, "python3 exited: fake_lsp: badly wrong");
+  lsp_describe(lsp_buf, msg, sizeof(msg));
+  check_str("and the status says so", msg, "python3 has stopped: fake_lsp: badly wrong");
+  E.statusmsg[0] = '\0';
+  lsp_pump(lsp_open, 300);
+  check("it is not started again behind the user's back", lsp_buf->lsp_srv, 0);
+  check("nor reported again", E.statusmsg[0], '\0');
+  lsp_stop_all();
+  unsetenv("FAKE_LSP_CRASH");
+
+  printf("\nlanguage server: one that does not speak the protocol\n");
+  setenv("FAKE_LSP_GARBAGE", "1", 1);
+  E.statusmsg[0] = '\0';
+  lsp_open_file("a.c");
+  check("it is given up on", lsp_pump(lsp_unopened, 10000), 1);
+  check("and said so",
+        strstr(E.statusmsg, "sent something that is not the protocol") != NULL, 1);
+  lsp_stop_all();
+  unsetenv("FAKE_LSP_GARBAGE");
+
+  printf("\nlanguage server: one that is not installed\n");
+  {
+    const char *err = NULL;
+    syntax_set_line("c", "language server", "molly-no-such-server --stdio", &err);
+  }
+  E.statusmsg[0] = '\0';
+  lsp_open_file("a.c");
+  lsp_pump(lsp_open, 300);
+  check("nothing is opened", lsp_buf->lsp_srv, 0);
+  check("and nothing is said", E.statusmsg[0], '\0');
+  lsp_describe(lsp_buf, msg, sizeof(msg));
+  check_str("until asked", msg, "molly-no-such-server is not installed.");
+  lsp_stop_all();
+
+  {
+    const char *err = NULL;
+    syntax_set_line("c", "language server", "none", &err);
+  }
+  lsp_describe(lsp_buf, msg, sizeof(msg));
+  check_str("`none` turns a server off", msg, "No language server for c.");
+  {
+    const char *err = NULL;
+    syntax_set_line("c", "language server", cmd, &err);
+  }
+  lsp_set_enabled(0);
+  lsp_pump(lsp_open, 300);
+  check("switched off, nothing starts", lsp_buf->lsp_srv, 0);
+  lsp_describe(lsp_buf, msg, sizeof(msg));
+  check_str("and the status says why", msg, "Language servers are off.");
+  lsp_set_enabled(1);
+  setenv("MOLLY_LSP", "off", 1);
+  lsp_pump(lsp_open, 300);
+  check("MOLLY_LSP=off is off too", lsp_buf->lsp_srv, 0);
+  unsetenv("MOLLY_LSP");
+
+  unsetenv("FAKE_LSP_LOG");
+  if (chdir(here) != 0) check("back to where the tests started", 0, 1);
+  snprintf(cmd, sizeof(cmd), "rm -rf %s", tmpl);
+  if (system(cmd) != 0) printf("  note  could not remove %s\n", tmpl);
+  syntax_init();
+}
+
 int main(void) {
   test_loop_sources();
   test_wait_key_services_sources();
@@ -4161,6 +4437,7 @@ int main(void) {
   test_windows_too_small();
   test_windows_resize();
   test_grep();
+  test_lsp();
   test_windows_buffer_closed();
   test_chords();
   test_config_parse();

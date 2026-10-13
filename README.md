@@ -2,37 +2,36 @@
 
 A feature-rich, dependency-free text editor for the terminal, written in C11.
 
-Molly is the big sister to [olly]: same modeless, start-typing-and-you're-editing
-feel, same zero external dependencies, but without olly's self-imposed ceiling.
-Where olly deliberately stops — one file, one cursor, no regex, no config — the
-model is [Fresh](https://github.com/sinelaw/fresh): a terminal editor that
-behaves like a GUI one — menu bar, mouse, dialogs, splits, discoverable everything — built on
-olly's base in C, with no runtime dependencies.
+Molly is the big sister to [olly]. It has the same modeless editing, where you
+start typing and you are editing, and the same zero external dependencies, but
+not olly's self-imposed limits. Olly stops at one file, one cursor, no regex and
+no config. Molly is modeled on [Fresh](https://github.com/sinelaw/fresh), a
+terminal editor that behaves like a GUI one (menu bar, mouse, dialogs, splits,
+everything discoverable), and is built on olly's base in C, with no runtime
+dependencies.
 
-**Status: early, but no longer only foundations.** The groundwork is done — the
-editor is split into modules, the screen is a cell grid, every action is a named
-command reached through a keymap, and the event loop can wait on a child process
-as well as the keyboard — and the features it was groundwork *for* have started
-landing: a configuration file with a rebindable keymap, any number of files open
-at once with a tab bar, syntax highlighting for seven languages, window splits,
-a shell filter, per-filetype indentation, multiple cursors, soft wrap, a
-language-server client, an integrated terminal, folding, macros and git
-marks. 2,612 checks pass,
-including golden screenshots taken before the renderer was replaced and still
-compared against today. What comes next, and why, is in
-[`ROADMAP.md`](ROADMAP.md).
+**Status: early.** The groundwork is done: the editor is split into modules, the
+screen is a cell grid, every action is a named command reached through a keymap,
+and the event loop can wait on a child process as well as the keyboard. Features
+built on that groundwork have started landing: a configuration file with a
+rebindable keymap, any number of files open at once with a tab bar, syntax
+highlighting for seven languages, window splits, a shell filter, per-filetype
+indentation, multiple cursors, soft wrap, a language-server client, an
+integrated terminal, folding, macros and git marks. 2,612 checks pass, including
+golden screenshots taken before the renderer was replaced and still compared
+against today. What comes next, and why, is in [`ROADMAP.md`](ROADMAP.md).
 
 [olly]: https://github.com/locodarwin/olly
 
 ## Inherited features
 
-Everything olly does, molly does. These all work today:
+Molly does everything olly does. All of the following work today:
 
 
 - **Modeless editing**: type to insert, arrow keys to move, `Ctrl` keys act.
 - **Search, with a case-sensitivity toggle**, that wraps around the file and
   remembers the last term:
-  - `Ctrl-F` search, `F3` next match, `Shift-F3` previous match, or just
+  - `Ctrl-F` search, `F3` next match, `Shift-F3` previous match, or
     press `Ctrl-F` again with an empty query to repeat.
   - The Find dialog's **Match case** checkbox switches between
     case-insensitive (the default) and case-sensitive matching.
@@ -41,7 +40,7 @@ Everything olly does, molly does. These all work today:
 - **Find in files**: `Ctrl-E` runs `git grep` (or `grep -r` outside a
   repository) and lists the matches in a window; `Enter` opens one, `F4` and
   `Shift-F4` step through them from anywhere.
-- **Go to line**: `Ctrl-G` jumps straight to a line number.
+- **Go to line**: `Ctrl-G` jumps to a line number.
 - **Grouped undo/redo**: a run of typed (or deleted) characters, or a
   replace-all, undoes as one step. `Ctrl-Z` undo, `Ctrl-Y` redo.
 - **Selection and clipboard**: hold `Shift` and use the arrows, `Home`/`End`
@@ -64,7 +63,7 @@ Everything olly does, molly does. These all work today:
   honored so wide (CJK) and combining characters stay aligned on screen.
 - **Crash recovery**: if a signal or an out-of-memory condition kills Molly
   with unsaved changes, the buffer is written to a `.molly-recover` file.
-- **Open anything**: never errors on a missing file; it simply starts an
+- **Open anything**: a missing file is not an error; Molly starts an
   empty buffer.
 - **Open-file dialog**: `Ctrl-O` opens a directory browser so you can browse
   to a file instead of relaunching; it replaces the current buffer (unsaved
@@ -91,75 +90,76 @@ Everything olly does, molly does. These all work today:
   rectangle in screen columns. It is a cursor per row, so typing writes on
   every row; a copied block pastes back as a block.
 - **Big files**: a file is read in one piece and its lines are not copied until
-  they change, so Molly needs about 1.5 times a file's size — a 743 MB,
+  they change, so Molly needs about 1.5 times a file's size. A 743 MB,
   ten-million-line log opens in under half a second.
 - **Soft wrap**: `Alt-Z` lays a line too long for the window out over as many
   screen rows as it needs, breaking it after the last space that fits. The
-  arrows walk the rows of a long line, the gutter numbers it once, and nothing
-  in the file changes — it is a way of showing a line, not of rewriting it.
-  Off by default, and a property of the window, so a split can wrap one half.
+  arrows walk the rows of a long line, the gutter numbers it once, and the file
+  itself is not changed. Wrapping is off by default and set per window, so one
+  side of a split can wrap while the other does not.
 - **Indentation that follows the filetype**: `Enter` starts the new line under
   the old one, `Tab` types a tab or spaces to the next tab stop, and the tab
   width, the choice of character and auto-indent are each settable for
   everything in `[editor]` or for one language in `[syntax <name>]`.
   `Edit ▸ Tabs to spaces` and `Spaces to tabs` convert what a file already has.
-- **Filter through a shell command**: `Alt-|` pipes the selection — or the whole
-  file — through `sort`, `jq`, `fmt`, `black` or any pipeline, and replaces it
+- **Filter through a shell command**: `Alt-|` pipes the selection (or the whole
+  file) through `sort`, `jq`, `fmt`, `black` or any pipeline, and replaces it
   with the output. One undo step, with a timeout, an output cap and `Esc` to
-  cancel; a command that fails leaves your text alone. `Alt-!` inserts a
-  command's output at the cursor instead — `date`, `git rev-parse HEAD`.
+  cancel; a failed command leaves the text unchanged. `Alt-!` inserts a
+  command's output at the cursor instead, such as `date` or
+  `git rev-parse HEAD`.
 - **An integrated terminal**: `Alt-T` opens your shell in a window below the
-  file, and goes back and forth. Colours, `less`, `vim`, `htop` and the rest
-  draw as they would in xterm; `Shift-PgUp` scrolls back 5,000 lines; paste
-  goes in bracketed. Every key is the program's but the ways out — window and
-  buffer switches, the menu bar, the palette, quit — and when the shell exits,
-  its window closes.
+  file and switches back and forth between the two. Colors, `less`, `vim`,
+  `htop` and the rest draw as they would in xterm; `Shift-PgUp` scrolls back
+  5,000 lines; paste goes in bracketed. Every key goes to the program except the
+  ones that get you out: window and buffer switches, the menu bar, the palette
+  and quit. When the shell exits, its window closes.
 - **Language servers**: open a C, C++, Rust or Python file with clangd,
-  rust-analyzer or pylsp installed and molly starts it — a missing one is
-  silence. Problems are underlined in the text and counted on the status bar,
-  `F2` walks them and `Ctrl-F2` lists them all, kept up to date; `F12` goes to a
-  definition and `Alt-Left` comes back; `Alt-K` shows what a name is; `Alt-/`
-  completes the word, and `.` asks by itself; `Shift-F12` lists every use; `(`
-  shows the signature you are filling in; `Alt-N` renames across files, leaving
-  them unsaved to review; `Alt-Q` formats. Any other server is one `language
-  server =` line in the config. Hand-rolled JSON, no library.
-  `Alt-Enter` lists the code actions for here — fixes and refactorings — and
-  carries out whichever you choose. Format on save and completion as you type
-  are there to turn on. A server is started for the file's own project, found
-  by its build files.
+  rust-analyzer or pylsp installed and molly starts it; if the server is not
+  installed, molly says nothing. Problems are underlined in the text and counted
+  on the status bar, `F2` walks them and `Ctrl-F2` lists them all, kept up to
+  date; `F12` goes to a definition and `Alt-Left` comes back; `Alt-K` shows what
+  a name is; `Alt-/` completes the word, and typing `.` asks for completions
+  too; `Shift-F12` lists every use; `(` shows the signature you are filling in;
+  `Alt-N` renames across files, leaving them unsaved to review; `Alt-Q` formats.
+  Any other server is one `language server =` line in the config. The JSON
+  handling is written by hand, with no library. `Alt-Enter` lists the code
+  actions (fixes and refactorings) at the cursor and applies the one you choose.
+  Format on save and completion as you type can be turned on in the settings. A
+  server is started for the file's own project, which molly finds from its build
+  files.
 - **Words and lines**: `Ctrl-Left`/`Ctrl-Right` move by words and
   `Alt-Backspace`/`Ctrl-Delete` delete them, `Ctrl-K` deletes to the end of the
   line; `Alt-C` duplicates lines, `Alt-Up`/`Alt-Down` move them, `Ctrl-J` joins
   them, `Alt-;` comments them out and back in, and sort, trim and case changes
   are in the Edit menu and the palette. Smart `Home` and auto-closing brackets
-  and quotes, which also wrap a selection, are settings, off until you want
-  them.
+  and quotes, which also wrap a selection, are settings, off by default.
 - **Getting back**: `Alt-Left`/`Alt-Right` walk back and forward through every
-  jump — go to line, a find, a result, a definition — across files; `Ctrl-]`
+  jump (go to line, a find, a result, a definition), across files; `Ctrl-]`
   goes to the matching bracket; `Alt-J` and a digit sets one of ten bookmarks
-  and `Alt-` the digit comes back to it.
+  and `Alt-` with the digit goes back to it.
 - **Seeing more**: whitespace (`Alt-.`), indent guides, the current line and
   the word under the cursor everywhere it appears, each from the View menu, and
   a ruler at a column from Options. `Alt--` folds a block by its indentation.
-- **Keyboard macros**: `Alt-(` records, `Alt-)` plays back — typing, commands,
-  prompts and dialogs alike.
+- **Keyboard macros**: `Alt-(` records and `Alt-)` plays back typing, commands,
+  prompts and dialogs.
 - **Git**: a sign column marks lines added, changed or deleted since the last
   commit, as you type; blame for a line and the file's history, each commit
   opening as its diff, are in the palette.
 - **Recent files and read-only**: `Alt-O` reopens one of the last twenty files;
   a file you cannot write opens read-only, and View ▸ Read only toggles it.
 - **More terminal**: drag to select and copy, find in the scrollback, the mouse
-  for programs that ask for it, and 24-bit colour passed through where your
+  for programs that ask for it, and 24-bit color passed through where your
   terminal can show it.
 - **Keyboard reference built in**: press `F1` at any time.
 - **Configurable**: `~/.config/molly/mollyrc` holds the settings and the
   keymap; `View ▸ Options…` changes any setting in place, and
-  `View ▸ Save Settings` writes the file for you.
+  `View ▸ Save Settings` writes the file.
 - No runtime dependencies. Compiles with any C11 compiler.
 
 ## Install
 
-Just run:
+To build, run:
 
 ```sh
 make
@@ -171,11 +171,10 @@ Then put it somewhere on your `PATH`:
 make install
 ```
 
-Its default install location is `/usr/local/bin`; if that directory isn't
-writable (a very common situation), `make install` detects this and falls
-back to `~/.local/bin` automatically - no `sudo` needed. You can override the
-target with `make install PREFIX=/some/dir` or stage a package with
-`make install DESTDIR=/wherever`. `make uninstall` to remove it.
+The default install location is `/usr/local/bin`. If that directory isn't
+writable, `make install` falls back to `~/.local/bin`, so no `sudo` is needed.
+You can override the target with `make install PREFIX=/some/dir` or stage a
+package with `make install DESTDIR=/wherever`. `make uninstall` removes it.
 
 ## Usage
 
@@ -187,13 +186,13 @@ molly file.txt +42    # open with the cursor on line 42 (+42 file.txt works too)
 molly --version       # print the version and exit
 ```
 
-Edit immediately. Every key you type is inserted at the cursor. Save with
-`Ctrl-S`, search with `Ctrl-F`, select with `Shift` + the arrows, and press
-`F1` for a key reference. Keep an eye on the status bar: it shows the file
-name, line count, modified state, and the cursor as `Ln <line>, Col <column>`
-(plus a `Sel <bytes>` count while text is selected). The display — including the
-help screen, which reflows between one and two columns — resizes live as you
-resize the terminal window.
+You can start typing right away; every key is inserted at the cursor. Save
+with `Ctrl-S`, search with `Ctrl-F`, select with `Shift` + the arrows, and press
+`F1` for a key reference. The status bar shows the file name, line count,
+modified state, and the cursor as `Ln <line>, Col <column>` (plus a
+`Sel <bytes>` count while text is selected). The display, including the help
+screen (which reflows between one and two columns), resizes live with the
+terminal window.
 
 ## Keyboard shortcuts
 
@@ -249,40 +248,41 @@ resize the terminal window.
 | `Shift` + Arrows / `Home` / `End` / `PgUp` / `PgDn` | Extend selection |
 | `Enter`, `Backspace`, `Delete` | Edit (replaces any selection) |
 
-The full write-up — including the grouped-undo rules, the fallback install
-details, and the file-format notes — is in [`MANUAL.md`](MANUAL.md).
+[`MANUAL.md`](MANUAL.md) has the full details, including the grouped-undo
+rules, the fallback install details and the file-format notes.
 
 ## Design
 
-Molly keeps the parts of olly's discipline that cost nothing and drops the ones
-that capped it:
+Molly keeps the parts of olly's design that cost nothing and drops the ones
+that limited it:
 
 **Kept:**
 
-- **No runtime dependencies.** C11 and a terminal. Nothing to install, nothing
-  to version-pin, nothing that rots.
-- **Modeless by default.** Type to insert. Nothing to learn before you can edit,
-  and no way to lose work by forgetting which mode you are in.
+- **No runtime dependencies.** It needs a C11 compiler and a terminal, with
+  nothing else to install or pin to a version.
+- **Modeless by default.** Typing inserts text. There are no modes to learn
+  before you can edit, and no risk of losing work by forgetting which mode you
+  are in.
 - **Instant start and careful saves.** Atomic writes, preserved line endings and
   file modes, crash recovery, dirty-quit protection.
 - **Discoverable.** Anything molly can do should be findable from inside molly.
 
-**Dropped (these were olly's limits, and they are molly's job):**
+**Dropped (olly's limits, which molly is meant to go past):**
 
 - The single-source-file rule. Molly is several files and a real build.
 - One file, one cursor, one window.
 - No regex, no configuration, no syntax awareness.
 - Ctrl-keys only: molly uses Alt as well, and puts a menu bar on it.
 
-What molly must *not* become: slow to start, dependent on a runtime, or
-impossible to use without reading the manual first. The features change; the
-feel should not.
+Molly should not become slow to start, dependent on a runtime, or impossible to
+use without reading the manual first. Features will be added, but the feel
+should stay the same.
 
 For what is planned, in what order, and what has been ruled out, see
 [`ROADMAP.md`](ROADMAP.md).
 
 
-## Acknowledgements
+## Acknowledgments
 
 Molly is a fork of [olly], which builds on the architecture of the classic
 [kilo] editor by antirez. Both are credited in [`NOTICE`](NOTICE.md).
@@ -292,4 +292,4 @@ Molly is a fork of [olly], which builds on the architecture of the classic
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+MIT. See [`LICENSE`](LICENSE).

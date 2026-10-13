@@ -7,7 +7,7 @@ ga║   Alt+drag       Block selection      VIEW                               �
 ~ ║                                         Ctrl-U         Line numbers      ║
 ~ ║                                         Alt-M          Show the menu bar ║
 ~ ║                                         Alt-B          Show a tab per fi ║
-~ ║                                         Alt-Y          Colour by filetyp ║
+~ ║                                         Alt-Y          Color by filetype ║
 ~ ║                                         Alt-Z          Wrap long lines   ║
 ~ ║                                         Alt-.          Show whitespace   ║
 ~ ║                                         Alt--          Fold / unfold     ║

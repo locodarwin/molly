@@ -191,7 +191,7 @@ static int decode_key(unsigned char c) {
       case 'F': return END_KEY;
       /* Shift-Tab. Tab itself is a plain control byte, but its shifted form is a
        * sequence of its own, and without this it fell through to Esc -- which in
-       * a dialog meant that going backwards through the focus order cancelled
+       * a dialog meant that going backwards through the focus order canceled
        * the dialog. */
       case 'Z': return BACKTAB_KEY;
       /* F1-F4 also appear as CSI finals on some terminals, with modifiers
@@ -290,7 +290,7 @@ int input_escape_pressed(void) {
   if (!(loop_wait(0) & LOOP_STDIN)) return 0;
   /* One read, not editor_read_key's wait for a key: standard input at end of
    * file is readable for ever and reads nothing, and waiting there would hold
-   * the command being cancelled -- and its time limit -- for ever with it. */
+   * the command being canceled -- and its time limit -- for ever with it. */
   if (read(STDIN_FILENO, &c, 1) != 1) return 0;
   return decode_key(c) == '\x1b';
 }

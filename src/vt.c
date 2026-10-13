@@ -1,7 +1,7 @@
 /* vt.c -- a terminal emulator, for the integrated terminal.
  *
  * A program running in molly's terminal writes the same bytes it would write to
- * xterm: text, and escape sequences that move the cursor, colour what comes
+ * xterm: text, and escape sequences that move the cursor, color what comes
  * next, clear a line, scroll a region, switch to an alternate screen. This file
  * reads those bytes and keeps the screen they describe -- a grid of cells, a
  * cursor, a pen, the modes -- plus the lines that have scrolled off the top.
@@ -30,7 +30,7 @@
  *     redraws its own prompt on SIGWINCH and would then show it twice. What
  *     would be left worth having is old output in the scrollback, re-wrapped,
  *     and that is not worth the bookkeeping.
- *   - **Colour depth.** A 24-bit colour is kept as it is, and brought down
+ *   - **Color depth.** A 24-bit color is kept as it is, and brought down
  *     to what the terminal can show when the frame is written. */
 
 #include "molly.h"
@@ -118,7 +118,7 @@ static struct vt_cell blank_with(const struct vt *t) {
   c.w = 1;
   c.fg = -1;
   /* Erasing paints the current background, as xterm does ("bce"), so a
-   * program that sets a background and clears the screen gets that colour. */
+   * program that sets a background and clears the screen gets that color. */
   c.bg = t->bg;
   return c;
 }
@@ -447,8 +447,8 @@ static void alt_screen(struct vt *t, int on, int clear) {
 
 /* ---- the pen ------------------------------------------------------------- */
 
-/* 38 or 48 and what follows it: `5;n` for an index, `2;r;g;b` for a colour.
- * The same with colons, where `2` may be followed by a colour-space id that
+/* 38 or 48 and what follows it: `5;n` for an index, `2;r;g;b` for a color.
+ * The same with colons, where `2` may be followed by a color-space id that
  * is empty in practice. Returns how many parameters after `i` it used. */
 static int ext_color(const struct vt *t, int i, int *out) {
   int k = i + 1, kind;
@@ -461,7 +461,7 @@ static int ext_color(const struct vt *t, int i, int *out) {
   }
   if (kind == 2) {
     int first = k + 1;
-    /* With colons, `38:2::r:g:b` has an empty colour-space slot; with
+    /* With colons, `38:2::r:g:b` has an empty color-space slot; with
      * semicolons there is none. Four sub-parameters means the slot is there. */
     if (t->sub[k + 1] && k + 4 < t->nparams && t->sub[k + 4]) first = k + 2;
     if (first + 2 < t->nparams) {
@@ -469,7 +469,7 @@ static int ext_color(const struct vt *t, int i, int *out) {
       if (r < 0) r = 0;
       if (g < 0) g = 0;
       if (b < 0) b = 0;
-      /* Kept as the colour it is: the grid brings it down to what the
+      /* Kept as the color it is: the grid brings it down to what the
        * terminal can show as the frame is written (theme_fit_color). */
       *out = COLOR_RGB | ((r > 255 ? 255 : r) << 16) | ((g > 255 ? 255 : g) << 8) |
              (b > 255 ? 255 : b);
@@ -739,7 +739,7 @@ static void osc_dispatch(struct vt *t) {
   if (i >= t->osclen || t->osc[i] != ';') return;
   i++;
   /* 0 and 2 are the window title, which molly shows as the buffer's name. The
-   * rest -- colours, the clipboard, hyperlinks, the working directory -- are
+   * rest -- colors, the clipboard, hyperlinks, the working directory -- are
    * not taken: OSC 52 especially, which would let any program that writes to
    * the terminal set molly's clipboard. */
   if (ps == 0 || ps == 2) {

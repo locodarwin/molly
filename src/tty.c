@@ -237,13 +237,13 @@ static struct tty *tty_start(int rows, int cols) {
     signal(SIGTTOU, SIG_DFL);
     signal(SIGCHLD, SIG_DFL);
     signal(SIGWINCH, SIG_DFL);
-    /* What the shell is told it is in: an xterm with 256 colours, which is
-     * what vt.c is. COLORTERM goes, because molly brings 24-bit colour down to
-     * the 256 and a program that knew that would choose its own colours
+    /* What the shell is told it is in: an xterm with 256 colors, which is
+     * what vt.c is. COLORTERM goes, because molly brings 24-bit color down to
+     * the 256 and a program that knew that would choose its own colors
      * better. MOLLY_LSP and MOLLY_CONFIG are the editor's, not the shell's. */
     setenv("TERM", "xterm-256color", 1);
     setenv("TERM_PROGRAM", "molly", 1);
-    /* 24-bit colour is passed through where the terminal molly is in takes
+    /* 24-bit color is passed through where the terminal molly is in takes
      * it, and brought down to 256 where it does not; the shell is told which. */
     if (theme_truecolor()) setenv("COLORTERM", "truecolor", 1);
     else unsetenv("COLORTERM");

@@ -124,7 +124,7 @@ char *editor_prompt(char *prompt, void (*callback)(char *, int)) {
 
     c = ui_wait_key();
     if (c == WINCH_KEY) continue;
-    /* A click or a wheel is not an answer. Ignored rather than cancelling, because
+    /* A click or a wheel is not an answer. Ignored rather than canceling, because
      * losing a half-typed search term to a stray scroll would be a nasty surprise. */
     if (c == MOUSE_KEY) continue;
 
@@ -464,7 +464,7 @@ static const char *path_tail(const char *dir, int cols) {
   return p;
 }
 
-/* The open-file dialog: returns a malloc'd path to open, or NULL if cancelled.
+/* The open-file dialog: returns a malloc'd path to open, or NULL if canceled.
  *
  * A framed dialog on the layer stack now, rather than a full-screen takeover. It
  * draws no escape sequences and clears nothing: it fills in cells, and the ordinary

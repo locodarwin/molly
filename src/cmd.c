@@ -3,7 +3,7 @@
  * Olly handled keys in one switch in editor_process_keypress. That works while
  * keys are the only way to reach an action, and molly's are not going to be: a
  * menu entry needs a label, an underlined mnemonic, a shortcut printed down the
- * right-hand side and the ability to grey itself out; a command palette needs a
+ * right-hand side and the ability to gray itself out; a command palette needs a
  * name to search; a macro needs something to record; a configurable keymap needs
  * something to bind *to*. A switch case offers none of these, so every action
  * becomes a table entry instead, and the dispatcher never names an action
@@ -431,7 +431,7 @@ static int cmd_select_all(void) {
 /* Select the line the cursor is on, end to end. It does not take the newline
  * with it, so Ctrl-L then Ctrl-X leaves an empty line rather than closing the
  * gap -- which is what makes it useful for replacing a line's contents, and is
- * the behaviour to revisit if "select line, extend by line" arrives. */
+ * the behavior to revisit if "select line, extend by line" arrives. */
 static int cmd_select_line(void) {
   if (CUR.cy >= row_count()) return 0;
   CUR.sy = CUR.cy;
@@ -636,7 +636,7 @@ static int cmd_syntax(void) {
   return 0;
 }
 
-/* Soft wrap, which is a per-window toggle like the gutter and the colours.
+/* Soft wrap, which is a per-window toggle like the gutter and the colors.
  *
  * The top line is kept where it is. The scroll offset is a display row, and the
  * same number means a different place in the file on each side of this toggle --
@@ -754,14 +754,14 @@ static int cmd_menu_bar_open(void) { return menu_open(0); }
 
 /* Not a keystroke: a SIGWINCH woke the read loop. Nothing to do but let the next
  * refresh pick up the size -- without resetting the quit countdown, which a
- * terminal resize has no business cancelling. */
+ * terminal resize has no business canceling. */
 static int cmd_resize(void) {
   return CMD_KEEP_SELECTION | CMD_KEEP_QUIT_COUNT;
 }
 
 /* ---- what is available, and what is on -------------------------------------
  *
- * A menu greys out an item whose command is unavailable and ticks one that is on.
+ * A menu grays out an item whose command is unavailable and ticks one that is on.
  * Each predicate lives beside the command it describes rather than in the menu, so
  * the palette and anything else that lists commands gets the same answers. */
 
@@ -778,10 +778,10 @@ static int tabbar_on(void) { return E.tabbar; }
 static int syntax_on(void) { return V.syntax; }
 static int wrap_on(void) { return V.wrap; }
 /* With one window there is nothing to move to, nothing to close and nothing to
- * be the only one of, so all four grey out together. Splitting stays available:
+ * be the only one of, so all four gray out together. Splitting stays available:
  * whether there is room for it is a question about the window's size, and
  * window_split() answers it with a message that says which way it would not
- * fit -- which is more use than a greyed item that cannot say why. */
+ * fit -- which is more use than a grayed item that cannot say why. */
 static int several_windows(void) { return window_count() > 1; }
 
 /* The table. Order matters only for the help screen, which walks it in order
@@ -830,7 +830,7 @@ static const struct command commands[] = {
   {.name = "goto.line", .label = "Go to line…",
    .help = "Go to line", .group = "MOVEMENT", .run = cmd_goto_line},
 
-  /* What a language server knows. The two problem commands are greyed in a
+  /* What a language server knows. The two problem commands are grayed in a
    * file with none rather than hidden, so the menu says where they would be;
    * F2 itself still answers, with why there is nothing to go to. */
   {.name = "goto.next-problem", .label = "Next problem",
@@ -1034,7 +1034,7 @@ static const struct command commands[] = {
    * rather than File because what it saves is the View, Search and Input
    * toggles; it moves to an Options menu when there is one. */
   {.name = "view.syntax", .label = "Syntax highlighting",
-   .help = "Colour by filetype", .group = "VIEW", .run = cmd_syntax,
+   .help = "Color by filetype", .group = "VIEW", .run = cmd_syntax,
    .checked = syntax_on},
   {.name = "view.whitespace", .label = "Whitespace",
    .help = "Show whitespace", .group = "VIEW", .run = cmd_whitespace,
@@ -1606,7 +1606,7 @@ static const struct binding default_bindings[] = {
   /* Alt-B for the tab bar. B is not one of the eight the menu bar reserves. */
   {"alt-b",  "view.tab-bar"},
   /* Alt-Y for syntax. Not S, which the Search menu owns; not C or H, which read
-   * as "colour" and "highlight" but belong to Help and to nothing. */
+   * as "color" and "highlight" but belong to Help and to nothing. */
   {"alt-y",  "view.syntax"},
   /* Alt-Z for soft wrap, which is where VS Code has it -- the one chord in this
    * table that a user is likely to arrive already knowing. W would have been

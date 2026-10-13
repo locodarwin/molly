@@ -1,4 +1,4 @@
-/* syntax.c -- filetypes and the lexer that colours a row.
+/* syntax.c -- filetypes and the lexer that colors a row.
  *
  * Table-driven, and deliberately not a parser per language. A definition is a
  * handful of rules -- these words are keywords, this starts a comment to the end
@@ -24,7 +24,7 @@
  *
  * ---- the cost this feature actually has -------------------------------------
  *
- * Not the rules. The rules are cheap. The cost is that a row's colouring depends
+ * Not the rules. The rules are cheap. The cost is that a row's coloring depends
  * on the rows above it: a block-comment opener on line 10 makes line 40 a
  * comment, and an edit on line 10 changes line 40 without touching it. So each
  * row records the lexer
@@ -42,7 +42,7 @@
  *
  * Roles are one byte per byte of the row as stored. They were one per byte of
  * a tab-expanded copy, while rows kept one; the draw loop now walks a tab a
- * column at a time and asks for the tab's role at each, so the colours land
+ * column at a time and asks for the tab's role at each, so the colors land
  * where they did and the copy is gone.
  */
 
@@ -62,7 +62,7 @@ struct syn_pair {
 
 /* The two keyword classes. Two and not one because every one of the seven wants
  * to say "these are control words" and "these are type names" in different
- * colours, and two and not five because a third class would need a third thing
+ * colors, and two and not five because a third class would need a third thing
  * for a user to be able to say, and none of the seven has one. */
 #define SYN_WORDS_KEYWORD 0
 #define SYN_WORDS_TYPE    1
@@ -172,7 +172,7 @@ static struct syntax *lang_get(const char *name) {
   s = &langs[nlangs++];
   memset(s, 0, sizeof(*s));
   snprintf(s->name, sizeof(s->name), "%s", name);
-  /* The defaults that are not zero. Numbers are worth colouring in all seven,
+  /* The defaults that are not zero. Numbers are worth coloring in all seven,
    * and only AutoIt wants case folding, so both defaults are the common case. */
   s->numbers = 1;
   s->case_sensitive = 1;
@@ -388,7 +388,7 @@ int syntax_set_line(const char *lang, const char *key, const char *value,
 /* ---- the built-in definitions ---------------------------------------------- */
 
 /* Data rather than text, parsed through syntax_set_line above exactly as a
- * configuration file's lines are. Keyword lists are the ones worth colouring
+ * configuration file's lines are. Keyword lists are the ones worth coloring
  * rather than every word in the grammar: a list that includes every library
  * function ages badly and makes the file look like a highlighter test. */
 static const struct { const char *lang, *key, *val; } builtin[] = {
@@ -689,7 +689,7 @@ static int only_blanks_before(const char *r, int i) {
   return 1;
 }
 
-/* Colour one row.
+/* Color one row.
  *
  * `r`/`rs` is the row's text, `state_in` the state it is entered with,
  * `out` receives one role per byte, and `*state_out` the state the next row
@@ -811,7 +811,7 @@ void syntax_row(const struct syntax *s, const char *r, int rs, int state_in,
     }
 
     /* A string, which ends on this row: an unterminated one is a mistake in the
-     * file rather than a region, and colouring the rest of the file as string
+     * file rather than a region, and coloring the rest of the file as string
      * because of a stray quote is the classic way a highlighter makes a typo
      * look like a disaster. */
     for (k = 0; k < s->n_strings; k++) {
@@ -893,7 +893,7 @@ void syntax_row(const struct syntax *s, const char *r, int rs, int state_in,
 next:
     continue;
 region:
-    /* Inside a region that opened on this row: colour to its closer or to the
+    /* Inside a region that opened on this row: color to its closer or to the
      * end of the row, then carry on (a block comment can close and be followed
      * by code). */
     {
@@ -962,7 +962,7 @@ void syntax_invalidate_from(int row) {
   if (row < B.syn_valid) B.syn_valid = row;
 }
 
-/* Bring rows 0..upto into a state where their colouring can be drawn.
+/* Bring rows 0..upto into a state where their coloring can be drawn.
  *
  * Costs the rows between the watermark and `upto`, which is a screenful in the
  * ordinary case: an edit is always on screen because the cursor is, so the
@@ -1005,7 +1005,7 @@ void syntax_retype(void) {
  *
  * Called once per window per frame, from window_scroll_all(), after the scroll
  * has settled the visible range and before anything is painted. Not from inside
- * the draw loop: this allocates, and a row's colouring depends on the row above
+ * the draw loop: this allocates, and a row's coloring depends on the row above
  * it, so lexing one row at a time as the loop reached it would be the same work
  * in a worse order. One row past the bottom, because `syn_out` of the last
  * visible row is what the next scroll step starts from. */
@@ -1034,7 +1034,7 @@ const unsigned char *syntax_roles(int filerow) {
   erow *row;
   int out;
   /* `V.syntax` is read here and not only in syntax_ensure_view: turning
-   * highlighting off has to stop the colours being *drawn*, which is not the
+   * highlighting off has to stop the colors being *drawn*, which is not the
    * same thing as no longer lexing. */
   if (V.buf == NULL || !V.syntax || B.syn == NULL) return NULL;
   if (filerow < 0 || filerow >= B.syn_valid || filerow >= row_count())

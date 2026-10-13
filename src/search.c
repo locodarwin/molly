@@ -23,7 +23,7 @@ static int search_case_sensitive = 0;
  * accept a Tab keystroke. */
 static int search_use_regex = 0;
 
-/* Whether there is a term to find again, which is what greys out Find Next and
+/* Whether there is a term to find again, which is what grays out Find Next and
  * Find Previous until the first search. */
 int search_has_query(void) {
   return last_query != NULL && last_query[0] != '\0';
@@ -291,7 +291,7 @@ static void search_report_miss(int r, const char *advice) {
  * argument for having built a widget toolkit at all.
  *
  * The checkboxes start from the current modes and are committed only by Find, so
- * cancelling leaves everything as it was. Ctrl-T and Alt-R stay as they are: the
+ * canceling leaves everything as it was. Ctrl-T and Alt-R stay as they are: the
  * way to change a mode without searching.
  *
  * The field starts empty rather than pre-filled with the last term. A dialog
@@ -312,7 +312,7 @@ enum {
   FIND_NWIDGETS
 };
 
-/* Returns the term to search for, or NULL if the dialog was cancelled. Commits
+/* Returns the term to search for, or NULL if the dialog was canceled. Commits
  * the two settings on the way out, and only then. */
 static char *find_dialog(void) {
   struct widget w[FIND_NWIDGETS];
@@ -389,7 +389,7 @@ static char *find_dialog(void) {
     w[FIND_FIND].y = y_btn;
     w[FIND_CANCEL].y = y_btn;
 
-    /* The two buttons centred as a pair, with two columns between them -- or Find
+    /* The two buttons centered as a pair, with two columns between them -- or Find
      * alone when the pair will not fit, since Esc cancels and a Cancel button
      * sawn off at the frame is worse than no Cancel button. */
     bw = w[FIND_FIND].w + 2 + w[FIND_CANCEL].w;
@@ -565,7 +565,7 @@ void editor_replace(void) {
   char *mode = editor_prompt("Replace: (n)ext or (a)ll? %s (ESC to cancel)",
                              NULL);
   /* Esc cancels, as it does at every other prompt. It used to mean "next",
-   * which made this the one place in molly where cancelling did something. */
+   * which made this the one place in molly where canceling did something. */
   if (mode == NULL) {
     free(query);
     free(repl);

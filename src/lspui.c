@@ -9,7 +9,7 @@
  * Diagnostics are drawn three ways, each answering a different question:
  *
  *   - **In the text**, underlined -- red for an error, amber for a warning,
- *     the text's own colour for the quieter two. Where is it?
+ *     the text's own color for the quieter two. Where is it?
  *   - **On the status bar**, as a count of errors and warnings. Is there
  *     anything wrong in this file at all, including off screen?
  *   - **On the message bar**, when the cursor is on one and nothing else is
@@ -686,7 +686,7 @@ static void deliver_definition(void) {
  * since the next refresh writes over it.
  *
  * Each row carries a diagnostic of its own, over its severity word, so the
- * word is drawn in the problem's colour by the code that draws every other
+ * word is drawn in the problem's color by the code that draws every other
  * problem -- and the status bar's counts, over this buffer, are the totals. */
 
 static int problems_stale;
@@ -1511,7 +1511,7 @@ static void popup_set(const char *md, int width) {
 #define POP_H  "\xe2\x94\x80"
 #define POP_V  "\xe2\x94\x82"
 
-/* A single-line box in the menu's colours: a popup is the same kind of thing
+/* A single-line box in the menu's colors: a popup is the same kind of thing
  * as a drop-down, a panel that is there until the next key. */
 void lspui_box(int x, int y, int w, int h) {
   int i;

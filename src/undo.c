@@ -32,7 +32,7 @@ static int undo_max_steps_v = UNDO_MAX_STEPS;
 static void undo_stack_trim(struct uchange **s, int *n, size_t *bytes);
 void uc_free(struct uchange *u);
 
-/* Whether there is anything to undo or redo, which is what greys out the two menu
+/* Whether there is anything to undo or redo, which is what grays out the two menu
  * items rather than letting them look available and do nothing. */
 int undo_can_undo(void) {
   return B.undo.undo_n > 0;

@@ -45,7 +45,7 @@
 
 /* The separator's glyph: U+2502, the same light vertical the line-number gutter
  * draws, because it is the same kind of line and a second one would be a second
- * thing to recognise. */
+ * thing to recognize. */
 #define SPLIT_BAR "\xe2\x94\x82"
 
 /* The view state.c defines statically. Captured rather than exported, because
@@ -544,7 +544,7 @@ int window_move_border(int dx, int dy) {
  * Every window, not just the focused one: an edit in one window moves the text
  * under another that is showing the same buffer, and a window nobody has
  * touched still has to follow a resize. Before anything is painted rather than
- * inside the draw walk, because lexing allocates and because a row's colouring
+ * inside the draw walk, because lexing allocates and because a row's coloring
  * depends on the row above it. */
 void window_scroll_all(void) {
   struct window *l[WINDOWS_MAX];
@@ -617,7 +617,7 @@ void window_draw(const struct layer *self) {
  *
  * A selection started in one window and dragged into another belongs to the
  * window it started in -- the same rule as every list and text field, and
- * without it dragging past the edge would hand the drag to the neighbour and
+ * without it dragging past the edge would hand the drag to the neighbor and
  * leave two half-selections. */
 static struct view *drag_view;
 

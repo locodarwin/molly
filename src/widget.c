@@ -363,7 +363,7 @@ static void draw_input(struct widget *w, int ox, int oy, int focused) {
  *
  * Focus is shown with one role rather than with a cursor or a marker: whichever
  * control has the keyboard is drawn in ROLE_FOCUS, and the rest are not. The
- * glyphs carry the state -- [ ] against [TICK] -- and the colour carries the
+ * glyphs carry the state -- [ ] against [TICK] -- and the color carries the
  * focus, which means neither has to be read to understand the other. */
 
 #define TICK "\xe2\x9c\x93"  /* U+2713, the same tick the menus use */
@@ -463,7 +463,7 @@ void dialog_init(struct dialog *d, const char *title,
   d->rows = rows;
 }
 
-/* Centre the dialog in the terminal, clamped to fit. The shadow is allowed to fall
+/* Center the dialog in the terminal, clamped to fit. The shadow is allowed to fall
  * off the right and bottom edges rather than shifting the dialog to make room for
  * it -- a dialog that moves when the terminal is one column too narrow looks like a
  * bug, and a clipped shadow looks like a shadow. */

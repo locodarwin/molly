@@ -296,7 +296,7 @@ static void paint_comment(void) {
   grid_flush();
 }
 
-/* A comment straight into a string: both have a colour of their own, so the
+/* A comment straight into a string: both have a color of their own, so the
  * change is not a reset, and italic has to be turned off by name. */
 static void paint_comment_then_string(void) {
   grid_begin();
@@ -307,7 +307,7 @@ static void paint_comment_then_string(void) {
   grid_flush();
 }
 
-/* The integrated terminal's cells: colours the program chose. */
+/* The integrated terminal's cells: colors the program chose. */
 static void paint_raw_red(void) {
   grid_begin();
   grid_color(1, -1, 0);
@@ -352,11 +352,11 @@ static void test_grid_raw(void) {
   char out[4096];
   int r, g, b;
 
-  printf("\ngrid: cells in colours a program chose\n");
+  printf("\ngrid: cells in colors a program chose\n");
   grid_resize(4, 20);
 
   grid_capture(out, sizeof(out), paint_raw_red);
-  contains("a colour index reaches the terminal as asked", out,
+  contains("a color index reaches the terminal as asked", out,
            "\x1b[1;1H\x1b[31mabc\x1b[m\x1b[K");
   grid_capture(out, sizeof(out), paint_raw_reverse);
   contains("reverse and its end", out, "\x1b[7mab\x1b[27mc");
@@ -367,16 +367,16 @@ static void test_grid_raw(void) {
   contains("a shadow over a raw cell takes the shadow's style", out,
            "\x1b[90mabc\x1b[m");
 
-  /* Sixteen colours, which is what is loaded when theme_init has not run: the
+  /* Sixteen colors, which is what is loaded when theme_init has not run: the
    * cube comes down to the nearest of the sixteen. */
   grid_capture(out, sizeof(out), paint_raw_cube);
-  contains("sixteen colours: the cube's red is bright red, its blue blue", out,
+  contains("sixteen colors: the cube's red is bright red, its blue blue", out,
            "\x1b[91m\x1b[44m\x1b[1m\x1b[3mabc");
   check("an index under sixteen is itself", theme_fit_color(5), 5);
   check("default stays default", theme_fit_color(-1), -1);
   check("out of range is default", theme_fit_color(300), -1);
-  check("the grey ramp's darkest is black", theme_fit_color(232), 0);
-  check("its lightest is light grey, not white", theme_fit_color(255), 7);
+  check("the gray ramp's darkest is black", theme_fit_color(232), 0);
+  check("its lightest is light gray, not white", theme_fit_color(255), 7);
   theme_index_rgb(16 + 36 * 5 + 6 * 2 + 1, &r, &g, &b);
   check("the cube's formula", r * 1000000 + g * 1000 + b, 255135095);
 
@@ -385,7 +385,7 @@ static void test_grid_raw(void) {
   /* The same cells as the last frame, so without this the diff sends none. */
   grid_invalidate();
   grid_capture(out, sizeof(out), paint_raw_cube);
-  contains("256 colours: the cube goes out as itself", out,
+  contains("256 colors: the cube goes out as itself", out,
            "\x1b[38;5;196m\x1b[48;5;21m\x1b[1m\x1b[3mabc");
   setenv("TERM", "xterm", 1);
   theme_init();
@@ -413,7 +413,7 @@ static void test_grid_emission(void) {
   grid_capture(out, sizeof(out), paint_underline);
   contains("underline turns on and off again", out, "\x1b[4mabc\x1b[24m");
 
-  /* The sixteen-colour table, which is the one loaded when theme_init has not
+  /* The sixteen-color table, which is the one loaded when theme_init has not
    * run: a comment is bright black and italic. */
   theme_set_italic(1);
   grid_capture(out, sizeof(out), paint_comment);
@@ -423,7 +423,7 @@ static void test_grid_emission(void) {
            "\x1b[3mab\x1b[33m\x1b[23mcd");
   theme_set_italic(0);
   grid_capture(out, sizeof(out), paint_comment);
-  contains("with the setting off, a comment is only its colour", out,
+  contains("with the setting off, a comment is only its color", out,
            "\x1b[1;1H\x1b[90mabc\x1b[m\x1b[K");
   theme_set_italic(1);
 
@@ -1709,15 +1709,15 @@ static void test_filter(void) {
   io.timeout_ms = 10000;
   io.max_out = 64 * 1024;
   cancel_calls = 0;
-  check("a cancelled command is stopped", filter_run(&io, cancel_second_time),
-        FILTER_CANCELLED);
-  check_str("and says so", io.err, "cancelled");
+  check("a canceled command is stopped", filter_run(&io, cancel_second_time),
+        FILTER_CANCELED);
+  check_str("and says so", io.err, "canceled");
   filter_free(&io);
 
   printf("\nshell filter: and the awkward ones\n");
 
   /* `head -1` reads one line and closes its input. Molly is still writing, so
-   * the write fails with EPIPE -- which is correct behaviour and must not be
+   * the write fails with EPIPE -- which is correct behavior and must not be
    * fatal. Without SIGPIPE ignored this check kills the test binary. */
   {
     char *big = xmalloc(100001);
@@ -1849,7 +1849,7 @@ static void test_windows(void) {
   check("three windows", window_count(), 3);
   check("the untouched one is unchanged", window_view_at(0)->screencols, 80);
   check("the split one is halved", window_view_at(1)->screencols, 40);
-  check("and its new neighbour takes the rest",
+  check("and its new neighbor takes the rest",
         window_view_at(2)->screencols, 39);
   check("which starts past the separator", window_view_at(2)->screenx, 41);
   check("and shares the bottom row band", window_view_at(2)->screeny, 12);
@@ -2548,7 +2548,7 @@ static void test_syntax_misc(void) {
   check_str("a .cpp file gets C++", syntax_name(syn_lang("x.cpp")), "cpp");
   check_str("a .hpp file gets C++", syntax_name(syn_lang("x.hpp")), "cpp");
   check_str("a .cs file gets C#", syntax_name(syn_lang("x.cs")), "cs");
-  /* A .h is C, not C++, which is a judgement rather than a fact -- it is the
+  /* A .h is C, not C++, which is a judgment rather than a fact -- it is the
    * one extension both claim, and C is the one molly itself is written in. */
   check_str("a .h file gets C", syntax_name(syn_lang("x.h")), "c");
   check("all seven definitions are loaded", syntax_lang_count(), 7);
@@ -2765,7 +2765,7 @@ static void test_indent(void) {
   check("and the cursor is at the indent it copied", CUR.cx, 2);
   editor_undo();
 
-  /* The flag off is the old behaviour exactly. */
+  /* The flag off is the old behavior exactly. */
   indent_set_auto(0);
   CUR.cy = 0;
   CUR.cx = 6;
@@ -3475,7 +3475,7 @@ static const char *roles_sketch(int row) {
 }
 
 static void test_syntax_roles(void) {
-  printf("\nsyntax: a row's colours are worked out when it is drawn\n");
+  printf("\nsyntax: a row's colors are worked out when it is drawn\n");
   mc_load("int x;\n/* a\nb */ x\n");
   V.syntax = 1;
   check_str("no filetype draws plain", roles_sketch(0), "-");
@@ -3485,7 +3485,7 @@ static void test_syntax_roles(void) {
   syntax_retype();
   check_str("a row the watermark has not reached draws plain", roles_sketch(0), "-");
   syntax_ensure(2);
-  check_str("once lexed it has its colours", roles_sketch(0), "ttt...");
+  check_str("once lexed it has its colors", roles_sketch(0), "ttt...");
   /* The state a row is entered with is all it keeps, and it is enough. */
   check_str("a row inside a comment", roles_sketch(1), "cccc");
   check_str("and the row that closes it", roles_sketch(2), "cccc..");
@@ -3493,7 +3493,7 @@ static void test_syntax_roles(void) {
   check_str("asked again, the same", roles_sketch(2), "cccc..");
 
   /* An edit has to be seen by the one row remembered, or the slices of a
-   * wrapped row would be drawn with the colours it had before. */
+   * wrapped row would be drawn with the colors it had before. */
   editor_row_insert_n(row_at(2), 4, "y", 1);   /* a letter after the closer */
   syntax_ensure(2);
   check_str("an edit is seen on the row that was remembered", roles_sketch(2),
@@ -4759,19 +4759,19 @@ static void test_vt(void) {
   check("an erase paints the background in use", vt_at(t, 1, 5)->bg, 4);
   vt_free(t);
 
-  printf("\nterminal: colour and attributes\n");
+  printf("\nterminal: color and attributes\n");
   t = vt_new(2, 20, 100);
   vts(t, "\x1b[1;31mR\x1b[0mn");
-  check("a colour and bold", vt_at(t, 0, 0)->fg * 100 + vt_at(t, 0, 0)->attrs, 100 + VT_BOLD);
+  check("a color and bold", vt_at(t, 0, 0)->fg * 100 + vt_at(t, 0, 0)->attrs, 100 + VT_BOLD);
   check("reset is everything off", vt_at(t, 0, 1)->fg * 100 + vt_at(t, 0, 1)->attrs, -100);
   vts(t, "\x1b[92;104mx");
   check("bright foreground and background",
         vt_at(t, 0, 2)->fg * 100 + vt_at(t, 0, 2)->bg, 10 * 100 + 12);
   vts(t, "\x1b[38;5;208;48;5;17my");
-  check("256-colour indices", vt_at(t, 0, 3)->fg * 1000 + vt_at(t, 0, 3)->bg, 208017);
+  check("256-color indices", vt_at(t, 0, 3)->fg * 1000 + vt_at(t, 0, 3)->bg, 208017);
   vts(t, "\x1b[38;2;255;0;0mz");
-  check("a 24-bit colour is kept as it is", vt_at(t, 0, 4)->fg, COLOR_RGB | 0xff0000);
-  /* What a 24-bit colour becomes on the way out depends on COLORTERM, so the
+  check("a 24-bit color is kept as it is", vt_at(t, 0, 4)->fg, COLOR_RGB | 0xff0000);
+  /* What a 24-bit color becomes on the way out depends on COLORTERM, so the
    * environment this runs in is set aside for these. */
   {
     char *was = getenv("COLORTERM") ? strdup(getenv("COLORTERM")) : NULL;
@@ -4784,7 +4784,7 @@ static void test_vt(void) {
     theme_init();
     check("and is its nearest of the 256 where that is all there is",
           theme_fit_color(vt_at(t, 0, 4)->fg), 196);
-    check("a grey goes to the grey ramp",
+    check("a gray goes to the gray ramp",
           theme_fit_color(COLOR_RGB | 0x808080), 244);
     if (was != NULL) setenv("COLORTERM", was, 1);
     setenv("TERM", "xterm", 1);
@@ -4794,7 +4794,7 @@ static void test_vt(void) {
   vts(t, "\x1b[38:2::0:0:255mz");
   check("so is the colon form, with its empty slot", vt_at(t, 0, 5)->fg, COLOR_RGB | 0xff);
   vts(t, "\x1b[38;2;128;128;128mz");
-  check("and a grey", vt_at(t, 0, 6)->fg, COLOR_RGB | 0x808080);
+  check("and a gray", vt_at(t, 0, 6)->fg, COLOR_RGB | 0x808080);
   vts(t, "\x1b[m\x1b[3;4;7mw\x1b[23;24;27mv");
   check("italic, underline, reverse",
         vt_at(t, 0, 7)->attrs, VT_ITALIC | VT_UNDERLINE | VT_REVERSE);

@@ -5,7 +5,7 @@
 /* --- UTF-8: the buffer holds raw bytes, but the cursor moves and deletes by
  * whole characters, so editing never splits a multibyte sequence and leaves
  * invalid bytes behind. On-screen column width for wide and combining glyphs
- * is modelled too (see molly_wcwidth below), so the cursor, horizontal scroll
+ * is modeled too (see molly_wcwidth below), so the cursor, horizontal scroll
  * and the row renderer all agree on where a character lands. --- */
 
 int utf8_is_cont(unsigned char c) { return (c & 0xC0) == 0x80; }

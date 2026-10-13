@@ -464,7 +464,7 @@ void cursors_insert_each(const char **s, const int *len) {
  * two cursors where there is one.
  *
  * Selections are marked here for every cursor including the primary, whose own
- * span the draw loop has already coloured -- the two agree, so re-roling those
+ * span the draw loop has already colored -- the two agree, so re-roling those
  * cells changes nothing, and special-casing it would be a second copy of the
  * same arithmetic to keep in step. */
 void cursors_mark_row(int y, int filerow, const struct drow *d) {
@@ -545,7 +545,7 @@ static int word_under(int cy, int cx, int *s, int *e) {
  * matching itself. What Ctrl-D looks for is the text that is already selected,
  * which is never a pattern.
  *
- * The sweep stops by recognising the match it came from rather than by counting
+ * The sweep stops by recognizing the match it came from rather than by counting
  * rows: a word that occurs once would otherwise be found again on the wrap and
  * handed back as its own next occurrence. Scanning left to right means any
  * other match on the starting row is seen on the first pass, so arriving back

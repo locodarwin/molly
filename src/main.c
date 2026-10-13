@@ -41,7 +41,7 @@ void init_editor(void) {
    *
    * Then the buffer list, because it is what gives the view something to point
    * at -- and B *is* the view's buffer, so until that runs there is no B to
-   * initialise. buf_new() sets a buffer's starting state, which is why the
+   * initialize. buf_new() sets a buffer's starting state, which is why the
    * per-buffer assignments that used to be here are gone. */
   window_init();
   buflist_init();

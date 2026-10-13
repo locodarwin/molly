@@ -13,7 +13,7 @@
  * everything, with no second place to keep a name in step: a command is in the
  * palette the moment it is in the table.
  *
- * Unavailable commands are listed rather than hidden, dimmed exactly as a menu greys
+ * Unavailable commands are listed rather than hidden, dimmed exactly as a menu grays
  * them, because a palette that silently omits Paste when the clipboard is empty looks
  * broken rather than careful. Choosing one says why it cannot run and stays open. */
 
@@ -53,7 +53,7 @@ static int fold(unsigned char c) {
  * one begins a word: the plain pass takes the first, this one skips to the later.
  * Returns 0 if the pattern is not a subsequence at all, else its score.
  *
- * The run-up to the first match is penalised, capped, so a prefix beats a mention
+ * The run-up to the first match is penalized, capped, so a prefix beats a mention
  * halfway along without a long path being able to grow the penalty without limit. */
 static int match_pass(const char *s, const char *pat, int prefer_word_start) {
   int i = 0, j = 0, score = 0, first = -1, prev = -2, run = 0;

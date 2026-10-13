@@ -236,7 +236,7 @@ void editor_grep(void) {
    * puts "exited 1" where the first line of standard error would go when there
    * was none, so that is what a quiet exit 1 looks like; a grep that wrote
    * something to standard error and exited 1 is still a failure. */
-  if (result == FILTER_FAILED && io.status == 1 && io.signalled == 0 &&
+  if (result == FILTER_FAILED && io.status == 1 && io.signaled == 0 &&
       io.outlen == 0 && strcmp(io.err, "exited 1") == 0) {
     snprintf(last, sizeof(last), "%s", pat);
     editor_set_status_message("No matches for %.60s", pat);

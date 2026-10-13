@@ -40,7 +40,7 @@
 
 /* ---- where the file lives -------------------------------------------------- */
 
-/* `~/.config/molly/mollyrc`, honouring XDG_CONFIG_HOME, and overridable by
+/* `~/.config/molly/mollyrc`, honoring XDG_CONFIG_HOME, and overridable by
  * MOLLY_CONFIG for tests (documented in MANUAL.md). MOLLY_CONFIG set to the
  * empty string means "no configuration file at all", which is what the test
  * harness pins it to: without that, every pty test would read whatever is in the
@@ -288,7 +288,7 @@ static struct setting settings[] = {
    "show a tab per open file (only ever drawn with two or more)",
    apply_tab_bar, live_tab_bar},
   {"view", "syntax", SET_BOOL, 0, 0, 1, 0,
-   "colour the text by filetype",
+   "color the text by filetype",
    apply_syntax, live_syntax},
   /* On, and asking only for what the terminal can do: theme.c leaves it off
    * where TERM names one that draws italic as something worse. */
@@ -898,7 +898,7 @@ int config_write(const char *path, const char **err) {
   fprintf(fp, "# molly %s -- configuration\n", MOLLY_VERSION);
   fprintf(fp,
           "#\n"
-          "# Written by molly. Anything molly does not recognise, including\n"
+          "# Written by molly. Anything molly does not recognize, including\n"
           "# your comments, is lost the next time it writes this file.\n");
 
   const char *section = NULL;

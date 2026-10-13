@@ -83,7 +83,7 @@ static char *run_git(const char *cmd, const char *in, int inlen, int *status) {
   io.max_out = shell_output_max();
   filter_run(&io, input_escape_pressed);
   if (status) *status = io.status;
-  if (io.signalled || io.out == NULL) {
+  if (io.signaled || io.out == NULL) {
     filter_free(&io);
     return NULL;
   }

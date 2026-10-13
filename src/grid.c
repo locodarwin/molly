@@ -42,7 +42,7 @@ struct cell {
   unsigned char width;  /* columns: 1, 2, or 0 for the tail of a wide glyph */
   unsigned char role;   /* enum cell_role; the theme turns it into a style */
   unsigned char attrs;  /* ATTR_BOLD, ATTR_UNDERLINE: modifiers on top of role */
-  int fg, bg;           /* with ATTR_RAW: colours, -1 for default; with
+  int fg, bg;           /* with ATTR_RAW: colors, -1 for default; with
                          * ATTR_TINT, bg is the tint's role */
 };
 
@@ -133,14 +133,14 @@ void grid_role(unsigned char role) {
 
 /* Lay a role's background under what is written next, keeping the cells'
  * own role for everything else: the current line, the word under the cursor
- * and the ruler are tints over syntax colours, not replacements for them.
+ * and the ruler are tints over syntax colors, not replacements for them.
  * -1 for none. Cleared by grid_role(). */
 void grid_tint(int role) { pen_tint = role; }
 
-/* Write in colours the caller chose: palette indices 0-255, or -1 for the
+/* Write in colors the caller chose: palette indices 0-255, or -1 for the
  * terminal's default, and any of the ATTR_ modifiers. For the integrated
  * terminal and nothing else -- everything molly draws for itself names a role.
- * A colour the terminal cannot show is brought down to one it can as the frame
+ * A color the terminal cannot show is brought down to one it can as the frame
  * is written, so the cell keeps what was asked for. */
 void grid_color(int fg, int bg, unsigned char attrs) {
   pen = ROLE_TEXT;
@@ -290,7 +290,7 @@ void grid_shade(int x, int y, int w, int h, unsigned char role) {
     for (xx = x; xx < x + w; xx++) {
       if (xx < 0 || xx >= g_cols) continue;
       at(cur, yy, xx)->role = role;
-      /* A terminal's cell keeps its characters and loses its own colours,
+      /* A terminal's cell keeps its characters and loses its own colors,
        * or the shadow would not show on it. */
       at(cur, yy, xx)->attrs &= (unsigned char)~(ATTR_RAW | ATTR_REVERSE | ATTR_ITALIC |
                                                  ATTR_TINT);

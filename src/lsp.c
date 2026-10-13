@@ -16,7 +16,7 @@
  *     for the same answers. A server is found by the command line that starts
  *     it, so two filetypes that name the same one share it.
  *
- *   - **Documents are synchronised by a sweep, not by hooks.** A buffer can
+ *   - **Documents are synchronized by a sweep, not by hooks.** A buffer can
  *     gain a server by being opened, by being saved under a new name, by a
  *     config change or by its server finishing its handshake; it can lose one
  *     by being closed, renamed or retyped. Hooking each of those would be a
@@ -30,7 +30,7 @@
  *   - **The whole text, every time.** `didChange` can carry a range edit or the
  *     full document; this sends the full document. Range edits would mean
  *     recording every change at the row primitives, in the server's position
- *     encoding, in order -- and getting one wrong desynchronises the server
+ *     encoding, in order -- and getting one wrong desynchronizes the server
  *     silently, which is the worst way for this to fail. A source file is tens
  *     of kilobytes and a pipe moves that in microseconds, and a buffer bigger
  *     than LSP_MAX_DOC is not sent at all.
@@ -1021,7 +1021,7 @@ static void on_initialized(struct server *s, const struct json *result) {
   s->utf8 = enc != NULL && strcmp(enc, "utf-8") == 0;
 
   /* A number, or an object with `change` in it; and `save`, which is either a
-   * boolean or an object (whose includeText molly does not need to honour,
+   * boolean or an object (whose includeText molly does not need to honor,
    * having sent the text already). Absent means None. */
   if (sync != NULL && sync->type == JSON_NUMBER) {
     s->sync = json_int(sync, 0);

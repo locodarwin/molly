@@ -17,7 +17,7 @@ What it "knows", all of it computed from the text it was sent:
   - **Completion.** Every word in the document that starts with what is
     before the cursor, plus `fake_alpha` and `fake_beta`, after `.` too.
 
-Behaviour is chosen by environment variables, so a test asks for a broken
+Behavior is chosen by environment variables, so a test asks for a broken
 server the same way it asks for a working one:
 
   FAKE_LSP_LOG=path       append one JSON line per message received

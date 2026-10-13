@@ -169,7 +169,7 @@ def main():
     # that a tick and the focus are two different things.
     check("find-dialog-focus", ["\x06", "be", "\t", " "],
           files={"sample.txt": THREE_LINES})
-    # At 256 colours: the field sunk, the buttons raised, the focus accented.
+    # At 256 colors: the field sunk, the buttons raised, the focus accented.
     check("find-dialog-256", ["\x06", "be", "\t"], rows=20, cols=72,
           files={"sample.txt": THREE_LINES},
           env={"TERM": "xterm-256color"})
@@ -187,8 +187,8 @@ def main():
           files={"sample.txt": THREE_LINES})
     check("open-dialog-narrow", ["\x0f"], rows=12, cols=40,
           files={"sample.txt": THREE_LINES})
-    # The same dialog at 256 colours. Both depths are kept so neither rots: the
-    # sixteen-colour theme is what an old terminal gets, and nothing else would
+    # The same dialog at 256 colors. Both depths are kept so neither rots: the
+    # sixteen-color theme is what an old terminal gets, and nothing else would
     # notice if it drifted.
     check("open-dialog-256", ["\x0f"], rows=20, cols=64,
           files={"sample.txt": THREE_LINES},
@@ -203,7 +203,7 @@ def main():
     check("menu-bar", [], rows=16, cols=64, files={"sample.txt": THREE_LINES})
     check("menu-file-open", ["\x1b[21~"], rows=16, cols=64,
           files={"sample.txt": THREE_LINES})
-    # Find Next and Find Previous are greyed until something has been searched for,
+    # Find Next and Find Previous are grayed until something has been searched for,
     # and Match Case is unticked.
     check("menu-search-disabled", ["\x1bs"], rows=16, cols=64,
           files={"sample.txt": THREE_LINES})
@@ -226,7 +226,7 @@ def main():
           files={"sample.txt": THREE_LINES})
     check("menu-bar-hidden-open", ["\x1bv", "m", "\x1b[21~"], rows=16, cols=64,
           files={"sample.txt": THREE_LINES})
-    # Syntax highlighting, which is nothing *but* colour -- there is not a
+    # Syntax highlighting, which is nothing *but* color -- there is not a
     # character on screen that a snapshot of the text alone would catch. So
     # these are the only thing standing between a theme edit and a palette
     # nobody looks at, and all four of the interesting languages are here.
@@ -280,7 +280,7 @@ def main():
     # turn without being touched.
     check("syntax-opened-comment", ["/*"], rows=14, cols=60,
           files={"multi.c": "int a;\nint b;\nint c;\n"}, args=["multi.c"])
-    # A selection over coloured text: reverse replaces the colour rather than
+    # A selection over colored text: reverse replaces the color rather than
     # layering over it.
     check("syntax-selection", ["\x1b[1;2C", "\x1b[1;2C", "\x1b[1;2C"],
           rows=14, cols=60, files={"demo.c": C_SAMPLE}, args=["demo.c"])
@@ -298,7 +298,7 @@ def main():
     check("wrap-on", ["\x1bz"], rows=12, cols=40, files={"sample.txt": WRAPPY})
     # With the gutter, which is where the continuation row has to keep the gray
     # separator and leave the number blank -- and at both depths, because the
-    # gutter is the one part of this that is a colour.
+    # gutter is the one part of this that is a color.
     check("wrap-gutter", ["\x1bz", "\x15"], rows=12, cols=40,
           files={"sample.txt": WRAPPY})
     check("wrap-gutter-256", ["\x1bz", "\x15"], rows=12, cols=40,
@@ -339,10 +339,10 @@ def main():
     check("wrap-split", ["\x1b[18~", "\x1bz"], rows=14, cols=60,
           files={"sample.txt": WRAPPY})
 
-    # The tab bar. Which tab is current is a colour rather than a character, so
+    # The tab bar. Which tab is current is a color rather than a character, so
     # this is the snapshot that proves it at all -- and both depths are here
     # because the band and the lifted current tab are two shades of the same
-    # family, which is exactly the relationship a 16-colour fallback can lose.
+    # family, which is exactly the relationship a 16-color fallback can lose.
     TABFILES = {"sample.txt": THREE_LINES, "second.txt": "two\n",
                 "third.txt": "three\n"}
     TABARGS = ["sample.txt", "second.txt", "third.txt"]
@@ -388,7 +388,7 @@ def main():
           files={"sample.txt": THREE_LINES})
 
     # The Go menu, which the two buffer commands joined and which nothing had
-    # captured. Both of them grey out with one buffer open, so this snapshot is
+    # captured. Both of them gray out with one buffer open, so this snapshot is
     # the dimmed state and the one below is the live one. Twenty rows since
     # the language server's five commands joined it, for the reason the Edit
     # menu's are: the snapshot is of the menu, and at sixteen it scrolls.
@@ -424,7 +424,7 @@ def main():
 
     # The Edit menu, which Select all and Select line joined. Nothing had
     # captured it either -- the same gap the View menu had, and the reason both
-    # are here now: Cut and Copy are greyed out without a selection, so the
+    # are here now: Cut and Copy are grayed out without a selection, so the
     # dimming and the separator placement are only provable by snapshot.
     # Twenty rows rather than sixteen, which is what this menu now needs to show
     # itself whole: a drop-down is clamped to the text area, the row after the
@@ -505,7 +505,7 @@ def main():
     # where the squeeze starts earliest.
     check("menu-search-narrow", ["\x1bs"], rows=14, cols=30,
           files={"sample.txt": THREE_LINES})
-    # And at 256 colours, where the band is a shade darker than a drop-down.
+    # And at 256 colors, where the band is a shade darker than a drop-down.
     check("menu-view-256", ["\x1bv"], rows=18, cols=64,
           files={"sample.txt": THREE_LINES},
           env={"TERM": "xterm-256color"})
@@ -521,11 +521,11 @@ def main():
     check("palette-filtered", ["\x00", "li"], rows=20, cols=72,
           files={"sample.txt": THREE_LINES})
     # An unavailable command is listed and dimmed rather than hidden, which is a
-    # colour difference and so only a snapshot would catch it going away.
+    # color difference and so only a snapshot would catch it going away.
     check("palette-dimmed", ["\x00", "paste"], rows=20, cols=72,
           files={"sample.txt": THREE_LINES},
           env={"TERM": "xterm-256color"})
-    # At 256 colours the field is sunk a shade below the dialog around it.
+    # At 256 colors the field is sunk a shade below the dialog around it.
     check("palette-256", ["\x00"], rows=20, cols=72,
           files={"sample.txt": THREE_LINES},
           env={"TERM": "xterm-256color"})
@@ -610,7 +610,7 @@ def main():
     check("split-resized", [SPLIT_RIGHT, (12, 40)], rows=16, cols=64,
           final=(12, 40), files={"sample.txt": THREE_LINES})
 
-    # The Window menu. Everything but the two splits greys out with one window
+    # The Window menu. Everything but the two splits grays out with one window
     # open, so this is the dimmed state and the one below is the live one.
     check("menu-window", ["\x1bw"], rows=16, cols=64,
           files={"sample.txt": THREE_LINES})
@@ -623,11 +623,11 @@ def main():
     # Multi-cursor. The terminal has one real cursor and the primary keeps it,
     # so every other cursor is a cell in a role of its own -- which means the
     # only proof it is drawn at all is a snapshot, and the only proof the two
-    # colour depths agree is one of each.
+    # color depths agree is one of each.
     #
     # Ctrl-D twice: the first press selects the word under the cursor, the
     # second puts a cursor on the next occurrence. So this holds two reverse
-    # video runs (the selections) and one coloured cell (the far cursor), on
+    # video runs (the selections) and one colored cell (the far cursor), on
     # two different rows, which is the whole feature in one screen.
     # A block selection: a cursor and a highlighted slice on every row it
     # spans, including a short one, where the cursor sits at the row's end.
@@ -661,7 +661,7 @@ def main():
           files={"sample.txt": MATCHES})
 
     # A language server's diagnostics, from tests/fake_lsp.py named in a
-    # mollyrc: an error and a warning in their colours, a note in the text's
+    # mollyrc: an error and a warning in their colors, a note in the text's
     # own, all underlined, and the counts on the status bar. The pause is for
     # the interpreter to start; the screen does not depend on how long it took.
     # MOLLY_LSP back to empty, because the harness pins it off.
@@ -673,7 +673,7 @@ def main():
           args=["sample.c"], env=lsp_env)
     check("lsp-diagnostics-256", [2.0], rows=10, cols=50, files=lsp_files,
           args=["sample.c"], env=dict(lsp_env, TERM="xterm-256color"))
-    # Onto the error: the message bar says what it is, its severity coloured.
+    # Onto the error: the message bar says what it is, its severity colored.
     check("lsp-message", [2.0, "\x1b[B", "\x1b[C"], rows=10, cols=50,
           files=lsp_files, args=["sample.c"], env=lsp_env)
     check("lsp-message-256", [2.0, "\x1b[B", "\x1b[C"], rows=10, cols=50,
@@ -685,7 +685,7 @@ def main():
           files=lsp_files, args=["sample.c"], env=lsp_env)
     # Alt-K over a word: the fake server's Markdown, read for a terminal --
     # the fence's code without the fence, the paragraph without its emphasis --
-    # in a box under the cursor, in the menu's colours.
+    # in a box under the cursor, in the menu's colors.
     hover_files = dict(lsp_files, **{"sample.c": "int widget;\nint y = widget;\n"})
     hover_keys = [2.0, "\x1b[B"] + ["\x1b[C"] * 9 + ["\x1bk", 0.5]
     check("lsp-hover", hover_keys, rows=10, cols=50, files=hover_files,
@@ -720,7 +720,7 @@ def main():
     check("lsp-signature-narrow", sig_keys, rows=10, cols=18, files=sig_files,
           args=["sample.c"], env=lsp_env)
     # Ctrl-F2: the problems list under the file, each row's severity word in
-    # its colour and the totals on the list's status bar.
+    # its color and the totals on the list's status bar.
     prob_files = dict(lsp_files, **{"sample.c": "int a;\nBAD here\n  WARN\nNOTE\n"})
     check("lsp-problems", [2.0, "\x1b[1;5Q", 0.5], rows=16, cols=56,
           files=prob_files, args=["sample.c"], env=lsp_env)
@@ -730,8 +730,8 @@ def main():
           files=prob_files, args=["sample.c"], env=lsp_env)
     # Alt-T: the integrated terminal, a third of the height, under the file.
     # Not a real shell, whose prompt is the machine's, but tests/fake_shell.sh,
-    # which prints a fixed screen: bold, reverse, the sixteen colours and the
-    # 256 (orange, which sixteen colours bring down to yellow), a wide
+    # which prints a fixed screen: bold, reverse, the sixteen colors and the
+    # 256 (orange, which sixteen colors bring down to yellow), a wide
     # character and DEC line drawing.
     shell_env = {"SHELL": os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                        "fake_shell.sh")}

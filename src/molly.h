@@ -143,7 +143,7 @@ typedef struct erow {
   int wrows;
 
   /* Syntax highlighting: the lexer state this row is entered with and the one
-   * it leaves in, which is all a row keeps -- its colours are worked out from
+   * it leaves in, which is all a row keeps -- its colors are worked out from
    * `syn_in` when it is drawn (syntax_roles). The buffer's `syn_valid` says how
    * many rows' worth of these are known to be right. A byte each, because a
    * state is a tag and an index that fit in six bits (see syntax.c). */
@@ -379,7 +379,7 @@ struct view {
   int screenrows;
   int screencols;
   int linenum;             /* line-number gutter shown (Ctrl-U toggles it) */
-  int syntax;              /* colour the text by filetype */
+  int syntax;              /* color the text by filetype */
   int wrap;                /* long lines wrap at the window edge (see wrap.c) */
   int gutter_w;            /* gutter width in columns for this frame, 0 when off */
   int screenx, screeny;    /* top-left cell of this view's text area on the grid */
@@ -591,7 +591,7 @@ enum widget_kind {
 typedef void (*widget_row_fn)(void *user, int i, char *dst, size_t dsz);
 
 /* The role a particular row takes, for a list whose rows are not all alike: the
- * command palette dims the commands that are unavailable, exactly as a menu greys
+ * command palette dims the commands that are unavailable, exactly as a menu grays
  * them out. NULL means every row takes the widget's own role. */
 typedef unsigned char (*widget_role_fn)(void *user, int i);
 
@@ -654,7 +654,7 @@ struct dialog {
 #define FILTER_OK        0  /* ran and exited 0; `out` is its output */
 #define FILTER_FAILED    1  /* ran and exited non-zero, or died on a signal */
 #define FILTER_TIMEOUT   2  /* still going after timeout_ms */
-#define FILTER_CANCELLED 3  /* the cancel callback asked for it to stop */
+#define FILTER_CANCELED 3  /* the cancel callback asked for it to stop */
 #define FILTER_TOOBIG    4  /* produced more than max_out bytes */
 #define FILTER_NOSTART   5  /* a pipe or fork failed; nothing ran */
 
@@ -671,10 +671,10 @@ struct filter_io {
   int outlen;
   char err[256];      /* the first line of its standard error, or why it did not run */
   int status;         /* its exit status, when it ran to completion */
-  int signalled;      /* the signal that killed it, or 0 */
+  int signaled;      /* the signal that killed it, or 0 */
 };
 
-int filter_run(struct filter_io *io, int (*cancelled)(void));
+int filter_run(struct filter_io *io, int (*canceled)(void));
 void filter_free(struct filter_io *io);
 
 /* --- JSON -------------------------------------------------------------------
@@ -740,7 +740,7 @@ struct diag_span {
 #define VT_DIM       0x20
 #define VT_INVISIBLE 0x40
 
-/* A colour that is red, green and blue rather than a palette index: the bit
+/* A color that is red, green and blue rather than a palette index: the bit
  * above the 24 they take. */
 #define COLOR_RGB 0x1000000
 
@@ -808,7 +808,7 @@ struct command {
   const char *group;  /* help-screen group heading */
   unsigned flags;     /* CMD_MOVEMENT */
   int (*run)(void);   /* returns CMD_KEEP_* flags */
-  /* Optional. NULL means always available and never ticked. A menu greys an item
+  /* Optional. NULL means always available and never ticked. A menu grays an item
    * its command says is unavailable, and ticks one its command says is on; a
    * command palette will want both for the same reason. */
   int (*enabled)(void);
@@ -898,9 +898,9 @@ enum cell_role {
   ROLE_SYN_EMPHASIS,
 
   /* What a language server says is wrong, underlined in the text. Two roles
-   * and not four: an error and a warning each have a colour, and information
-   * and hints are only underlined, in whatever colour the text already was --
-   * a fourth colour in the text for "consider" would shout as loud as "wrong". */
+   * and not four: an error and a warning each have a color, and information
+   * and hints are only underlined, in whatever color the text already was --
+   * a fourth color in the text for "consider" would shout as loud as "wrong". */
   ROLE_DIAG_ERROR,
   ROLE_DIAG_WARNING,
 
@@ -932,8 +932,8 @@ enum cell_role {
 #define ATTR_UNDERLINE 0x02
 
 /* The integrated terminal's cells, which are the one thing molly draws whose
- * colours it does not choose: a program in the terminal asks for red, and red
- * is what it gets. ATTR_RAW says the cell's colour is the palette index it
+ * colors it does not choose: a program in the terminal asks for red, and red
+ * is what it gets. ATTR_RAW says the cell's color is the palette index it
  * carries rather than its role's, and italic and reverse become modifiers for
  * such cells because the program turns them on character by character. See
  * grid_color(). Nothing else sets these. */
@@ -941,7 +941,7 @@ enum cell_role {
 #define ATTR_REVERSE   0x08
 #define ATTR_RAW       0x10
 /* The cell's background comes from another role -- a tint -- whose index is
- * kept where a raw cell keeps its background colour. See grid_tint(). */
+ * kept where a raw cell keeps its background color. See grid_tint(). */
 #define ATTR_TINT      0x20
 
 /* A resolved style: palette indices, or -1 for the terminal's own default, which

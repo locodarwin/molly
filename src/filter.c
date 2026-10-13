@@ -40,7 +40,7 @@
  * sake of its first sentence. */
 #define ERR_KEEP 1024
 
-/* How long a cancelled or timed-out command gets to exit on SIGTERM before it
+/* How long a canceled or timed-out command gets to exit on SIGTERM before it
  * is sent SIGKILL. Long enough for a shell pipeline to tear down and a command
  * to remove its temporary files; short enough that nobody waits for it. */
 #define GRACE_MS 300
@@ -191,7 +191,7 @@ static void first_line(struct filter_io *io, const char *s, int len) {
   while (i < len && (unsigned char)s[i] <= ' ') i++;
   while (i < len && s[i] != '\n' && s[i] != '\r' &&
          n < (int)sizeof(io->err) - 1) {
-    /* Control bytes would move the cursor or change the colour of the message
+    /* Control bytes would move the cursor or change the color of the message
      * bar: a command's error text is not trusted to be printable. */
     io->err[n++] = (unsigned char)s[i] < 0x20 ? ' ' : s[i];
     i++;
@@ -212,7 +212,7 @@ void filter_free(struct filter_io *io) {
   io->outlen = 0;
 }
 
-int filter_run(struct filter_io *io, int (*cancelled)(void)) {
+int filter_run(struct filter_io *io, int (*canceled)(void)) {
   int inp[2], outp[2], errp[2];
   pid_t pid;
   struct run r;
@@ -225,7 +225,7 @@ int filter_run(struct filter_io *io, int (*cancelled)(void)) {
   io->out = NULL;
   io->outlen = 0;
   io->status = 0;
-  io->signalled = 0;
+  io->signaled = 0;
   io->err[0] = '\0';
 
   if (io->cmd == NULL || io->cmd[0] == '\0') {
@@ -275,7 +275,7 @@ int filter_run(struct filter_io *io, int (*cancelled)(void)) {
   }
 
   if (pid == 0) {
-    /* The child. Its own process group, so that cancelling kills the whole
+    /* The child. Its own process group, so that canceling kills the whole
      * pipeline rather than the `sh` that started it and leaving the real work
      * running with nowhere to write. */
     setpgid(0, 0);
@@ -365,9 +365,9 @@ int filter_run(struct filter_io *io, int (*cancelled)(void)) {
       }
       if (until < budget) budget = (int)until;
     }
-    if (cancelled != NULL && cancelled()) {
-      result = FILTER_CANCELLED;
-      reason(io, "cancelled");
+    if (canceled != NULL && canceled()) {
+      result = FILTER_CANCELED;
+      reason(io, "canceled");
       break;
     }
     loop_wait(budget);
@@ -384,7 +384,7 @@ done:
   /* Make sure it is gone.
    *
    * A command that finished on its own is reaped on the first pass. One that
-   * was stopped -- timed out, cancelled, flooding, or never started -- gets
+   * was stopped -- timed out, canceled, flooding, or never started -- gets
    * SIGTERM, a grace period to tear its pipeline down, and then SIGKILL, which
    * cannot be declined. The process *group*, so a pipeline goes with its shell:
    * killing the `sh` alone would leave the real work running with nowhere to
@@ -416,7 +416,7 @@ done:
     loop_wait(20);                /* a short sleep that still drains the loop */
   }
   if (WIFEXITED(wstatus)) io->status = WEXITSTATUS(wstatus);
-  if (WIFSIGNALED(wstatus)) io->signalled = WTERMSIG(wstatus);
+  if (WIFSIGNALED(wstatus)) io->signaled = WTERMSIG(wstatus);
 
   signal(SIGPIPE, old_sigpipe);
 
@@ -424,13 +424,13 @@ done:
 
   /* The command's own words beat molly's, when it left any: "sh: jqq: not
    * found" tells the user what to fix and "exited 127" does not. */
-  if (r.errlen > 0 && result != FILTER_CANCELLED) first_line(io, errbuf, r.errlen);
+  if (r.errlen > 0 && result != FILTER_CANCELED) first_line(io, errbuf, r.errlen);
 
-  if (result == FILTER_OK && (io->status != 0 || io->signalled != 0)) {
+  if (result == FILTER_OK && (io->status != 0 || io->signaled != 0)) {
     result = FILTER_FAILED;
     if (io->err[0] == '\0') {
-      if (io->signalled != 0)
-        snprintf(io->err, sizeof(io->err), "killed by signal %d", io->signalled);
+      if (io->signaled != 0)
+        snprintf(io->err, sizeof(io->err), "killed by signal %d", io->signaled);
       else
         snprintf(io->err, sizeof(io->err), "exited %d", io->status);
     }
@@ -449,7 +449,7 @@ done:
  * ======================================================================== */
 
 /* Esc while a command is running. */
-static int filter_cancelled(void) {
+static int filter_canceled(void) {
   return input_escape_pressed();
 }
 
@@ -546,7 +546,7 @@ void editor_filter(void) {
   io.inlen = len;
   io.timeout_ms = shell_timeout_ms();
   io.max_out = shell_output_max();
-  result = filter_run(&io, filter_cancelled);
+  result = filter_run(&io, filter_canceled);
   free(text);
 
   if (result != FILTER_OK) {
@@ -619,7 +619,7 @@ void editor_insert_output(void) {
   io.inlen = 0;
   io.timeout_ms = shell_timeout_ms();
   io.max_out = shell_output_max();
-  result = filter_run(&io, filter_cancelled);
+  result = filter_run(&io, filter_canceled);
 
   if (result != FILTER_OK) {
     editor_set_status_message("%.30s: %s", cmd,

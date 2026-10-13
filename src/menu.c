@@ -259,7 +259,7 @@ void menu_bar_draw(const struct layer *self) {
     if (i != open_menu) band_title(self->y, i, title_col[i], title_cols[i]);
   }
   /* The open one last: at one-column gaps its highlight's padding is the
-   * neighbours' gap, and drawn first it would be painted over. */
+   * neighbors' gap, and drawn first it would be painted over. */
   if (open_menu >= 0 && open_menu < NMENUS)
     band_title(self->y, open_menu, title_col[open_menu], title_cols[open_menu]);
   grid_role(ROLE_TEXT);

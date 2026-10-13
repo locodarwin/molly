@@ -373,7 +373,7 @@ def test_replace(tmpdir):
           edit(tmpdir, "cat\n", [REPLACE, "cat", "\r", "\x1b", SAVE]),
           "cat\n")
     # Esc used to mean "next" here, which made the next-or-all prompt the one
-    # place in molly where cancelling did something.
+    # place in molly where canceling did something.
     check("ESC at the next-or-all prompt aborts too",
           edit(tmpdir, "cat cat\n",
                [REPLACE, "cat", "\r", "dog", "\r", "\x1b", 0.15, SAVE]),
@@ -611,7 +611,7 @@ def test_find_dialog(tmpdir):
     check("which the menu item then toggles back off",
           go("ALPHA\n", ["\x06", "alpha", "\t", " ", "\r", TOGGLE_CASE])[0],
           "Search is now case-insensitive")
-    check("cancelling commits nothing",
+    check("canceling commits nothing",
           go("ALPHA\n", ["\x06", "\t", " ", "\x1b", 0.15, TOGGLE_CASE])[0],
           "Search is now case-sensitive")
     check("the second checkbox reads the term as a pattern",
@@ -1871,7 +1871,7 @@ def test_menu(tmpdir):
           "Unsaved changes" in "\n".join(screen(["X", "\x1bf", "q"]).text()),
           True)
 
-    # Unavailable items are skipped, not merely greyed: with nothing searched for,
+    # Unavailable items are skipped, not merely grayed: with nothing searched for,
     # Down from Find goes past Find Next and Find Previous to Match Case.
     check("Down skips unavailable items",
           msg(["\x1bs", DOWN, "\r"]).startswith("Search is now"), True)
@@ -2898,8 +2898,8 @@ def test_buffers(tmpdir):
 def test_tabbar(tmpdir):
     """The row of tabs: when it is there, what it says, and clicking it.
 
-    The colours -- which tab is the current one -- are a golden-screen matter.
-    What is checked here is the behaviour: that the row appears and disappears at
+    The colors -- which tab is the current one -- are a golden-screen matter.
+    What is checked here is the behavior: that the row appears and disappears at
     the right times, that it costs the text area exactly one row when it is
     there, that it says the file names rather than the paths, and that the mouse
     reaches it.
@@ -3055,11 +3055,11 @@ def test_tabbar(tmpdir):
 # --------------------------------------------------- syntax highlighting ----
 
 def test_tab_cells(tmpdir):
-    """A tab draws as the columns it covers, each with the tab's own colour.
+    """A tab draws as the columns it covers, each with the tab's own color.
 
     Rows used to keep a second, tab-expanded copy of themselves, and the draw
     loop walked that: a tab was a run of spaces, so a selection or a comment
-    coloured every one of them and the horizontal scroll could cut through the
+    colored every one of them and the horizontal scroll could cut through the
     middle of one. The copy is gone and a tab is now walked a column at a time
     from the stored bytes. What a pty shows is that nothing about the screen
     moved -- most of all at the left edge, where half a tab is still drawn.
@@ -3096,7 +3096,7 @@ def test_tab_cells(tmpdir):
     scr = go([DOWN, END])
     check("scrolled into the middle of a tab, its visible half is drawn",
           scr.text()[TEXT + 1], "    " + "b" * 35)
-    check("in the comment's colours",
+    check("in the comment's colors",
           lean(scr, TEXT + 1, 40), "i" * 39 + ".")
 
     scr = go([DOWN, "\x1b[1;2F"])
@@ -3142,32 +3142,32 @@ def test_italic(tmpdir):
           [u for u in scr.unhandled if u.startswith("SGR")], [])
 
     scr = paint({"TERM": "xterm"})
-    check("sixteen colours lean too", leaning(scr, TEXT), "." * 7 + "i" * 7)
+    check("sixteen colors lean too", leaning(scr, TEXT), "." * 7 + "i" * 7)
 
     scr = paint({"TERM": "screen-256color"})
     check("not under a screen TERM, where tmux would draw it reversed",
           leaning(scr, TEXT), "." * 14)
-    check("but the comment keeps its colour", scr.colors[TEXT][8][0], 244)
+    check("but the comment keeps its color", scr.colors[TEXT][8][0], 244)
 
     scr = paint({"TERM": "linux"})
     check("nor on the Linux console", leaning(scr, TEXT + 1), "." * 14)
 
     scr = paint({"TERM": "xterm-256color"}, "[view]\nitalic = off\n")
     check("mollyrc turns it off", leaning(scr, TEXT), "." * 14)
-    check("and the colour stays", scr.colors[TEXT][8][0], 244)
+    check("and the color stays", scr.colors[TEXT][8][0], 244)
 
 
 def test_syntax(tmpdir):
-    """Highlighting from the outside: is the text actually coloured?
+    """Highlighting from the outside: is the text actually colored?
 
     syntax.c's own tests cover the lexer, row by row, against a role-per-
     character sketch. What only a pty can show is the part that joins it to the
-    editor: that a file gets a definition from its name, that the colours reach
+    editor: that a file gets a definition from its name, that the colors reach
     the screen, that a selection still wins over them -- and above all that an
-    edit on one row recolours the rows below it, which is the whole reason rows
+    edit on one row recolors the rows below it, which is the whole reason rows
     carry a lexer state.
     """
-    print("\nsyntax: the colours reach the screen")
+    print("\nsyntax: the colors reach the screen")
 
     def write(name, body):
         q = os.path.join(tmpdir, name)
@@ -3185,7 +3185,7 @@ def test_syntax(tmpdir):
         return scr
 
     def fg(scr, row, col):
-        """The foreground colour of one cell, as the theme set it."""
+        """The foreground color of one cell, as the theme set it."""
         return scr.colors[row][col][0]
 
     def row_fgs(scr, row, n):
@@ -3195,48 +3195,48 @@ def test_syntax(tmpdir):
 
     c = write("demo.c", "int x = 1;\n")
     scr = paint(c, [])
-    # The theme's 256-colour entries: type 79, number 179, keyword 110,
+    # The theme's 256-color entries: type 79, number 179, keyword 110,
     # string 173, comment 244, preproc 140. Read rather than restated -- these
     # are what theme.c assigns, and a change there is meant to fail here.
-    check("a type is coloured", fg(scr, TEXT, 0), 79)
+    check("a type is colored", fg(scr, TEXT, 0), 79)
     check("and a number", fg(scr, TEXT, 8), 179)
     check("while punctuation is not", fg(scr, TEXT, 9) in (None, -1), True)
     check("the status bar names the filetype",
           "[c]" in scr.text()[14], True)
 
     # A file molly has no definition for is left alone, and says so by *not*
-    # claiming a filetype -- which is how a user tells "not recognised" from
+    # claiming a filetype -- which is how a user tells "not recognized" from
     # "highlighting off".
     unknown = write("demo.zzz", "int x = 1;\n")
     scr = paint(unknown, [])
-    check("an unknown extension is not coloured",
+    check("an unknown extension is not colored",
           fg(scr, TEXT, 0) in (None, -1), True)
     check("and claims no filetype", "[" in scr.text()[14].split("-")[0], False)
 
     # Each language through its own most distinctive rule.
     scr = paint(write("demo.py", 'def f():\n    return 1\n'), [])
-    check("Python keywords are coloured", fg(scr, TEXT, 0), 110)
+    check("Python keywords are colored", fg(scr, TEXT, 0), 110)
     scr = paint(write("demo.md", "# Title\n"), [])
-    check("a Markdown heading is coloured", fg(scr, TEXT, 0), 110)
+    check("a Markdown heading is colored", fg(scr, TEXT, 0), 110)
     check("and bold", scr.mods[TEXT][0], "b")
     scr = paint(write("demo.au3", 'IF $x THEN\n'), [])
-    check("AutoIt keywords are coloured whatever their case",
+    check("AutoIt keywords are colored whatever their case",
           fg(scr, TEXT, 0), 110)
     scr = paint(write("demo.rs", 'fn main() {}\n'), [])
-    check("Rust keywords are coloured", fg(scr, TEXT, 0), 110)
+    check("Rust keywords are colored", fg(scr, TEXT, 0), 110)
 
     print("\nsyntax: a comment that spans rows, and editing above it")
 
     # The invalidation path, end to end. Three plain rows: nothing is a comment.
     multi = write("multi.c", "int a;\nint b;\nint c;\n")
     scr = paint(multi, [])
-    check("three plain rows start uncoloured by comment",
+    check("three plain rows start uncolored by comment",
           fg(scr, TEXT + 2, 0), 79)
 
     # Now open a comment on the first row. Every row below has to turn, without
     # being touched -- and nothing recomputes it except the draw that follows.
     scr = paint(multi, ["/*"])
-    check("opening a comment on row 1 recolours row 1",
+    check("opening a comment on row 1 recolors row 1",
           fg(scr, TEXT, 0), 244)
     check("and row 2, which was not edited", fg(scr, TEXT + 1, 0), 244)
     check("and row 3", fg(scr, TEXT + 2, 0), 244)
@@ -3246,19 +3246,19 @@ def test_syntax(tmpdir):
     check("closing it on row 2 puts row 3 back",
           fg(scr, TEXT + 2, 0), 79)
 
-    # Undo goes through the same row updates, so the colours have to follow it.
+    # Undo goes through the same row updates, so the colors have to follow it.
     scr = paint(multi, ["/*", UNDO, UNDO])
-    check("undo puts the colours back too", fg(scr, TEXT + 1, 0), 79)
+    check("undo puts the colors back too", fg(scr, TEXT + 1, 0), 79)
 
     print("\nsyntax: what outranks it")
 
-    # A selection wins: reverse video over a keyword's own colour is unreadable,
+    # A selection wins: reverse video over a keyword's own color is unreadable,
     # and what the user is being told is "this is selected".
-    # "R" is reverse with no colour of its own, which is what proves the point:
-    # the selection replaced the syntax colour rather than being layered over it
-    # ("G" is the letter for reverse *and* coloured).
+    # "R" is reverse with no color of its own, which is what proves the point:
+    # the selection replaced the syntax color rather than being layered over it
+    # ("G" is the letter for reverse *and* colored).
     scr = paint(c, ["\x1b[1;2C", "\x1b[1;2C", "\x1b[1;2C"])
-    check("a selection outranks the syntax colour",
+    check("a selection outranks the syntax color",
           scr.attr_rows()[TEXT][0], "R")
 
     print("\nsyntax: turning it off")
@@ -3290,9 +3290,9 @@ def test_syntax(tmpdir):
                  "keywords = function end local return\n")
     lua = write("demo.lua", "local x = 1\n-- a comment\n")
     scr = paint(lua, [], env={"MOLLY_CONFIG": rc})
-    check("a language defined in mollyrc is recognised",
+    check("a language defined in mollyrc is recognized",
           "[lua]" in scr.text()[14], True)
-    check("its keywords are coloured", fg(scr, TEXT, 0), 110)
+    check("its keywords are colored", fg(scr, TEXT, 0), 110)
     check("and its comments", fg(scr, TEXT + 1, 0), 244)
 
     # Adding to a language molly does ship.
@@ -4903,11 +4903,11 @@ def test_lsp(tmpdir):
         check("the status bar counts the errors and the warnings",
               "E:1 W:1  Ln 1, Col 1" in text[10], True)
         check("an error is underlined, and only the word", under(scr, 2), "....uuu.....")
-        check("in the error colour", scr.colors[2][4][0], 9)
+        check("in the error color", scr.colors[2][4][0], 9)
         check("a warning is underlined", under(scr, 3), "..uuuu......")
-        check("in its own colour", scr.colors[3][2][0], 3)
+        check("in its own color", scr.colors[3][2][0], 3)
         check("information is underlined", under(scr, 4), "uuuu........")
-        check("in the colour the text already had", scr.colors[4][0][0], None)
+        check("in the color the text already had", scr.colors[4][0][0], None)
         check("text with nothing wrong is not", under(scr, 1), "." * 12)
 
         scr = screen([WAIT, F2])
@@ -4927,7 +4927,7 @@ def test_lsp(tmpdir):
         scr = screen([WAIT, DOWN, RIGHT, RIGHT, RIGHT, RIGHT, RIGHT])
         check("the cursor on a problem puts it on the message bar",
               scr.text()[11].rstrip(), "error: BAD is not allowed here")
-        check("its severity in its colour", scr.colors[11][0][0], 9)
+        check("its severity in its color", scr.colors[11][0][0], 9)
         scr = screen([WAIT])
         check("but not before the cursor has moved there", "HELP" in scr.text()[11], True)
 
@@ -5255,7 +5255,7 @@ def test_terminal(tmpdir):
               "one two" in [r.strip() for r in scr.text()], True)
         scr = session([TERMINAL, WAIT, "printf '\\033[31mred\\033[m\\n'\r", WAIT])
         row = [i for i, r in enumerate(scr.text()) if r.strip() == "red"]
-        check("in the colours it asks for",
+        check("in the colors it asks for",
               bool(row) and scr.colors[row[0]][0][0] == 1, True)
 
         scr = session([TERMINAL, WAIT, TERMINAL, "X", "\x13", 0.3])

@@ -65,7 +65,7 @@ static const struct theme_entry theme_256[ROLE_COUNT] = {
 
   /* The focused window's bar is reverse video, which is the terminal's own idea
    * of maximum contrast and what molly's one status bar always was. An
-   * unfocused one is a stated pair instead: light grey on dark grey reads as a
+   * unfocused one is a stated pair instead: light gray on dark gray reads as a
    * bar that is still a bar, but quieter, and it does so whether the terminal's
    * background is light or dark -- which reverse video cannot be relied on for
    * once it is competing against itself one row away. */
@@ -95,8 +95,8 @@ static const struct theme_entry theme_256[ROLE_COUNT] = {
   /* ROLE_DIAG_ERROR       */ {203, DEFAULT_COLOR, 0, 0, 0},
   /* ROLE_DIAG_WARNING     */ {178, DEFAULT_COLOR, 0, 0, 0},
 
-  /* Tints a shade or two off the darkest grey, so the text on them keeps
-   * its own colours; the ruler between the line's and the word's. Whitespace
+  /* Tints a shade or two off the darkest gray, so the text on them keeps
+   * its own colors; the ruler between the line's and the word's. Whitespace
    * is drawn darker than a comment, because it is not there to be read. */
   /* ROLE_CURRENT_LINE     */ {DEFAULT_COLOR, 235, 0, 0, 0},
   /* ROLE_OCCURRENCE       */ {DEFAULT_COLOR, 239, 0, 0, 0},
@@ -134,16 +134,16 @@ static const struct theme_entry theme_16[ROLE_COUNT] = {
   /* ROLE_TABBAR           */ {7,  0, 0, 0, 0},
   /* ROLE_TAB_SELECTED     */ {15, 8, 0, 1, 0},
 
-  /* The same pair, out of the sixteen: light grey on the bright black that is
-   * the only dim background there is. The separator takes the colour the gutter
+  /* The same pair, out of the sixteen: light gray on the bright black that is
+   * the only dim background there is. The separator takes the color the gutter
    * bar already uses, because it is the same kind of line. */
   /* ROLE_STATUS_UNFOCUSED */ {7, 8, 0, 0, 0},
   /* ROLE_SPLIT            */ {8, DEFAULT_COLOR, 0, 0, 0},
 
   /* Eight roles onto eight usable foregrounds, which is the whole of what
-   * sixteen colours leaves once the background is the terminal's. Comments take
-   * the bright black that is the only dim colour there is; a heading leans on
-   * bold instead of on a colour of its own, because there was not one left. */
+   * sixteen colors leaves once the background is the terminal's. Comments take
+   * the bright black that is the only dim color there is; a heading leans on
+   * bold instead of on a color of its own, because there was not one left. */
   /* ROLE_SYN_KEYWORD      */ {12, DEFAULT_COLOR, 0, 0, 0},
   /* ROLE_SYN_TYPE         */ {14, DEFAULT_COLOR, 0, 0, 0},
   /* ROLE_SYN_STRING       */ {3,  DEFAULT_COLOR, 0, 0, 0},
@@ -158,7 +158,7 @@ static const struct theme_entry theme_16[ROLE_COUNT] = {
   /* ROLE_DIAG_ERROR       */ {9, DEFAULT_COLOR, 0, 0, 0},
   /* ROLE_DIAG_WARNING     */ {3, DEFAULT_COLOR, 0, 0, 0},
 
-  /* Sixteen colours have no shade quiet enough to lie under a whole line,
+  /* Sixteen colors have no shade quiet enough to lie under a whole line,
    * so the current line goes untinted there; the word and the ruler take the
    * one dim background there is. */
   /* ROLE_CURRENT_LINE     */ {DEFAULT_COLOR, DEFAULT_COLOR, 0, 0, 0},
@@ -174,7 +174,7 @@ static const struct theme_entry *active = theme_16;
 static int active_depth = 16;
 static int italic_wanted = 1;   /* the [view] italic setting */
 static int italic_able = 1;     /* what TERM says the terminal can do */
-static int truecolor = 0;       /* COLORTERM says 24-bit colour is welcome */
+static int truecolor = 0;       /* COLORTERM says 24-bit color is welcome */
 
 /* How many colors the terminal claims.
  *
@@ -201,7 +201,7 @@ int theme_detect_depth(const char *term, const char *colorterm) {
  *
  * The answer is yes far more often than not, and the exceptions are the ones
  * that do something worse than ignore it: the Linux console paints italic in a
- * substitute colour, and tmux running under a "screen" TERM draws it as reverse
+ * substitute color, and tmux running under a "screen" TERM draws it as reverse
  * video -- which in a comment looks like a selection. GNU screen and the old
  * hardware terminals have no italic to give. So this is a list of noes rather
  * than of yeses, and tmux's own "tmux-256color" is not on it. */
@@ -243,7 +243,7 @@ int theme_depth(void) {
 }
 
 /* The xterm palette's sixteen, as red, green and blue: what "nearest" is
- * measured against when a 256-colour index has to become one of them. */
+ * measured against when a 256-color index has to become one of them. */
 static const unsigned char ansi16_rgb[16][3] = {
   {0, 0, 0},       {205, 0, 0},     {0, 205, 0},     {205, 205, 0},
   {0, 0, 238},     {205, 0, 205},   {0, 205, 205},   {229, 229, 229},
@@ -252,7 +252,7 @@ static const unsigned char ansi16_rgb[16][3] = {
 };
 
 /* A palette index as red, green and blue, by the xterm formulas: the 6x6x6
- * cube from 16 and the grey ramp from 232. */
+ * cube from 16 and the gray ramp from 232. */
 void theme_index_rgb(int c, int *r, int *g, int *b) {
   static const int level[6] = {0, 95, 135, 175, 215, 255};
   if (c < 16) {
@@ -269,11 +269,11 @@ void theme_index_rgb(int c, int *r, int *g, int *b) {
   }
 }
 
-/* A 24-bit colour as the nearest of the 256: the cube's nearest step on each
- * axis, or the grey ramp when the colour is close to grey. */
+/* A 24-bit color as the nearest of the 256: the cube's nearest step on each
+ * axis, or the gray ramp when the color is close to gray. */
 int theme_rgb_to_256(int r, int g, int b) {
   static const int level[6] = {0, 95, 135, 175, 215, 255};
-  int ri, gi, bi, best, cube, grey, gidx, cr, cg, cb;
+  int ri, gi, bi, best, cube, gray, gidx, cr, cg, cb;
   long dc, dg;
   #define NEAREST(v) ((v) < 48 ? 0 : (v) < 115 ? 1 : ((v) - 35) / 40)
   ri = NEAREST(r);
@@ -284,8 +284,8 @@ int theme_rgb_to_256(int r, int g, int b) {
   cr = level[ri];
   cg = level[gi];
   cb = level[bi];
-  grey = (r + g + b) / 3;
-  gidx = grey > 238 ? 23 : (grey - 3) / 10;
+  gray = (r + g + b) / 3;
+  gidx = gray > 238 ? 23 : (gray - 3) / 10;
   if (gidx < 0) gidx = 0;
   {
     int gv = 8 + gidx * 10;
@@ -296,8 +296,8 @@ int theme_rgb_to_256(int r, int g, int b) {
   return best;
 }
 
-/* A colour a program in the integrated terminal asked for, as one this terminal
- * can show: a 24-bit colour as itself where the terminal says it takes them
+/* A color a program in the integrated terminal asked for, as one this terminal
+ * can show: a 24-bit color as itself where the terminal says it takes them
  * (COLORTERM), else as the nearest of the 256; an index as itself where there
  * are 256, else the nearest of the sixteen. -1, the terminal's default, is
  * always showable. */

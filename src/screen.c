@@ -148,7 +148,7 @@ static void gutter_draw_tilde(int y, int gutter_w) {
  * setting and each off until asked for: whitespace drawn as marks, indent
  * guides, the cursor's line tinted, a ruler column, and the word under the
  * cursor tinted wherever else it appears. Per screen rather than per window,
- * like the colours, because they are how the screen is drawn. */
+ * like the colors, because they are how the screen is drawn. */
 static int vw_ws, vw_guides, vw_curline, vw_occ, vw_ruler;
 
 int view_whitespace(void) { return vw_ws; }
@@ -265,8 +265,8 @@ void editor_draw_text_row(int y, erow *row, const struct drow *d,
     int nb, w = text_cell(r, rs, i, dcol, tabw, &nb);
     int tint = -1, mark = 0, o;
     if (vis + w > text_cols) break;  /* would overflow the right edge */
-    /* A selection outranks the syntax colouring rather than blending with it:
-     * reverse video over a keyword's own colour is unreadable, and what the
+    /* A selection outranks the syntax coloring rather than blending with it:
+     * reverse video over a keyword's own color is unreadable, and what the
      * user is being told at that moment is "this is selected". Without a
      * filetype, or with highlighting off, there are no roles and this is the
      * line it always was. */
@@ -276,7 +276,7 @@ void editor_draw_text_row(int y, erow *row, const struct drow *d,
       if (i >= spans[k].x0 && i < spans[k].x1 &&
           (sev == 0 || spans[k].severity < sev))
         sev = spans[k].severity;
-    /* An error or a warning takes its colour over the syntax's, and the other
+    /* An error or a warning takes its color over the syntax's, and the other
      * two keep the syntax's; all four are underlined. The selection outranks
      * both, and keeps the underline, so selecting a problem does not hide
      * where it is. */
@@ -415,9 +415,9 @@ void screen_draw_status_bar(int focused) {
   char which[24] = "";
   if (buf_count() > 1)
     snprintf(which, sizeof(which), "[%d/%d] ", buf_current() + 1, buf_count());
-  /* The filetype, where molly recognised one. It earns its place on a crowded
-   * bar by answering the question the colours raise: when a file is not
-   * highlighted, the useful thing to know is whether molly failed to recognise
+  /* The filetype, where molly recognized one. It earns its place on a crowded
+   * bar by answering the question the colors raise: when a file is not
+   * highlighted, the useful thing to know is whether molly failed to recognize
    * it or highlighting is off. */
   if (B.tty != NULL) {
     /* A terminal has no lines to count or cursor to place: its name, which
@@ -455,7 +455,7 @@ void screen_draw_status_bar(int focused) {
    * in -- and that is exactly the thing worth knowing before typing. */
   /* Errors and warnings, when there are any: whether this file has something
    * wrong with it anywhere, not only on screen. Information and hints are not
-   * counted, which is the same line the colours in the text draw. */
+   * counted, which is the same line the colors in the text draw. */
   char probs[32] = "";
   {
     int ne, nw;
@@ -511,7 +511,7 @@ static void draw_message_bar(const struct layer *self) {
     grid_puts(y, self->x, E.statusmsg, msglen);
   } else if (sev) {
     /* The bar says what is wrong where the cursor is -- the severity in its
-     * colour, the message in the bar's. A message the user was just shown
+     * color, the message in the bar's. A message the user was just shown
      * keeps the bar for its five seconds while the cursor stays where it was
      * said, because it is the answer to something they did; moving onto a
      * problem is asking about that instead. */
@@ -767,7 +767,7 @@ static void screen_layout(void) {
  * A modal loop that sizes itself from the screen has to call this before it does:
  * the grid only learns about a resize when a refresh begins, so laying out first
  * means laying out against the size from before the resize. That is not a cosmetic
- * slip -- the help dialog was centred for a 100-column terminal and drawn into a
+ * slip -- the help dialog was centered for a 100-column terminal and drawn into a
  * 40-column one, which put its title off the right-hand edge and left it there,
  * because nothing repaints again until the next keystroke. */
 void screen_sync_size(void) {

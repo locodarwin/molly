@@ -201,7 +201,7 @@ int drow_cursor_col(const struct cursor *c) {
 
 /* Step a cursor one display row up (dir < 0) or down (dir > 0), wrapped.
  *
- * Local to the row and its neighbour, and deliberately so: everything else in
+ * Local to the row and its neighbor, and deliberately so: everything else in
  * this file walks the buffer, and an arrow key must not get slower because the
  * file is long. Which slice the cursor is on comes from its own row, and the
  * slice it is going to comes from that row or the next one -- no display index

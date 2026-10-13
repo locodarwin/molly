@@ -27,10 +27,10 @@ def run(argv, keys, rows=24, cols=80, settle=0.4, env=None, status=False):
     """
     pid, fd = pty.fork()
     if pid == 0:
-        # TERM and COLORTERM are both pinned, not just TERM: molly picks its colour
+        # TERM and COLORTERM are both pinned, not just TERM: molly picks its color
         # depth from COLORTERM first, so inheriting it from whatever shell ran the
         # tests made the golden screens depend on the ambient environment -- they
-        # came out sixteen-colour on one machine and 256-colour on the next. A test
+        # came out sixteen-color on one machine and 256-color on the next. A test
         # that wants a depth asks for it through `env`.
         # MOLLY_CONFIG is pinned empty for the same reason: molly reads
         # ~/.config/molly/mollyrc at startup, so without this every test would

@@ -546,6 +546,32 @@ Grouped by where they live:
   an editor *feel* modern.
 - **File:** recent files, read-only mode (automatic for system files).
 
+**All done, on 2026-10-12**, when Shawn said to finish the roadmap ("just keep
+going - let's finish everything"), in five batches:
+
+- **Words** — Ctrl-Left/Right, Alt-Backspace, Ctrl-Delete, Ctrl-K, at every
+  cursor. Select word was already Ctrl-D's first press.
+- **Lines** (`src/lines.c`) — Alt-C duplicate, Alt-Up/Down move, Ctrl-J join
+  (vi's: the cursor on the joining space), sort (byte order, the `LC_ALL=C` one),
+  trim, upper and lower case (ASCII), Alt-; toggle comment from the filetype's
+  line comment. Each goes through the selection path as one undo step, and one
+  that would change nothing changes nothing.
+- **Smart editing** (`src/smart.c`) — `[editor] smart home` and `auto close`,
+  surround coming with auto close. **Both off by default**, chosen without
+  asking: Home has always gone to column 0, and auto-close changes what typing
+  a bracket writes.
+- **Navigate** (`src/nav.c`) — Ctrl-] matching bracket, Alt-J then a digit for
+  bookmarks with Alt-0..9 back, Alt-Left/Alt-Right through one jump history
+  that F12's back stack moved into. Jumps are Ctrl-G, a find that moved, a
+  result, a problem, a definition, a bookmark; not arrows or F3.
+- **View** — `[view] whitespace` (Alt-.), `indent guides`, `current line`,
+  `highlight word`, `ruler` (a column number), all off, toggled from the View
+  menu except the ruler, drawn as theme roles under syntax and selection.
+- **File** (`src/recent.c`) — Alt-O, twenty files in `$XDG_STATE_HOME/molly/recent`
+  (state, not configuration), `MOLLY_STATE` to move it or, empty, turn it off.
+  Read-only is set when `access(W_OK)` says the file cannot be written, toggled
+  by View ▸ Read only, refused by every `CMD_EDITS` command and by save.
+
 ### Regex search and replace — **IN, first feature**
 
 - **For:** highest value per line on the list. POSIX `<regex.h>` is already in
@@ -1021,23 +1047,45 @@ molly runs under `ulimit -v` and has to reach a clean quit.
   `Enter` opens a match and `F4`/`Shift-F4` step through them. The host's tools
   were the right dependency: both are on every machine molly builds on.
 
-### Keyboard macros — **LATER, cheap**
+### Keyboard macros — **done**
 
 - **For:** record a command sequence and replay it; nearly free once commands are
   named table entries, since recording is just logging names. Registers 0-9.
 - **Against:** macros that span prompts and dialogs need those recorded too,
   which is where this stops being free.
+- **Done, on 2026-10-12**, differently from the plan: keys are recorded, not
+  command names, at `ui_wait_key()` — the one place molly waits for a key — so
+  prompts and dialogs are in a macro without anything knowing there is one,
+  and the "against" above costs nothing. One macro of up to 4,096 keys rather
+  than ten registers: Alt-( records, Alt-) plays, `REC` on the status bar.
+  Resizes and the mouse are not recorded.
 
-### Code folding — **LATER**
+### Code folding — **done**
 
 Same row-mapping problem as soft wrap, and it should reuse whatever mechanism
 soft wrap establishes rather than inventing a second one. Indent-based folding
 only; LSP folding is out until LSP is in.
 
-### Git integration — **LATER**
+- **Done, on 2026-10-12**, as planned: `src/fold.c` keeps folds on the buffer,
+  and `wrap.c`'s display-row map gives a folded row zero display rows, so
+  scrolling, drawing, the mouse and PgDn step over it untold. The cursor is
+  kept out of a fold by stepping past it, and anything that sends it into one
+  opens it. Alt-- toggles; Fold all and Unfold all are in the palette. Still
+  indent-based only; a server's folding ranges would be one more request.
+
+### Git integration — **done**
 
 Shelling out to `git` for blame, log and diff gutter marks costs no dependency
 and is genuinely useful. Not core, and gated on panels.
+
+- **Done, on 2026-10-12** (`src/git.c`): the gutter marks compare the *buffer*
+  with `git show HEAD:file` through `diff`, so unsaved edits are marked, on
+  open, on save and a second and a half after typing stops; a sign column only
+  for tracked files, there from the start so the text never shifts. Blame line
+  and file history (a buffer; Enter shows a commit as a diff) from the palette.
+  All through `filter_run()`, so the shell timeout and Esc bound a slow
+  repository. `[view] git gutter` is **on** by default: it costs a `git` only
+  for tracked files.
 
 ### Integrated terminal — **done**
 
@@ -1080,6 +1128,29 @@ and is genuinely useful. Not core, and gated on panels.
 - **Left for later:** selecting and copying inside a terminal with molly's own
   selection, mouse reporting, reflow, true colour on terminals that have it,
   a scrollback search, and Ctrl-Z suspend-to-shell for molly itself.
+- **All of those but one done, on 2026-10-12:**
+  - **Suspend** — Suspend to shell, from the palette (Ctrl-Z is undo):
+    the terminal restored, SIGTSTP, and everything put back on `fg`.
+  - **True colour** — cells keep `COLOR_RGB | rgb`; it goes out as `38;2`
+    only when `COLORTERM` says `truecolor` or `24bit`, and as the nearest of
+    256 or 16 otherwise. The child is told `COLORTERM=truecolor` only when it
+    is true.
+  - **Mouse reporting** — vt tracks 1000/1002/1003 and 1006, `vt_mouse()`
+    encodes a click as the program asked (SGR, or the old form up to column
+    223); Shift takes the mouse back, as in xterm. On the alternate screen the
+    wheel sends arrow keys to a program that did not ask.
+  - **Selection and copy** — drag selects in screen and scrollback, release
+    copies to molly's clipboard and through OSC 52. The selection's lines are
+    moved as output scrolls, by a count of lines ever pushed (`vt_pushed()`),
+    which the scrollback's length stops giving once its ring is full.
+  - **Scrollback search** — Find in terminal (palette), and Ctrl-F, F3,
+    Shift-F3 and Esc while scrolled back, when those keys cannot be meant for
+    a prompt out of sight. Plain text, any case, upwards.
+  - **Reflow — declined.** It needs a record of which rows were one wrapped
+    line, kept through every scroll, erase and insert; and re-wrapping the
+    live screen fights the shell, which redraws its prompt on SIGWINCH and
+    would show it twice. What would be left worth having is old output in the
+    scrollback, re-wrapped, which is not worth that bookkeeping.
 
 ### LSP — **done** (diagnostics, definition, hover, completion)
 
@@ -1167,6 +1238,26 @@ and is genuinely useful. Not core, and gated on panels.
   very large files, and finding the project root from a marker file rather
   than the working directory. None of them needs anything the client does not
   already have: each is a request, an answer and a way to show it.
+- **Four of those done, on 2026-10-12:**
+  - **Code actions** (Alt-Enter, JetBrains' key; Ctrl-. cannot be sent):
+    `textDocument/codeAction` with the diagnostics that touch the place, a
+    list, and the chosen one carried out whichever way it comes — its own
+    edit, `codeAction/resolve` for one computed lazily, or
+    `workspace/executeCommand`, whose edits the server sends back as
+    `workspace/applyEdit`, which molly now answers. `json_write()` returns an
+    action or a command's arguments to the server exactly as sent. Disabled
+    actions are left off. Not in a menu: every letter of "Code actions" is
+    already spent in Edit, and rename and references are not in one either.
+  - **Format on save** — `[editor] format on save`, **off**: the save waits up
+    to two seconds (Esc gives up) and says `formatted (N changes)` or `not
+    formatted: no answer in time`.
+  - **Completion while typing** — `[editor] complete while typing`, **off**:
+    after two identifier characters, quietly. Off because with it on, Enter at
+    the end of a typed word takes a completion.
+  - **Project roots** — a server per command *and root*; the root is the
+    nearest directory with a build file or compilation database, else the
+    nearest `.git`/`.hg`, else the working directory.
+- **Still left:** snippets, range edits for very large files.
 
 ### Plugin runtime — **NO**
 

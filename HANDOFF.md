@@ -1,21 +1,49 @@
 # Handoff
 
-Written 2026-10-10 and re-measured the same day. `main` and `origin/main` are
-level: everything is committed and pushed, the working tree is clean, nothing
-is half-finished, and CI is green on the head commit. The last work on it was
-the **menu drop-down's
-height**, which Shawn picked on 2026-10-10 after soft wrap: the box now measures
-itself against the text area and scrolls what will not fit, which let indent,
-dedent and soft wrap into the menus that had been too short for them. Before
-that, soft wrap — the last of the three features the first handoff named — and
-the test harness, whose keystroke flake was diagnosed and closed the same day:
-see "What only CI sees".
+Written 2026-10-12. Everything is committed on `main`, which is ahead of
+`origin/main` until Shawn says to push; the working tree is clean and nothing
+is half-finished. The last work on it was the rest of the roadmap, below. The
+2026-10-10 handoff's story — the menu drop-down's height, soft wrap, and the
+test harness's keystroke flake — is further down: see "What only CI sees".
 
 This file is for whoever picks molly up next. `ROADMAP.md` is the argument and
 the plan; this is the state, the order, and the things that will cost you an
 hour if nobody tells you.
 
-**Latest:** formatting (Alt-Q), which Shawn picked next on 2026-10-12. The
+**Latest:** the rest of the roadmap, after Shawn said on 2026-10-12 "just
+keep going - let's finish everything". In commit order after formatting:
+words (Ctrl-Left/Right, Alt-Backspace, Ctrl-Delete, Ctrl-K); lines
+(`src/lines.c`: Alt-C, Alt-Up/Down, Ctrl-J, sort, trim, case, Alt-;); smart
+editing (`src/smart.c`: smart Home, auto-close and surround); navigation
+(`f72207a`, `src/nav.c`: Ctrl-], bookmarks on Alt-J/Alt-0..9, and one jump
+history for Alt-Left/Alt-Right that F12's back stack moved into); then one
+batch commit of view aids (whitespace, indent guides, current line, highlight
+word, ruler), recent files (`src/recent.c`, Alt-O) and read-only mode,
+keyboard macros (recorded at `ui_wait_key()`), folding (`src/fold.c`, through
+`wrap.c`'s display-row map), git (`src/git.c`: gutter signs, blame, file
+history), suspend-to-shell and true colour; then the terminal extras (mouse
+reporting via `vt_mouse()`, drag-to-copy, scrollback find, wheel-as-arrows on
+the alternate screen) and the language-server extras (code actions on
+Alt-Enter with resolve, `executeCommand` and `workspace/applyEdit`; format on
+save; completion while typing; a server per project root). Reflow was
+declined, with the reasons in `src/vt.c` and ROADMAP §5. Pty checks
+`test_view_aids`, `test_files`, `test_macros`, `test_folding`, `test_git`,
+`test_terminal_extras`, `test_lsp_extras`; units cover `vt_mouse()`,
+`vt_pushed()`, `json_write()` and the true-colour fitting.
+
+Chosen without asking, each a setting or a line to change: **smart home,
+auto close, format on save and complete while typing are all off**, and every
+view aid is off, while the git gutter is on (it costs a `git` only for
+tracked files). Alt-Enter for code actions (JetBrains'; Ctrl-. cannot be
+sent), and **not in a menu**, because every letter of "Code actions" is
+already spent in Edit. One macro of 4,096 keys rather than ten registers.
+Suspend is a palette command, since Ctrl-Z is undo. Recent files live in
+`$XDG_STATE_HOME/molly/recent` as state, not configuration. The File menu now
+shows its shortcuts: they were always bound, but every label was shorter than
+the six columns the shortcut squeeze keeps for a label, so the column was
+dropped at natural width — "Recent files…" made it wide enough.
+
+**Before that:** formatting (Alt-Q), which Shawn picked next on 2026-10-12. The
 whole file, or the selection where the server does ranges (else the file,
 said so), with the file's tab width and spaces sent as the options; the edits
 go through `apply_edits()`, shared with rename, which now carries the cursor's
@@ -562,6 +590,11 @@ keymap, multiple buffers with tabs, syntax highlighting, window splits, the
 shell filter, indentation with per-filetype defaults, multiple cursors, and
 soft wrap. Nothing on the list below has been confirmed as next.
 
+**The roadmap is finished** as of 2026-10-12: every IN and LATER item in §5
+is done, reflow is declined with its reasons, and what the language server
+still leaves is snippets and range edits for very large files. What comes next
+is Shawn's to name.
+
 Nothing large is left in `ROADMAP.md`: the integrated terminal is done too. The big-file rewrite is done;
 what it leaves (wrap measuring every row of a huge file once per width) is at
 the end of §5's big-file section. The language server is done; what it leaves
@@ -650,6 +683,19 @@ later.
   in it; a script in the session that compared every literal append with its
   string found the rest correct.
 
+- **`GOLDEN_ONLY="name name"` runs just those golden cases**, with or without
+  `MOLLY_UPDATE_GOLDEN=1`: the way to rerun one that failed, or regenerate the
+  handful a change was meant to change without rewriting the rest.
+- **Anything that polls for Esc must survive standard input at end of file.**
+  `input_escape_pressed()` used `editor_read_key()`, which loops until a byte
+  arrives; with stdin at EOF (a unit test run with `< /dev/null`, or a hung-up
+  terminal) that loop never ended, and `git_refresh()` from `editor_save()`
+  hung the unit binary inside `filter_run()`. It now makes one `read()` and
+  decodes with `decode_key()`.
+- **The unit binary's colour checks depend on `COLORTERM`.** The true-colour
+  ones set it and `TERM` themselves and put `TERM=xterm` back, as the grid tests
+  do; a check that calls `theme_fit_color()` without doing that passes or fails
+  with the shell it is run from.
 - **Run commands through `cmd_run()`, never `cmd->run()`.** It is what refuses
   `CMD_EDITS` commands on a terminal. A new command that changes text needs
   the flag, or it will edit a terminal's empty buffer from the menu.
@@ -1071,6 +1117,16 @@ These all cost real time in the last session.
   `until grep -q '^EXIT' log; do sleep 15; done`.
 - **Check what is still running.** A stale ten-seed fuzz loop ate CPU for about
   thirty-seven minutes unnoticed.
+- **`pkill -f tests/fake_lsp.py` kills more than you meant.** Besides its own
+  shell, it killed a golden run's fake server mid-case, which failed
+  `lsp-diagnostics-256` with "python3 exited". Rerun the one case
+  (`GOLDEN_ONLY`) rather than trusting or regenerating it.
+- **`tests/fake_lsp.py` is read live by a running suite.** Editing it while a
+  gate runs changes what later LSP cases talk to; keep such edits additive or
+  wait for the gate.
+- **`make test-oom` depends on `molly`**, so running it after editing `src/`
+  relinks the binary from the new sources. Run it on a `git checkout-index`
+  export of what is staged when the working tree has moved on.
 
 ---
 

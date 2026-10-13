@@ -16,7 +16,8 @@ as well as the keyboard — and the features it was groundwork *for* have starte
 landing: a configuration file with a rebindable keymap, any number of files open
 at once with a tab bar, syntax highlighting for seven languages, window splits,
 a shell filter, per-filetype indentation, multiple cursors, soft wrap, a
-language-server client and an integrated terminal. 2,407 checks pass,
+language-server client, an integrated terminal, folding, macros and git
+marks. 2,612 checks pass,
 including golden screenshots taken before the renderer was replaced and still
 compared against today. What comes next, and why, is in
 [`ROADMAP.md`](ROADMAP.md).
@@ -122,6 +123,34 @@ Everything olly does, molly does. These all work today:
   shows the signature you are filling in; `Alt-N` renames across files, leaving
   them unsaved to review; `Alt-Q` formats. Any other server is one `language
   server =` line in the config. Hand-rolled JSON, no library.
+  `Alt-Enter` lists the code actions for here — fixes and refactorings — and
+  carries out whichever you choose. Format on save and completion as you type
+  are there to turn on. A server is started for the file's own project, found
+  by its build files.
+- **Words and lines**: `Ctrl-Left`/`Ctrl-Right` move by words and
+  `Alt-Backspace`/`Ctrl-Delete` delete them, `Ctrl-K` deletes to the end of the
+  line; `Alt-C` duplicates lines, `Alt-Up`/`Alt-Down` move them, `Ctrl-J` joins
+  them, `Alt-;` comments them out and back in, and sort, trim and case changes
+  are in the Edit menu and the palette. Smart `Home` and auto-closing brackets
+  and quotes, which also wrap a selection, are settings, off until you want
+  them.
+- **Getting back**: `Alt-Left`/`Alt-Right` walk back and forward through every
+  jump — go to line, a find, a result, a definition — across files; `Ctrl-]`
+  goes to the matching bracket; `Alt-J` and a digit sets one of ten bookmarks
+  and `Alt-` the digit comes back to it.
+- **Seeing more**: whitespace (`Alt-.`), indent guides, the current line and
+  the word under the cursor everywhere it appears, each from the View menu, and
+  a ruler at a column from Options. `Alt--` folds a block by its indentation.
+- **Keyboard macros**: `Alt-(` records, `Alt-)` plays back — typing, commands,
+  prompts and dialogs alike.
+- **Git**: a sign column marks lines added, changed or deleted since the last
+  commit, as you type; blame for a line and the file's history, each commit
+  opening as its diff, are in the palette.
+- **Recent files and read-only**: `Alt-O` reopens one of the last twenty files;
+  a file you cannot write opens read-only, and View ▸ Read only toggles it.
+- **More terminal**: drag to select and copy, find in the scrollback, the mouse
+  for programs that ask for it, and 24-bit colour passed through where your
+  terminal can show it.
 - **Keyboard reference built in**: press `F1` at any time.
 - **Configurable**: `~/.config/molly/mollyrc` holds the settings and the
   keymap; `View ▸ Options…` changes any setting in place, and
@@ -172,6 +201,7 @@ resize the terminal window.
 | --- | --- |
 | `Ctrl-S` | Save |
 | `Ctrl-O` | Open a file (directory browser) |
+| `Alt-O` | Open a recent file |
 | `Ctrl-N` | New buffer |
 | `Ctrl-W` | Close this buffer |
 | `Ctrl-PgDn` / `Ctrl-PgUp` | Next / previous buffer |
@@ -186,6 +216,20 @@ resize the terminal window.
 | `Ctrl-E` | Find in files |
 | `F4` / `Shift-F4` | Next / previous find-in-files match |
 | `Ctrl-G` | Go to line |
+| `Alt-Left` / `Alt-Right` | Back / forward through the places you jumped from |
+| `Ctrl-]` | Matching bracket |
+| `Alt-J` then a digit / `Alt-0`…`Alt-9` | Set / go to a bookmark |
+| `Ctrl-Left` / `Ctrl-Right` | Move a word |
+| `Alt-Backspace` / `Ctrl-Delete` | Delete a word back / forward |
+| `Ctrl-K` | Delete to the end of the line |
+| `Alt-C` | Duplicate the line |
+| `Alt-Up` / `Alt-Down` | Move the line up / down |
+| `Ctrl-J` | Join lines |
+| `Alt-;` | Comment / uncomment |
+| `Alt-(` / `Alt-)` | Record / play a macro |
+| `Alt--` | Fold / unfold the block |
+| `Alt-.` | Show tabs and trailing blanks |
+| `Alt-Enter` | Code actions from the language server |
 | `Ctrl-A` | Select everything |
 | `Ctrl-L` | Select the current line |
 | `Ctrl-C` | Copy selection |

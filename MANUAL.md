@@ -29,9 +29,12 @@ and a searchable label, so nothing is reachable only by knowing a secret key.
 - [Editing](#editing)
 - [Indentation](#indentation)
 - [Moving Around](#moving-around)
+- [Getting Back](#getting-back)
 - [Help Screen](#help-screen)
 - [Line Numbers](#line-numbers)
 - [Soft Wrap](#soft-wrap)
+- [Seeing More](#seeing-more)
+- [Folding](#folding)
 - [Selecting Text](#selecting-text)
 - [Several Cursors](#several-cursors)
 - [Block Selection](#block-selection)
@@ -39,6 +42,7 @@ and a searchable label, so nothing is reachable only by knowing a secret key.
 - [Regular Expressions](#regular-expressions)
 - [Search and Replace](#search-and-replace)
 - [Undo and Redo](#undo-and-redo)
+- [Keyboard Macros](#keyboard-macros)
 - [Opening Another File](#opening-another-file)
 - [Several Files at Once](#several-files-at-once)
 - [Filtering Through a Command](#filtering-through-a-command)
@@ -46,6 +50,7 @@ and a searchable label, so nothing is reachable only by knowing a secret key.
 - [Window Splits](#window-splits)
 - [The Terminal](#the-terminal)
 - [Language Servers](#language-servers)
+- [Git](#git)
 - [Saving and Quitting](#saving-and-quitting)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [Configuration](#configuration)
@@ -165,8 +170,8 @@ arrows, and deaf to its own letter** — `Paste` with an empty clipboard, `Find
 Next` before you have searched for anything. Items that toggle something show a
 tick when it is on.
 
-**A menu taller than the screen scrolls.** The Edit menu wants sixteen rows and
-the View one thirteen, which is more than a short terminal has to give. The box
+**A menu taller than the screen scrolls.** The Edit menu wants twenty-two rows and
+the View one eighteen, which is more than a short terminal has to give. The box
 is kept inside the text area — it never covers the status bar, and neither does
 its drop shadow — and the items that do not fit are scrolled rather than drawn
 off the bottom edge. A small `▴` or `▾` on the border says there is more that
@@ -261,6 +266,11 @@ terminal's, so they read as panels floating above the text and look the same
 wherever molly runs. The text area itself still uses your terminal's own
 foreground and background, so molly fits a light or a dark theme without being
 told which it is.
+
+A **24-bit colour** — from a program in the [terminal](#the-terminal) — goes
+out as it is only when `COLORTERM` says `truecolor` or `24bit`, which is a
+terminal's way of saying it can show one. Otherwise it is brought down to the
+nearest of the 256, or of the sixteen.
 
 If a dialog looks wrong, check what your terminal claims:
 
@@ -423,6 +433,76 @@ that row for you automatically. If the cursor is at the very start of a line,
 `Backspace` joins the current line onto the previous one; `Delete` at the very
 end of a line joins the next line onto it.
 
+### Words
+
+| Key | Action |
+| --- | --- |
+| `Ctrl-←` / `Ctrl-→` | Move a word left / right (with `Shift`, select as you go) |
+| `Alt-Backspace` | Delete the word before the cursor |
+| `Ctrl-Delete` | Delete the word after the cursor |
+| `Ctrl-K` | Delete from the cursor to the end of the line |
+
+A word is a run of one kind of character: letters, digits, `_` and anything
+past ASCII are one kind, punctuation another, so `foo->bar` is three stops and
+not one. Moving right goes over any blanks and then to the end of the run that
+follows; moving left, back over blanks to the start of the run before. At the
+end of a line the next stop is the start of the next line, as it is for `→`.
+`Ctrl-K` at the end of a line joins the next one on. All of them work at every
+cursor when there are several, and each is one undo step.
+
+### Whole lines
+
+| Key | Action |
+| --- | --- |
+| `Alt-C` | Duplicate the line (or the selected lines) below itself |
+| `Alt-↑` / `Alt-↓` | Move the line (or the selected lines) up / down |
+| `Ctrl-J` | Join the next line onto this one (or all the selected lines) |
+| `Alt-;` | Comment the lines out, or back in |
+
+**Edit ▸ Sort lines**, **Edit ▸ Trim whitespace**, and **Upper case** and
+**Lower case** in the palette do the rest:
+
+- **Sort** puts the selected lines in byte order — what `sort` gives with
+  `LC_ALL=C`, the one order that does not depend on the machine. It needs two
+  lines or more selected.
+- **Trim** takes the blanks off the ends of the selected lines, or of every line
+  in the file without a selection.
+- **Upper case** and **Lower case** change the selection, or the word under the
+  cursor — ASCII letters only.
+
+The lines an operation acts on are the selection's, where a selection that
+ends at the very start of a line does not take that line in (the same rule as
+`Tab`), or the cursor's own line without one. **Duplicate** leaves the cursor on
+the copy, so pressing it again makes a third. **Join** turns the next line's
+leading blanks into one space and leaves the cursor on that space, as vi's `J`
+does. **Comment** uses the filetype's line comment (`//`, `#`, `--`, `;`): if
+every non-blank line already starts with it, it comes off; otherwise it goes on,
+at the shallowest indentation of the lines so the block stays lined up, with a
+space after it. Blank lines are left alone either way.
+
+Every one of them is a single undo step, and one that would leave the text as it
+was — sorting a sorted block — changes nothing, so the file is not marked
+modified. With several cursors they act on the main one's lines.
+
+### Brackets, quotes and `Home`
+
+Two settings, both off until you turn them on:
+
+- **`[editor] smart home = on`** sends `Home` to where the line's text starts,
+  and a second `Home` from there to column 0 — the way VS Code does it. Off,
+  `Home` goes to column 0 as it always has.
+- **`[editor] auto close = on`** types the closing half of `(`, `[`, `{`, `"`,
+  `'` and `` ` `` along with the opening one, with the cursor between them.
+  Typing the closer when it is already next to the cursor steps over it rather
+  than typing a second; `Backspace` between an empty pair takes both halves.
+  A quote is not doubled inside a word, so `don't` stays as typed. And typing
+  an opener with text **selected wraps the selection** in the pair instead of
+  replacing it, leaving the text still selected — so `(` then `"` gives
+  `("text")`.
+
+They are off because each changes something you already know: where `Home`
+goes, and what typing a bracket puts in the file.
+
 ## Indentation
 
 Three questions, each answerable in `[editor]` for everything or in
@@ -560,10 +640,12 @@ To have `Tab` go on writing the same kind of indentation afterwards, set
 | Key | Action |
 | --- | --- |
 | `←` `↑` `↓` `→` | Move the cursor |
-| `Home` | Go to the start of the line |
+| `Ctrl-←` / `Ctrl-→` | Move a word left / right |
+| `Home` | Go to the start of the line (with smart Home on, to where its text starts first) |
 | `End` | Go to the end of the line |
 | `PgUp` / `PgDn` | Move up / down a screenful |
 | `Ctrl-G` | Go to a line number |
+| `Ctrl-]` | Go to the bracket that matches this one |
 | `F5` | Repaint the screen |
 | `Ctrl-U` | Toggle the line-number gutter |
 | `Alt-Z` | Toggle soft wrap |
@@ -583,6 +665,34 @@ the file, so they walk down a long line before reaching the next one.
 
 The terminal can also be resized freely while Molly is running — the display
 adjusts to the new size as it happens, without needing a keypress first.
+
+## Getting Back
+
+| Key | Action |
+| --- | --- |
+| `Alt-←` | Back to where the last jump left from |
+| `Alt-→` | Forward again |
+| `Ctrl-]` | To the bracket matching the one at the cursor |
+| `Alt-J`, then a digit | Put bookmark 0 to 9 on this line |
+| `Alt-0` … `Alt-9` | Go to that bookmark |
+
+**The history is a browser's.** A *jump* — `Ctrl-G`, a find that moved the
+cursor, `Enter` on a find-in-files result or a problem, `F12`, a bookmark —
+remembers where it left from; `Alt-←` goes back there, and keeps going back,
+sixty-four places deep, across files; `Alt-→` goes forward again, until the next
+jump starts a new branch. Arrows, `PgDn` and `F3` are not jumps: what they move
+to is in sight of where you were, and a history of every one of them would be
+one nobody could step back through. A place in a file you have since closed is
+stepped over. **Go ▸ Back** and **Go ▸ Forward** are the same two.
+
+**`Ctrl-]`** works on `()`, `[]` and `{}`: with the cursor on a bracket, or just
+after one, it goes to its partner, counting the pairs between. It does not know
+about strings or comments, so a bracket inside one counts.
+
+**Bookmarks** are ten per file. `Alt-J` asks for a digit and puts that bookmark
+on the cursor's line; `Alt-` and the digit comes back to it. A bookmark moves
+with its line when you add or delete lines above it. They last as long as the
+buffer: molly does not keep them when the file is closed.
 
 ## Help Screen
 
@@ -671,6 +781,42 @@ the other.
 - **No sticky column.** Several `↓` presses in a row each keep the column they
   land in rather than the one the first press started from — the same as with
   wrap off.
+
+## Seeing More
+
+Five aids to reading the text, all in the **View** menu and all off until you
+turn them on — each changes how every line looks, and which of them help is a
+matter of taste:
+
+| View menu | Setting | What it shows |
+| --- | --- | --- |
+| Whitespace (`Alt-.`) | `[view] whitespace` | Tabs as `→` and trailing blanks as `·`, dimmed |
+| Indent guides | `[view] indent guides` | A faint `│` at each tab stop inside a line's indentation |
+| Current line | `[view] current line` | The cursor's line tinted, across the window |
+| Highlight word | `[view] highlight word` | The word under the cursor tinted wherever else it is on screen |
+| — | `[view] ruler = 80` | Column 80 tinted, to show a line length (0, the default, for none) |
+
+The ruler is a number rather than a switch, so it is set in the Options dialog
+or in `mollyrc` rather than from the menu. All five are drawn under the syntax
+colours and a selection, never over them.
+
+## Folding
+
+`Alt--` folds the block the cursor is in: the line that opens it stays, and the
+lines after it that are indented further are hidden behind a dimmed `⋯ 12
+lines` at its end. `Alt--` on a folded line opens it again. **Fold all** and
+**Unfold all** in the palette do every block in the file at once.
+
+Folding is by indentation, not by syntax, so it works the same in C, Python,
+YAML and a Markdown list, and needs nothing from a language definition. Blank
+lines inside a block belong to it. On a line that opens no block, `Alt--` folds
+the block the line is *inside*, and moves the cursor to its first line.
+
+A fold is skipped over by everything that moves down the screen — the arrows,
+`PgDn`, the mouse wheel — and anything that sends you *into* one, a search or
+`Ctrl-G` or a definition, opens it, since that is where you were sent. Folds
+belong to the file, so two windows on it fold together, and they move with
+their lines as you edit above them.
 
 ## Selecting Text
 
@@ -1044,6 +1190,21 @@ row itself, then the character), so it takes two `Ctrl-Z` presses to fully
 undo it. Any edit made after an undo clears the redo history — a fresh
 `Ctrl-Y` will not resurrect changes replaced by newer ones.
 
+## Keyboard Macros
+
+| Key | Action |
+| --- | --- |
+| `Alt-(` | Start recording; press it again to stop |
+| `Alt-)` | Play the recording back |
+
+While recording, the status bar says `REC`. Everything you press is recorded —
+typing, commands, the answers to prompts, the keys you press in a dialog — and
+played back through the same door it came in by, so a macro can open the Find
+dialog, type a search and go on from where it lands. There is one macro, of up
+to 4,096 keys; recording another replaces it. Resizes and the mouse are not
+recorded, since neither means the same thing twice. `Alt-)` while recording
+says to stop first, rather than playing a macro into itself.
+
 ## Opening Another File
 
 `Ctrl-O` opens a file browser. It starts in Molly's working directory — the
@@ -1070,6 +1231,24 @@ disk, and the second save would silently undo the first.
 If the buffer you are in is empty and unnamed -- a fresh `molly` with nothing
 typed into it — the file opens into *that* buffer rather than beside it, so you
 get one tab and not two.
+
+### Recent files
+
+`Alt-O` (or **File ▸ Recent files…**) lists the last twenty files you opened,
+newest first, with your home directory written `~`. `Enter` opens one, and is a
+jump, so `Alt-←` comes back. The list is kept between sessions in
+`$XDG_STATE_HOME/molly/recent` — `~/.local/state/molly/recent` when that is not
+set — because it is state molly writes as you work, not configuration you
+would keep. `MOLLY_STATE` names another directory for it, and empty keeps no
+list at all.
+
+### Files you cannot write
+
+A file molly cannot write to — someone else's, or one you have made read-only
+— opens **read-only**: the status bar says `[read-only]`, every command that
+would change the text says so and does nothing, and `Ctrl-S` refuses rather
+than failing halfway. **View ▸ Read only** turns it off, for when you mean to
+save somewhere else, or on, to look at a file without any risk of changing it.
 
 ## Several Files at Once
 
@@ -1427,11 +1606,49 @@ in. A shell that exits with an error says so on the message bar.
 - **Paste** — `Edit ▸ Paste`, or Paste in the palette — types molly's clipboard
   into the program. A shell that asked for bracketed paste gets it, so a
   pasted command is not run until you press `Enter`.
-- **Copying out of a terminal** is your own terminal's job: hold `Shift` and drag,
-  as anywhere in molly.
+- **Copying out of a terminal**: drag across it with the mouse. What you drag
+  over is highlighted, and letting go copies it — to molly's clipboard, and to
+  your own terminal's through OSC 52 where it takes that, as `Ctrl-C` does in a
+  file. Each line's trailing blanks are left behind, and a drag over several
+  lines copies them as lines. A click without a drag lets the selection go, and
+  so does typing. The scrollback can be dragged over as well as the screen.
 - **The scrollback** keeps the last 5,000 lines. While you are scrolled back the
   status bar says how far, new output does not move what you are reading, and
   any key you type goes back to the bottom. The mouse wheel scrolls it too.
+
+### Finding in the scrollback
+
+**Find in terminal** in the palette asks for some text and shows the newest
+line above the bottom of the window that has it, scrolled into sight with the
+match highlighted. Case does not matter, and the text is matched as it is
+typed — no patterns. Once you are scrolled back the find keys are molly's
+again, since nothing you typed there would reach a prompt you cannot see:
+
+    Ctrl-F         Find in the scrollback (the same as Find in terminal)
+    F3             The next older match
+    Shift-F3       The next newer match
+    Esc            Back down to the bottom, letting the match go
+
+While a match is showing, the status bar says `F3 older  Esc`. Finding goes
+upwards because that is where the scrollback is; F3 at the oldest match says
+there are no older ones rather than starting again at the bottom.
+
+### Programs that use the mouse
+
+A program that asks for the mouse — `less --mouse`, `vim` with `mouse=a`,
+`htop`, `mc` — is sent it: clicks, releases, the wheel, and drags if it asked
+for those, in the encoding it asked for (the SGR form, or the original one for
+a program that did not ask for SGR, which cannot name a cell past column 223).
+The text area's own uses of the mouse step aside for as long as the program
+wants it.
+
+**Hold `Shift` to take the mouse back**, as in xterm: a `Shift`-drag selects and
+copies even in a program that has the mouse.
+
+On the **alternate screen** — where `less`, `man` and the other full-screen
+programs draw, and where there is no scrollback — the wheel sends the program
+`↑` and `↓`, three a notch, when it did not ask for the mouse. That is how a
+pager that never heard of the mouse still scrolls under the wheel.
 
 ### Running programs, and quitting
 
@@ -1445,13 +1662,19 @@ A terminal at its prompt closes without asking.
 - **Nothing that edits text.** A terminal's screen is not text molly owns, so
   undo, cut, indent, the filter and the rest say so and do nothing, and a
   terminal cannot be saved.
-- **No mouse for the program.** A program that asks for mouse reports does not
-  get them; the wheel scrolls the scrollback instead, and clicks are molly's.
 - **No reflow.** A line is as wide as the window was when it was written; a
-  window made narrower cuts old lines, and wider pads them. Most full-screen
-  programs redraw when the window changes size, which is what they are told.
-- **24-bit colour is shown as the nearest of 256**, and on a sixteen-colour
-  terminal as the nearest of sixteen.
+  window made narrower cuts old lines, and wider pads them. Re-wrapping would
+  mean knowing which rows were one long line and which were two, through every
+  scroll, erase and insert a program makes; and re-wrapping the screen itself
+  fights the shell, which redraws its own prompt when the window changes size
+  and would then show it twice. Full-screen programs redraw on a resize anyway,
+  which leaves old output in the scrollback as the one thing reflow would fix
+  — not worth the bookkeeping.
+- **24-bit colour goes out as it is only where your terminal says it can take
+  it** — `COLORTERM=truecolor` or `24bit` — and otherwise as the nearest of 256,
+  or of sixteen. A program in the terminal is told `COLORTERM=truecolor` only
+  when that is true of the terminal molly is in.
+- **No regular expressions in the scrollback find.** Plain text, any case.
 - **F10 and F6 are molly's.** A program that wants them — `htop` quits on F10 —
   has to be told another way (`q`, for `htop`).
 
@@ -1467,13 +1690,14 @@ shows you what it says.
     F2 / Shift-F2  Next / previous problem
     Ctrl-F2        The problems list: every problem in every open file
     F12            Go to the definition of what is under the cursor
-    Alt-Left       Back to where F12 jumped from
+    Alt-Left       Back to where F12 jumped from (Alt-Right: forward again)
     Shift-F12      Every place the name under the cursor is used
     Alt-K          What is under the cursor: its type, signature and docs
     Alt-/          Complete the word before the cursor
     Alt-P          The signature of the call the cursor is in
     Alt-N          Rename what is under the cursor, everywhere
     Alt-Q          Format the file, or the selection
+    Alt-Enter      Code actions: fixes and refactorings for here
 
 The navigation ones are also in the **Go** menu, and all of them are in the
 command palette, along with **Language server status** and **Restart
@@ -1512,9 +1736,25 @@ The line is run by the shell, so arguments, a variable in front and `~` all
 work. `[editor] language servers = off` turns every server off at once, and is
 in the [Options dialog](#the-options-dialog).
 
-A server is started in the directory molly was started in, and told that is
-the project. clangd finds a `compile_commands.json` from the file itself, so it
-does not mind; rust-analyzer wants molly started inside the Cargo project.
+### Which project
+
+A server is started for a **project**, and told where its root is — which is
+where it reads the build files that say how the code fits together. The root is
+found from the file, not from where molly was started, so `molly
+~/src/other/main.c` gets a server rooted in that project:
+
+1. The nearest directory above the file with a build file or a compilation
+   database in it: `compile_commands.json`, `compile_flags.txt`, `Cargo.toml`,
+   `go.mod`, `pyproject.toml`, `setup.py`, `setup.cfg`, `package.json`,
+   `tsconfig.json`, `deno.json`, `build.zig`, `Gemfile`, `pom.xml`,
+   `build.gradle`, `CMakeLists.txt`, `meson.build` or `Makefile`.
+2. Failing that, the nearest repository — a directory with `.git` or `.hg`.
+3. Failing that, the directory molly was started in.
+
+The nearest, not the outermost, because a repository with several projects in
+it has a build file for each, and each project's files want that project's
+server. Files from two projects get two servers, one each, even of the same
+program; files of one project share one.
 
 ### Problems
 
@@ -1556,7 +1796,9 @@ next refresh writes over it — and `Enter` in it never inserts a line.
 `F12` asks where the name under the cursor is defined and goes there — in
 another file if that is where it is, opening the file or switching to it if it
 is already open. `Alt-Left` goes back to where you were, and keeps going back
-through as many jumps as you have made, up to thirty-two.
+through as many jumps as you have made, up to sixty-four; `Alt-Right` goes
+forward again. That history is every jump's, not only F12's — see [Getting
+Back](#getting-back).
 
 ### Every place a name is used
 
@@ -1591,6 +1833,13 @@ Typing a character the server says starts a completion — `.` after a struct,
 one undo step, separate from the typing before it: `Ctrl-Z` takes the
 completion back and leaves the word as you typed it.
 
+**`[editor] complete while typing = on`** opens it as you type a word, too:
+once the word has two letters, and from then on as long as there is anything
+to offer. It is off unless you turn it on, because with it on, the `Enter` at
+the end of a line you have just typed a word on takes a completion instead of
+starting the next line whenever the list is open. Nothing to offer is not a
+message when you did not ask.
+
 ### The signature of a call
 
 Typing the `(` of a call — or whatever characters the server says start one,
@@ -1613,6 +1862,36 @@ that needs nothing is left unmodified: "Already formatted."
 
 clangd formats by a `.clang-format` file when it finds one above the file, and
 in LLVM's style when it does not.
+
+**`[editor] format on save = on`** formats the whole file every time it is
+saved, before it is written, so what reaches the disk is the formatted text. The
+save waits for the server's answer for up to two seconds — `Esc` stops waiting
+— and the message says what happened: `1203 bytes written, formatted (3
+changes)`, or `…, not formatted: no answer in time` when the server was too
+slow, in which case the file is saved as it was. A file whose server cannot
+format, or that has no server, is saved as usual without a word. It is off
+unless you turn it on: a save that changes the text is a surprise to anyone who
+did not ask for one.
+
+### Code actions
+
+`Alt-Enter` asks the server what it can do here — at the cursor, or over the
+selection — and lists it: the fix for the problem under the cursor (molly
+sends the server the problems that touch the place, which is what it offers
+fixes for), and refactorings such as extracting a function or organising the
+imports. `Up`, `Down` and `Enter` choose one; `Esc` chooses none.
+
+Whatever it takes to carry one out, molly does: an action that comes with its
+edit has it made; one the server works out only when it is chosen is asked for
+then, and made; one that is a command the server runs has the server send its
+edits back, and those are made too. The edits are made the way a rename's are
+— each file's as one undo step, a file that is not open opened and left
+unsaved — and the message names the action and counts the changes. An action
+the server lists as unavailable here is left off the list rather than shown
+doing nothing.
+
+`Alt-Enter` is JetBrains' key for the same list; VS Code's `Ctrl-.` is not a
+chord a terminal can send.
 
 ### Renaming
 
@@ -1642,9 +1921,9 @@ delete a file is not done at all, rather than done in part.
   only what changed, and getting that wrong would leave the server and molly
   disagreeing about the text without anyone knowing. A source file goes down a
   pipe in microseconds; a file over 16 MB is not sent to a server at all.
-- **Completion does not open while you type a word**, only on `Alt-/` and the
-  server's own trigger characters. A list appearing under every word you type
-  is a matter of taste, and the taste is not yet decided.
+- **Completion does not open while you type a word** unless you ask it to —
+  `[editor] complete while typing` — for the reason given under
+  [Completion](#completion).
 - **No snippets.** Completion asks for plain text, so taking a function puts in
   its name, not its name with placeholders for the arguments.
 - **One cursor.** Completion is offered at the main cursor only; with several,
@@ -1652,9 +1931,35 @@ delete a file is not done at all, rather than done in part.
 - **Problems only from open files.** A server reports on what it has been
   sent, and molly sends the files you have open; a project-wide check is the
   build's job, in the [terminal](#the-terminal).
-- **Not on save.** Formatting is something you ask for; a save that waited on
-  a server would be the first thing in molly to wait on one.
-- **Not yet:** code actions.
+- **Not on save, unless you ask.** `[editor] format on save` is off, and with
+  it on a save waits two seconds at most.
+- **No file operations.** A rename or code action that would create, move or
+  delete a file is refused whole.
+
+## Git
+
+In a file git tracks, a narrow column beside the text marks what differs from
+the last commit: a green bar `▎` for an added line, an amber one for a changed
+line, and a red `▸` where lines were taken out. It compares the *buffer* with
+what is committed, not the file on disk, so an unsaved edit is marked a second
+and a half after you stop typing; it is worked out again when the file is
+opened and saved too. A file git does not track has no column at all, and one
+it does always has one, so the text does not shift sideways at the first edit.
+`[view] git gutter = off` turns it off.
+
+Two more, from the palette:
+
+- **Git blame line** says who last changed the cursor's line, when, and in
+  which commit: `3f2a91c Ann Lee, 2026-09-30: Fix the parser`. It reads the
+  file as it is on disk, so it asks you to save first when there are unsaved
+  changes.
+- **Git file history** opens a buffer with the file's commits, newest first —
+  a hash, a date, an author and a summary a line. `Enter` on one opens that
+  commit as a diff, in a buffer of its own.
+
+Everything is asked of the `git` program, through the same path as the shell
+filter, so a slow repository is held to the [shell timeout](#configuration) and
+`Esc` stops it; without git, there is simply nothing to show.
 
 ## Saving and Quitting
 
@@ -1698,6 +2003,14 @@ Molly protects you from losing work: when there are unsaved changes, the first
 `Ctrl-Q` lists the unsaved buffers and offers Save All, Discard or Cancel. A
 clean session quits on the first `Ctrl-Q`.
 
+### Suspending
+
+**Suspend to shell**, in the palette, stops molly the way `Ctrl-Z` stops any
+program in a shell: the screen is handed back as it was found, and the shell's
+`fg` brings molly back, redrawn, with everything as you left it. It is a
+command rather than `Ctrl-Z` itself, because `Ctrl-Z` is undo here, as it is in
+every CUA editor. Bind it to a key in `[keys]` if you use it often.
+
 If Molly is stopped from outside instead — its terminal window is closed, or it
 receives `SIGTERM`, `SIGHUP`, `SIGINT` or `SIGQUIT` — it puts your terminal's
 settings back on the way out, so the shell you return to echoes and edits
@@ -1735,6 +2048,7 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     Ctrl-Space  Command palette (Alt-X does the same)
     Ctrl-S   Save file
     Ctrl-O   Open a file (directory browser)
+    Alt-O    Open a file you opened recently
     Ctrl-N   New buffer
     Ctrl-W   Close this buffer
     Ctrl-PgDn / Ctrl-PgUp  Next / previous buffer
@@ -1755,9 +2069,13 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     Ctrl-E   Find in files
     F4 / Shift-F4  Next / previous find-in-files match
     Ctrl-G   Go to line
+    Ctrl-]   Go to the bracket matching this one
+    Alt-J    Set a bookmark (then a digit, 0-9)
+    Alt-0..9 Go to that bookmark
     F2 / Shift-F2  Next / previous problem a language server found
     F12      Go to the definition of what is under the cursor
-    Alt-Left Back to where F12 jumped from
+    Alt-Left Back to where the last jump left from
+    Alt-Right  Forward again
     Alt-K    What is under the cursor, from the language server
     Alt-/    Complete the word before the cursor
     Shift-F12  Every place the name under the cursor is used
@@ -1765,12 +2083,21 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     Alt-P    The signature of the call the cursor is in
     Alt-N    Rename what is under the cursor, everywhere
     Alt-Q    Format the file, or the selection, with the language server
+    Alt-Enter  Code actions: fixes and refactorings, from the language server
     Ctrl-A   Select everything
     Ctrl-L   Select the current line
     Ctrl-C   Copy the selection
     Ctrl-X   Cut the selection
     Ctrl-V   Paste the clipboard at the cursor
     Ctrl-T   Swap the two characters at the cursor
+    Ctrl-Left / Ctrl-Right  Move a word left / right
+    Alt-Backspace  Delete the word before the cursor
+    Ctrl-Del Delete the word after the cursor
+    Ctrl-K   Delete to the end of the line
+    Alt-C    Duplicate the line or the selected lines
+    Alt-Up / Alt-Down  Move the line or the selected lines up / down
+    Ctrl-J   Join the next line onto this one
+    Alt-;    Comment the lines out, or back in
     Ctrl-D   Add a cursor at the next occurrence of the word or selection
     Alt-D    Skip this match, take the next one
     Alt-U    Take the last cursor back
@@ -1783,6 +2110,8 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     Alt-!    Insert a command's output at the cursor
     Ctrl-Z   Undo the last change
     Ctrl-Y   Redo an undone change
+    Alt-(    Start or stop recording a macro
+    Alt-)    Play the macro back
     F1       Show this help screen (Ctrl-? does the same)
     F5       Repaint the screen
     Ctrl-U   Toggle the line-number gutter
@@ -1790,11 +2119,14 @@ After saving, the undo history is kept, but the dirty flag is cleared.
     Alt-B    Toggle the tab bar
     Alt-Y    Toggle syntax highlighting
     Alt-Z    Toggle soft wrap
+    Alt-.    Toggle showing tabs and trailing blanks
+    Alt--    Fold the block the cursor is in, or open the fold
     Tab      In a dialog: move to the next field, checkbox or button
     Shift-Tab  In a dialog: move back to the previous one
     Space    In a dialog: tick the checkbox or press the button with the keyboard
     Shift    Hold with arrows / Home / End / PgUp / PgDn to select
     Shift    Hold while dragging to select with the terminal, not molly
+    Shift    In a terminal whose program has the mouse: hold to take it back
     Esc      Cancel the current prompt, menu or dialog; or go back to one cursor
 
 To see the live keymap rather than this list:
@@ -1850,14 +2182,24 @@ Names are matched on their words, so `line numbers`, `Line-Numbers` and
 | `editor` | `tab width` | `8` | Columns a tab character occupies, 1 to 16. Changing it re-renders the open file immediately. |
 | `editor` | `insert spaces` | `off` | `Tab` inserts spaces as far as the next tab stop rather than a tab character. See [Indentation](#indentation). |
 | `editor` | `auto indent` | `on` | A new line starts at the indentation of the line above it. |
+| `editor` | `smart home` | `off` | `Home` goes to where the line's text starts, then to column 0. See [Editing](#brackets-quotes-and-home). |
+| `editor` | `auto close` | `off` | Typing a bracket or quote types its pair, and wraps a selection in it. |
 | `editor` | `undo steps` | `32768` | How many undo steps to keep. |
 | `editor` | `language servers` | `on` | Start the language server a file's language names, where it is installed. See [Language Servers](#language-servers). |
+| `editor` | `format on save` | `off` | Saving formats the file with its language server first. See [Formatting](#formatting). |
+| `editor` | `complete while typing` | `off` | The completion list opens by itself as a word is typed. See [Completion](#completion). |
 | `view` | `line numbers` | `off` | Show the line-number gutter (`Ctrl-U` toggles it). |
 | `view` | `menu bar` | `on` | Give the menu bar its row (`View ▸ Menu Bar` toggles it). |
 | `view` | `tab bar` | `on` | Show a tab per open file (`Alt-B` toggles it). Only ever drawn with two or more buffers open. |
 | `view` | `syntax` | `on` | Colour the text by filetype (`Alt-Y` toggles it). See [Syntax Highlighting](#syntax-highlighting). |
 | `view` | `italic` | `on` | Draw comments in italic, on terminals that can (not the Linux console, not under a `screen` TERM). See [Syntax Highlighting](#syntax-highlighting). |
 | `view` | `soft wrap` | `off` | Wrap long lines at the window edge instead of scrolling sideways (`Alt-Z` toggles it). See [Soft Wrap](#soft-wrap). |
+| `view` | `whitespace` | `off` | Draw tabs as arrows and trailing blanks as dots (`Alt-.` toggles it). See [Seeing More](#seeing-more). |
+| `view` | `indent guides` | `off` | A faint bar at each tab stop inside a line's indentation. |
+| `view` | `current line` | `off` | Tint the line the cursor is on. |
+| `view` | `highlight word` | `off` | Tint the word under the cursor wherever else it appears on screen. |
+| `view` | `ruler` | `0` | Tint this column, to show a line length; 0 for none. |
+| `view` | `git gutter` | `on` | Mark lines changed since the last commit, for files git tracks. See [Git](#git). |
 | `shell` | `timeout` | `10` | Seconds a filter command may run before molly stops it, 1 to 3600. See [Filtering Through a Command](#filtering-through-a-command). |
 | `shell` | `output limit` | `8192` | Kilobytes of output a filter command may produce, 1 to 1048576. |
 | `input` | `mouse` | `on` | Report the mouse to molly. Turning it off hands clicks and drag-select back to the terminal for good, rather than only while `Shift` is held — see [The Mouse](#the-mouse). |
@@ -1988,6 +2330,7 @@ default.
 | `MOLLY_DUMP_CONFIG` | Print the parsed configuration — the file's path, every setting's value, the key bindings it asked for and any warnings — and exit, without touching the terminal. See [Configuration](#configuration). |
 | `MOLLY_CONFIG` | Read configuration from this path instead of `~/.config/molly/mollyrc`. Set to the empty string to read none at all, which is what the test suite does so that its results do not depend on the configuration of the machine it runs on. |
 | `MOLLY_UNDO_STEPS` | Lower the undo history's step limit, which is how the test suite exercises its eviction. |
+| `MOLLY_STATE` | Keep molly's state — the [recent files](#recent-files) list — in this directory instead of `$XDG_STATE_HOME/molly`. Set to the empty string to keep none; the test suite does, so that running it leaves nothing behind and does not see what you opened. |
 | `MOLLY_LSP` | Set to `off` to start no language server whatever the configuration says. The test suite sets it, so that a machine with clangd installed draws the same screens as one without; its own language-server tests set it back and name a fake server instead. |
 
 ## File Format Notes

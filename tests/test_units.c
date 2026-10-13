@@ -4128,6 +4128,19 @@ static void test_json(void) {
     json_free(d);
   }
   {
+    /* Written back out as it came in: a code action's arguments go back to
+     * the server that sent them, and it is owed exactly what it sent. */
+    const char *in = "{\"a\":[1,-2.5,true,false,null],\"b\":{\"c\":\"x\\ny\\u00e9\"},\"d\":[]}";
+    struct abuf ab = ABUF_INIT;
+    d = jp(in);
+    json_write(&ab, json_root(d));
+    ab_append(&ab, "", 1);
+    check_str("a value is written back as it was read", ab.b,
+              "{\"a\":[1,-2.5,true,false,null],\"b\":{\"c\":\"x\\ny\u00e9\"},\"d\":[]}");
+    json_free(d);
+    free(ab.b);
+  }
+  {
     /* Not NUL-terminated: the length is the end, whatever follows it. */
     const char s[] = "[1, 2]garbage";
     d = json_parse(s, 6);

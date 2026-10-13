@@ -8,6 +8,7 @@ so a failure means a real regression rather than a style drift.
 """
 
 import fcntl
+import json
 import multiprocessing
 import os
 import pty
@@ -5431,6 +5432,115 @@ def test_terminal_extras(tmpdir):
         os.chdir(here)
 
 
+def test_lsp_extras(tmpdir):
+    """Code actions, format on save, completion as a word is typed, and the
+    project a server is started for.
+
+    The fake server's actions cover the three ways one can be carried out: an
+    edit that comes with it, a command whose edit the server sends back on its
+    own, and an edit filled in when it is chosen. The project is checked in
+    what `initialize` was told, from the fake server's log.
+    """
+    print("\nlanguage server: code actions, format on save, typing, projects")
+
+    work = os.path.join(tmpdir, "lspextras")
+    os.makedirs(work, exist_ok=True)
+    ACTIONS, DOWN, RIGHT = "\x1b\r", "\x1b[B", "\x1b[C"
+    WAIT = 2.0
+
+    def rc(extra=""):
+        path = os.path.join(work, "lsprc")
+        with open(path, "w") as fh:
+            fh.write("[syntax c]\nlanguage server = python3 -I %s\n%s" % (FAKE_LSP, extra))
+        return path
+
+    def session(keys, text="int x = BAD;\nint y = 2;\n", extra="", env=None, name="main.c"):
+        if text is not None:
+            with open(name, "w") as fh:
+                fh.write(text)
+        e = {"MOLLY_CONFIG": rc(extra), "MOLLY_LSP": ""}
+        e.update(env or {})
+        scr = Screen(14, 72)
+        scr.feed(run([MOLLY, name], keys, rows=14, cols=72, env=e))
+        return scr
+
+    def disk(name="main.c"):
+        with open(name) as fh:
+            return fh.read()
+
+    here = os.getcwd()
+    os.chdir(work)
+    try:
+        on_bad = [WAIT] + [RIGHT] * 8
+        scr = session(on_bad + [ACTIONS, 1.0])
+        joined = "\n".join(scr.text())
+        check("Alt-Enter lists the actions here", "Code actions" in joined, True)
+        check("the fix for the problem under the cursor first",
+              ("Replace BAD with GOOD" in joined, "Upper-case this line" in joined,
+               "Add a comment" in joined), (True, True, True))
+        check("and not the one the server says cannot be done",
+              "Cannot do this" in joined, False)
+        scr = session([WAIT, DOWN, ACTIONS, 1.0])
+        check("away from the problem there is no fix for it",
+              "Replace BAD" in "\n".join(scr.text()), False)
+
+        scr = session(on_bad + [ACTIONS, 1.0, "\r", 1.0])
+        check("Enter makes an action's own edit", scr.text()[1].rstrip(), "int x = GOOD;")
+        check("and says which", "Replace BAD with GOOD: 1 change." in scr.text()[13], True)
+        scr = session(on_bad + [ACTIONS, 1.0, DOWN, "\r", 1.5])
+        check("a command's edit comes back from the server and is made",
+              scr.text()[1].rstrip(), "INT X = BAD;")
+        check("named for the action", "Upper-case this line: 1 change." in scr.text()[13], True)
+        scr = session(on_bad + [ACTIONS, 1.0, DOWN, DOWN, "\r", 1.5])
+        check("an action without an edit is filled in, then made",
+              [r.rstrip() for r in scr.text()[1:3]], ["// fake", "int x = BAD;"])
+        scr = session(on_bad + [ACTIONS, 1.0, "\x1b", 0.3])
+        check("Esc chooses nothing", scr.text()[1].rstrip(), "int x = BAD;")
+
+        messy = "int a = 1;   \nint b = 2;\t\n"
+        session([WAIT, "\x13", 1.0], text=messy)
+        check("saving does not format unless asked to", disk(), messy)
+        scr = session([WAIT, "\x13", 1.5], text=messy, extra="[editor]\nformat on save = on\n")
+        check("format on save formats, then saves", disk(), "int a = 1;\nint b = 2;\n")
+        check("and says so", "formatted (2 changes)" in scr.text()[13], True)
+        scr = session([WAIT, "\x13", 3.0], text=messy, extra="[editor]\nformat on save = on\n",
+                      env={"FAKE_LSP_SLOW": "4"})
+        check("a server too slow to answer is not waited for", disk(), messy)
+        check("and that is said",
+              "not formatted: no answer in time" in scr.text()[13], True)
+
+        typed = [WAIT, "\x1b[1;5F", "\r", "wi", 1.0]
+        scr = session(typed, text="int widget = 1;\n")
+        check("a typed word does not open the list unless asked to",
+              sum("widget" in r for r in scr.text()), 1)
+        scr = session(typed, text="int widget = 1;\n",
+                      extra="[editor]\ncomplete while typing = on\n")
+        check("complete while typing opens it after two letters",
+              sum("widget" in r for r in scr.text()), 2)
+        scr = session([WAIT, "\x1b[1;5F", "\r", "w", 1.0], text="int widget = 1;\n",
+                      extra="[editor]\ncomplete while typing = on\n")
+        check("but not after one", sum("widget" in r for r in scr.text()), 1)
+
+        proj = os.path.join(work, "sub", "proj")
+        os.makedirs(os.path.join(proj, "src"), exist_ok=True)
+        with open(os.path.join(proj, "compile_commands.json"), "w") as fh:
+            fh.write("[]\n")
+        log = os.path.join(work, "lsp.log")
+        if os.path.exists(log):
+            os.remove(log)
+        session([WAIT], text="int a;\n", name="sub/proj/src/a.c", env={"FAKE_LSP_LOG": log})
+        roots = []
+        with open(log) as fh:
+            for line in fh:
+                m = json.loads(line)
+                if m.get("method") == "initialize":
+                    roots.append(m["params"]["rootUri"])
+        check("a server is started in the file's project, found by its build files",
+              [r.endswith("/sub/proj") for r in roots], [True])
+    finally:
+        os.chdir(here)
+
+
 def test_lsp_rename(tmpdir):
     """Alt-N: rename what is under the cursor, everywhere the server says.
 
@@ -6132,6 +6242,7 @@ def main():
         test_lsp_complete(tmpdir)
         test_terminal(tmpdir)
         test_terminal_extras(tmpdir)
+        test_lsp_extras(tmpdir)
         test_lsp_rename(tmpdir)
         test_lsp_references(tmpdir)
         test_lsp_signature(tmpdir)

@@ -442,3 +442,39 @@ void json_putf(struct abuf *ab, const char *fmt, ...) {
   ab_append(ab, big, n);
   free(big);
 }
+
+/* A value written back out as JSON: what a server sent, returned to it whole
+ * -- a code action to resolve, a command's arguments -- without molly needing
+ * to know what is in it. Numbers keep their integer form when they have one. */
+void json_write(struct abuf *ab, const struct json *v) {
+  const struct json *k;
+  if (v == NULL) {
+    ab_append(ab, "null", 4);
+    return;
+  }
+  switch (v->type) {
+  case JSON_NULL: ab_append(ab, "null", 4); break;
+  case JSON_FALSE: ab_append(ab, "false", 5); break;
+  case JSON_TRUE: ab_append(ab, "true", 4); break;
+  case JSON_NUMBER:
+    if (v->num == (double)(long long)v->num && v->num > -1e15 && v->num < 1e15)
+      json_putf(ab, "%lld", (long long)v->num);
+    else
+      json_putf(ab, "%.17g", v->num);
+    break;
+  case JSON_STRING: json_put_str(ab, v->str, v->n); break;
+  case JSON_ARRAY:
+  case JSON_OBJECT:
+    ab_append(ab, v->type == JSON_ARRAY ? "[" : "{", 1);
+    for (k = v->kid; k != NULL; k = k->next) {
+      if (k != v->kid) ab_append(ab, ",", 1);
+      if (v->type == JSON_OBJECT) {
+        json_put_str(ab, k->key, (int)strlen(k->key));
+        ab_append(ab, ":", 1);
+      }
+      json_write(ab, k);
+    }
+    ab_append(ab, v->type == JSON_ARRAY ? "]" : "}", 1);
+    break;
+  }
+}

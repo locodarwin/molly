@@ -553,6 +553,18 @@ void editor_save(void) {
     B.have_disk_mtime = 0;
   }
 
+  /* Format on save: the server's edits made first, so what is written is
+   * what it formats to. Here, once the name is settled and before anything
+   * is looked at on disk; a server that does not answer in time is not
+   * waited for, and the file is saved as it is. */
+  int formatted = lspui_format_before_save();
+  char fmsg[48] = "";
+  if (formatted > 0)
+    snprintf(fmsg, sizeof(fmsg), ", formatted (%d change%s)", formatted,
+             formatted == 1 ? "" : "s");
+  else if (formatted < 0)
+    snprintf(fmsg, sizeof(fmsg), ", not formatted: no answer in time");
+
   /* If the name is a symlink, write past it to the real target so atomic
    * rename replaces the file contents rather than the link itself. */
   const char *target = B.filename;
@@ -630,8 +642,8 @@ void editor_save(void) {
       editor_set_status_message("Save failed: %s", strerror(errno));
       return;
     }
-    editor_set_status_message("%zu bytes written (in place, not atomic)",
-        total);
+    editor_set_status_message("%zu bytes written (in place, not atomic)%s",
+        total, fmsg);
     B.dirty = 0;
     saved_snapshot_take();
     B.have_disk_mtime = have_after;
@@ -682,7 +694,7 @@ void editor_save(void) {
 
   if (!ok) return;
 
-  editor_set_status_message("%zu bytes written", total);
+  editor_set_status_message("%zu bytes written%s", total, fmsg);
   B.dirty = 0;
   saved_snapshot_take();
   B.have_disk_mtime = have_after;

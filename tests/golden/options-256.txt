@@ -8,6 +8,8 @@ gamma   ║  editor  insert spaces                                   off ║
 ~       ║  editor  auto close                                      off ║
 ~       ║  editor  undo steps                                    32768 ║
 ~       ║  editor  language servers                                 on ║
+~       ║  editor  format on save                                  off ║
+~       ║  editor  complete while typing                           off ║
 ~       ║  view    line numbers                                    off ║
 ~       ║  view    menu bar                                         on ║
 ~       ║  view    tab bar                                          on ║
@@ -17,8 +19,6 @@ gamma   ║  editor  insert spaces                                   off ║
 ~       ║  view    whitespace                                      off ║
 ~       ║  view    indent guides                                   off ║
 ~       ║  view    current line                                    off ║
-~       ║  view    highlight word                                  off ║
-~       ║  view    ruler                                             0 ║
 ~       ║ [editor] columns a tab character occupies (1-16)             ║
 ~       ║ Space/←→ change  Enter keep  Ctrl-S save  Esc undo all       ║
 sample.t╚══════════════════════════════════════════════════════════════╝1, Col 1

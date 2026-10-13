@@ -76,6 +76,7 @@ struct pending {
 struct server {
   int state;
   char *cmd;
+  char *root;              /* the project it was started for, a directory */
   char name[32];           /* the program, for messages */
   pid_t pid;
 
@@ -98,6 +99,7 @@ struct server {
   int save;                /* wants didSave */
   int hover, definition, completion, rename, references, signature;
   int format, format_range;
+  int actions, resolve;    /* code actions, and filling one in afterwards */
   char sig_triggers[16];   /* signature help's, trigger and retrigger both */
   char triggers[16];       /* completion trigger characters, the one-byte ones */
 
@@ -408,14 +410,21 @@ static int request(struct server *s, const char *method, const struct abuf *para
 
 /* A request of the server's own. Molly offers none of the capabilities those
  * are about, so the answer is "nothing" -- except workspace/configuration,
- * which wants one answer per item asked about, and gets that many nulls. */
+ * which wants one answer per item asked about, and gets that many nulls, and
+ * workspace/applyEdit, which a command sends to make its changes. Those go to
+ * the mailbox like an answer, and are said to have been applied: molly applies
+ * an edit whole or refuses it before touching anything, and a refusal is said
+ * on the message bar where the user will see it. */
 static void reply(struct server *s, const struct json *id, const char *method,
                   const struct json *params) {
   struct abuf ab = ABUF_INIT;
   ab_append(&ab, "{\"jsonrpc\":\"2.0\",\"id\":", 22);
   if (id->type == JSON_STRING) json_put_str(&ab, id->str, id->n);
   else json_putf(&ab, "%d", json_int(id, 0));
-  if (strcmp(method, "workspace/configuration") == 0) {
+  if (strcmp(method, "workspace/applyEdit") == 0) {
+    lsp_answer(LSP_REQ_APPLY, NULL, 0, 0, 0, json_get(params, "edit"), s->utf8);
+    ab_append(&ab, ",\"result\":{\"applied\":true}}", 27);
+  } else if (strcmp(method, "workspace/configuration") == 0) {
     const struct json *items = json_get(params, "items");
     int i, n = (items != NULL && items->type == JSON_ARRAY) ? items->n : 0;
     ab_append(&ab, ",\"result\":[", 11);
@@ -490,7 +499,7 @@ static void send_initialize(struct server *s) {
   char *uri;
   const char *base;
 
-  if (getcwd(cwd, sizeof(cwd)) == NULL) snprintf(cwd, sizeof(cwd), "/");
+  snprintf(cwd, sizeof(cwd), "%s", s->root);
   uri = lsp_path_to_uri(cwd);
   base = strrchr(cwd, '/');
   base = (base != NULL && base[1] != '\0') ? base + 1 : cwd;
@@ -523,11 +532,20 @@ static void send_initialize(struct server *s) {
           "\"signatureHelp\":{\"signatureInformation\":{"
             "\"documentationFormat\":[\"plaintext\",\"markdown\"],"
             "\"parameterInformation\":{\"labelOffsetSupport\":true}}},"
-          "\"formatting\":{},\"rangeFormatting\":{}"
+          "\"formatting\":{},\"rangeFormatting\":{},"
+          /* Literals: a list of CodeActions rather than bare Commands, and
+           * the edit of one filled in when it is chosen, which is how the
+           * servers that compute it lazily want to be asked. */
+          "\"codeAction\":{\"codeActionLiteralSupport\":{\"codeActionKind\":{"
+            "\"valueSet\":[\"\",\"quickfix\",\"refactor\",\"refactor.extract\","
+            "\"refactor.inline\",\"refactor.rewrite\",\"source\","
+            "\"source.organizeImports\"]}},"
+            "\"resolveSupport\":{\"properties\":[\"edit\"]}}"
         "},"
         /* Edits to text only: a rename that wants to create, move or delete
          * files is declined rather than half done. */
         "\"workspace\":{\"workspaceFolders\":true,\"configuration\":true,"
+                      "\"applyEdit\":true,"
                       "\"workspaceEdit\":{\"documentChanges\":true}}"
       "}}");
   free(uri);
@@ -617,21 +635,100 @@ fail0:
   return 0;
 }
 
-/* The server for a command line, started if it is new. */
-static struct server *server_get(const char *cmd) {
+/* ---- the project ---------------------------------------------------------
+ *
+ * A server is started for a project, not for molly's working directory: it is
+ * told where the project's root is, and reads its build files from there. So a
+ * file opened from elsewhere -- `molly ~/src/other/main.c` -- gets a server of
+ * its own, rooted in its own project, rather than one that thinks the current
+ * directory is the project and cannot find a header.
+ *
+ * The root is the nearest directory up from the file with a build file or a
+ * compilation database in it; failing that, the nearest repository; failing
+ * that, the working directory, which is what it always was. Nearest rather
+ * than outermost for the build files, because a repository holding several
+ * projects has one per project, and each is what its server wants. */
+static const char *const root_markers[] = {
+  "compile_commands.json", "compile_flags.txt", "Cargo.toml", "go.mod",
+  "pyproject.toml", "setup.py", "setup.cfg", "package.json", "tsconfig.json",
+  "deno.json", "build.zig", "Gemfile", "pom.xml", "build.gradle", "CMakeLists.txt",
+  "meson.build", "Makefile",
+};
+
+#define ROOT_CACHE 32
+static struct { char *dir, *root; } root_cache[ROOT_CACHE];
+static int root_next;
+
+static int has(const char *dir, const char *name) {
+  char p[4352];
+  snprintf(p, sizeof(p), "%s/%s", dir, name);
+  return access(p, F_OK) == 0;
+}
+
+/* The root for a file, which the caller must not free: it lives in the cache. */
+static const char *project_root(const char *filename) {
+  char dir[4096], found[4096] = "", repo[4096] = "";
+  char *slash;
+  int i, k;
+  if (filename[0] == '/') {
+    snprintf(dir, sizeof(dir), "%s", filename);
+  } else {
+    char cwd[2048];
+    if (getcwd(cwd, sizeof(cwd)) == NULL) snprintf(cwd, sizeof(cwd), "/");
+    snprintf(dir, sizeof(dir), "%s/%s", cwd, filename);
+  }
+  slash = strrchr(dir, '/');
+  if (slash == dir) dir[1] = '\0';
+  else if (slash != NULL) *slash = '\0';
+
+  for (i = 0; i < ROOT_CACHE; i++)
+    if (root_cache[i].dir != NULL && strcmp(root_cache[i].dir, dir) == 0)
+      return root_cache[i].root;
+
+  {
+    char at[4096];
+    snprintf(at, sizeof(at), "%s", dir);
+    for (;;) {
+      for (k = 0; found[0] == '\0' && k < (int)(sizeof(root_markers) / sizeof(*root_markers)); k++)
+        if (has(at, root_markers[k])) snprintf(found, sizeof(found), "%s", at);
+      if (found[0] != '\0') break;
+      if (repo[0] == '\0' && (has(at, ".git") || has(at, ".hg")))
+        snprintf(repo, sizeof(repo), "%s", at);
+      slash = strrchr(at, '/');
+      if (slash == NULL || at[1] == '\0') break;
+      if (slash == at) at[1] = '\0';
+      else *slash = '\0';
+    }
+  }
+  if (found[0] == '\0' && repo[0] != '\0') snprintf(found, sizeof(found), "%s", repo);
+  if (found[0] == '\0' && getcwd(found, sizeof(found)) == NULL) snprintf(found, sizeof(found), "/");
+
+  i = root_next;
+  root_next = (root_next + 1) % ROOT_CACHE;
+  free(root_cache[i].dir);
+  free(root_cache[i].root);
+  root_cache[i].dir = xstrdup(dir);
+  root_cache[i].root = xstrdup(found);
+  return root_cache[i].root;
+}
+
+/* The server for a command line in a project, started if it is new. */
+static struct server *server_get(const char *cmd, const char *root) {
   int i, freeslot = -1;
   for (i = 0; i < LSP_MAX_SERVERS; i++) {
     if (servers[i].state == SRV_FREE) {
       if (freeslot < 0) freeslot = i;
       continue;
     }
-    if (strcmp(servers[i].cmd, cmd) == 0) return &servers[i];
+    if (strcmp(servers[i].cmd, cmd) == 0 && strcmp(servers[i].root, root) == 0)
+      return &servers[i];
   }
   if (freeslot < 0) return NULL;
   {
     struct server *s = &servers[freeslot];
     memset(s, 0, sizeof(*s));
     s->cmd = xstrdup(cmd);
+    s->root = xstrdup(root);
     s->in_fd = s->out_fd = s->err_fd = -1;
     s->in_id = s->out_id = s->err_id = -1;
     start(s);
@@ -758,7 +855,7 @@ static struct server *server_for(struct buffer *b) {
     return NULL;
   cmd = syntax_lsp(b->syn);
   if (cmd == NULL || cmd[0] == '\0') return NULL;
-  return server_get(cmd);
+  return server_get(cmd, project_root(b->filename));
 }
 
 /* Bring one buffer's server up to date with it: open, change or close. */
@@ -941,6 +1038,9 @@ static void on_initialized(struct server *s, const struct json *result) {
   s->signature = provided(json_get(caps, "signatureHelpProvider"));
   s->format = provided(json_get(caps, "documentFormattingProvider"));
   s->format_range = provided(json_get(caps, "documentRangeFormattingProvider"));
+  t = json_get(caps, "codeActionProvider");
+  s->actions = provided(t);
+  s->resolve = json_bool(json_get(t, "resolveProvider"), 0);
   {
     /* Triggers open it and retriggers keep it current; molly asks again on
      * every key while it is open anyway, so the two are one list here. */
@@ -997,6 +1097,17 @@ static void on_response(struct server *s, const struct json *msg) {
     return;
   }
   if (p.kind == LSP_REQ_SHUTDOWN || p.kind < 0 || p.buf == NULL) return;
+  /* A command's answer says nothing molly needs -- its edits came as an
+   * applyEdit just before it, which an answer in the mailbox would replace --
+   * unless it is that the command failed. */
+  if (p.kind == LSP_REQ_EXECUTE) {
+    const char *m = json_str(json_get(err, "message"));
+    if (err != NULL) {
+      editor_set_status_message("%s: %s", s->name, m != NULL ? m : "the action failed");
+      ui_request_redraw();
+    }
+    return;
+  }
   /* An error is an answer of nothing: "no definition here" and "I could not
    * work that out" leave the user in the same place. */
   lsp_answer(p.kind, p.buf, p.edits, p.cy, p.cx,
@@ -1156,6 +1267,7 @@ int lsp_can(struct buffer *b, int kind) {
   case LSP_REQ_REFERENCES: return s->references;
   case LSP_REQ_SIGNATURE: return s->signature;
   case LSP_REQ_FORMAT: return s->format || s->format_range;
+  case LSP_REQ_ACTIONS: return s->actions;
   }
   return 0;
 }
@@ -1211,6 +1323,101 @@ int lsp_format(struct buffer *b, int range, int y0, int x0, int y1, int x1,
   free(ab.b);
   s->pend[s->npend - 1].cx = cx;
   s->pend[s->npend - 1].cy = cy;
+  return 1;
+}
+
+/* The code actions for a range of `b` -- the selection, or the cursor's place
+ * -- with the diagnostics that touch it, which is what lets a server offer the
+ * fix for the error under the cursor. */
+int lsp_code_actions(struct buffer *b, int y0, int x0, int y1, int x1, int cy, int cx) {
+  struct server *s = ready_for(b);
+  struct abuf ab = ABUF_INIT;
+  int i, first = 1;
+  if (s == NULL || !s->actions) return 0;
+  text_document(&ab, b);
+  ab_append(&ab, "}", 1);
+  {
+    erow *r0 = y0 < b->numrows ? buf_row(b, y0) : NULL;
+    erow *r1 = y1 < b->numrows ? buf_row(b, y1) : NULL;
+    json_putf(&ab, ",\"range\":{\"start\":{\"line\":%d,\"character\":%d},"
+                   "\"end\":{\"line\":%d,\"character\":%d}}", y0,
+              r0 ? lsp_col_to_units(r0->chars, r0->size, x0, s->utf8) : 0, y1,
+              r1 ? lsp_col_to_units(r1->chars, r1->size, x1, s->utf8) : 0);
+  }
+  json_putf(&ab, ",\"context\":{\"diagnostics\":[");
+  for (i = 0; i < b->ndiag; i++) {
+    const struct diag *d = &b->diag[i];
+    erow *r0, *r1;
+    if (d->y1 < y0 || d->y0 > y1) continue;
+    if (d->y1 == y0 && d->x1 < x0) continue;
+    if (d->y0 == y1 && d->x0 > x1) continue;
+    r0 = d->y0 < b->numrows ? buf_row(b, d->y0) : NULL;
+    r1 = d->y1 < b->numrows ? buf_row(b, d->y1) : NULL;
+    if (!first) ab_append(&ab, ",", 1);
+    first = 0;
+    json_putf(&ab, "{\"range\":{\"start\":{\"line\":%d,\"character\":%d},"
+                   "\"end\":{\"line\":%d,\"character\":%d}},\"severity\":%d,"
+                   "\"message\":", d->y0,
+              r0 ? lsp_col_to_units(r0->chars, r0->size, d->x0, s->utf8) : 0, d->y1,
+              r1 ? lsp_col_to_units(r1->chars, r1->size, d->x1, s->utf8) : 0,
+              d->severity);
+    json_put_str(&ab, d->msg, (int)strlen(d->msg));
+    ab_append(&ab, "}", 1);
+  }
+  ab_append(&ab, "]}}", 3);
+  request(s, "textDocument/codeAction", &ab, LSP_REQ_ACTIONS, b);
+  free(ab.b);
+  s->pend[s->npend - 1].cx = cx;
+  s->pend[s->npend - 1].cy = cy;
+  return 1;
+}
+
+/* One chosen action that has no edit to apply here and now: filled in by the
+ * server first when `resolve` (its edit comes back as LSP_REQ_RESOLVE), or its
+ * command run (whose edits come back as the server's own applyEdit). `action`
+ * is the CodeAction or Command as the server sent it. 0 when there is nobody
+ * to ask, or nothing to ask for. */
+int lsp_code_action_run(struct buffer *b, const char *action, int resolve, int cy, int cx) {
+  struct server *s = ready_for(b);
+  struct json_doc *doc;
+  const struct json *a, *cmd;
+  struct abuf ab = ABUF_INIT;
+  if (s == NULL) return 0;
+  doc = json_parse(action, strlen(action));
+  a = json_root(doc);
+  if (a == NULL) {
+    json_free(doc);
+    return 0;
+  }
+  if (resolve) {
+    if (!s->resolve) {
+      json_free(doc);
+      return 0;
+    }
+    ab_append(&ab, action, (int)strlen(action));
+    request(s, "codeAction/resolve", &ab, LSP_REQ_RESOLVE, b);
+  } else {
+    /* A Command's name is its "command"; a CodeAction's command is an object
+     * holding one. */
+    cmd = json_get(a, "command");
+    if (cmd != NULL && cmd->type == JSON_OBJECT) a = cmd;
+    if (json_str(json_get(a, "command")) == NULL) {
+      json_free(doc);
+      return 0;
+    }
+    ab_append(&ab, "{\"command\":", 11);
+    json_write(&ab, json_get(a, "command"));
+    if (json_get(a, "arguments") != NULL) {
+      ab_append(&ab, ",\"arguments\":", 13);
+      json_write(&ab, json_get(a, "arguments"));
+    }
+    ab_append(&ab, "}", 1);
+    request(s, "workspace/executeCommand", &ab, LSP_REQ_EXECUTE, b);
+  }
+  s->pend[s->npend - 1].cx = cx;
+  s->pend[s->npend - 1].cy = cy;
+  free(ab.b);
+  json_free(doc);
   return 1;
 }
 
@@ -1295,6 +1502,7 @@ static void server_stop(struct server *s) {
   }
   forget_server(s);
   free(s->cmd);
+  free(s->root);
   free(s->wq.b);
   free(s->rb);
   memset(s, 0, sizeof(*s));
@@ -1311,7 +1519,15 @@ void lsp_stop_all(void) {
   for (i = 0; i < buf_count(); i++) doc_forget(buf_at(i));
 }
 
-void lsp_cleanup(void) { lsp_stop_all(); }
+void lsp_cleanup(void) {
+  int i;
+  lsp_stop_all();
+  for (i = 0; i < ROOT_CACHE; i++) {
+    free(root_cache[i].dir);
+    free(root_cache[i].root);
+    root_cache[i].dir = root_cache[i].root = NULL;
+  }
+}
 
 /* On unless something said off. The environment can say it for good: the test
  * harness does, so that a developer with clangd installed sees the same screens

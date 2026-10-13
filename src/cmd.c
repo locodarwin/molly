@@ -393,7 +393,9 @@ static int cmd_rename(void) { return lspui_rename(); }
 static int cmd_references(void) { return lspui_references(); }
 static int cmd_signature(void) { return lspui_signature(); }
 static int cmd_format(void) { return lspui_format(); }
+static int cmd_code_actions(void) { return lspui_code_actions(); }
 static int can_format(void) { return lspui_can(LSP_REQ_FORMAT); }
+static int can_code_actions(void) { return lspui_can(LSP_REQ_ACTIONS); }
 static int can_signature(void) { return lspui_can(LSP_REQ_SIGNATURE); }
 static int can_references(void) { return lspui_can(LSP_REQ_REFERENCES); }
 static int can_rename(void) { return lspui_can(LSP_REQ_RENAME); }
@@ -864,6 +866,9 @@ static const struct command commands[] = {
   {.name = "code.format", .label = "Format",
    .help = "Format file", .group = "CODE", .flags = CMD_EDITS,
    .run = cmd_format, .enabled = can_format},
+  {.name = "code.actions", .label = "Code actions…",
+   .help = "Fixes and refactorings", .group = "CODE", .flags = CMD_EDITS,
+   .run = cmd_code_actions, .enabled = can_code_actions},
   {.name = "code.signature", .label = "Show signature",
    .help = "Show signature", .group = "CODE", .run = cmd_signature,
    .enabled = can_signature},
@@ -1312,6 +1317,8 @@ int chord_parse(const char *s) {
     } else {
       if (key == BACKSPACE) {
         key = ALT_KEY(0x7f);
+      } else if (key == '\r') {
+        key = ALT_KEY('\r');
       } else {
         if (s[1] != '\0' || (unsigned char)s[0] < 0x20 ||
             (unsigned char)s[0] > 0x7e)
@@ -1367,6 +1374,10 @@ void chord_name(int key, char *dst, size_t n) {
   }
   if (key == ALT_KEY(0x7f)) {
     snprintf(dst, n, "Alt-Backspace");
+    return;
+  }
+  if (key == ALT_KEY('\r')) {
+    snprintf(dst, n, "Alt-Enter");
     return;
   }
   if (IS_ALT_KEY(key)) {
@@ -1569,6 +1580,9 @@ static const struct binding default_bindings[] = {
    * that predates formatters had to one. Alt-F is the File menu's, and the
    * Ctrl-Shift chords other editors use are not ones a terminal can send. */
   {"alt-q",    "code.format"},
+  /* JetBrains' key for the same list. VS Code's Ctrl-. is not a chord a
+   * terminal can send. */
+  {"alt-enter", "code.actions"},
   /* VS Code's, beside F12 as definition is. */
   {"shift-f12", "code.references"},
 
@@ -2100,6 +2114,7 @@ static const struct help_entry help_entries[] = {
   {NULL,        NULL, NULL, "code.rename"},
   {NULL,        NULL, NULL, "code.signature"},
   {NULL,        NULL, NULL, "code.format"},
+  {NULL,        NULL, NULL, "code.actions"},
 };
 
 int help_entry_count(void) {

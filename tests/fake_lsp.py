@@ -40,6 +40,12 @@ insertSpaces its leading tabs become tabSize spaces each -- a line per edit.
 Signature help: inside an unclosed `name(`, the signature `name(int a, int b,
 int c)` with the parameter the commas say is active.
 
+Code actions, at any place: "Upper-case this line", a command whose edit comes
+back as the server's own workspace/applyEdit; "Add a comment", which has its
+edit filled in by codeAction/resolve; and "Cannot do this", disabled. With a
+BAD diagnostic in the context sent, "Replace BAD with GOOD" first, carrying
+its edit.
+
 References are every whole-word occurrence, as renames change them -- in the open documents and in the
 files in the working directory that are not open.
 """
@@ -247,12 +253,48 @@ def formatting(text, opts, first=0, last=None):
     return out
 
 
+def code_actions(uri, p):
+    line = p["range"]["start"]["line"]
+    out = []
+    for d in p.get("context", {}).get("diagnostics", []):
+        if d["message"].startswith("BAD"):
+            out.append({"title": "Replace BAD with GOOD", "kind": "quickfix",
+                        "diagnostics": [d],
+                        "edit": {"changes": {uri: [{"range": d["range"], "newText": "GOOD"}]}}})
+    out.append({"title": "Upper-case this line", "kind": "refactor.rewrite",
+                "command": {"title": "Upper-case", "command": "fake.upper",
+                            "arguments": [uri, line, {"nested": [1, True, None]}]}})
+    out.append({"title": "Add a comment", "kind": "refactor", "data": {"line": line}})
+    out.append({"title": "Cannot do this", "disabled": {"reason": "fake"}})
+    return out
+
+
 def answer(msg):
+    global next_id
     method = msg["method"]
     p = msg.get("params", {})
     if os.environ.get("FAKE_LSP_SLOW"):
         time.sleep(float(os.environ["FAKE_LSP_SLOW"]))
     if method == "shutdown":
+        return None
+    if method == "codeAction/resolve":
+        uri = list(docs)[0]
+        line = p["data"]["line"]
+        p["edit"] = {"changes": {uri: [{"range": {"start": {"line": line, "character": 0},
+                                                  "end": {"line": line, "character": 0}},
+                                        "newText": "// fake\n"}]}}
+        return p
+    if method == "workspace/executeCommand":
+        uri, line, extra = p["arguments"]
+        if extra != {"nested": [1, True, None]}:
+            raise ValueError("the arguments came back changed")
+        text = docs[uri].split("\n")[line]
+        send({"jsonrpc": "2.0", "id": next_id, "method": "workspace/applyEdit",
+              "params": {"edit": {"changes": {uri: [{
+                  "range": {"start": {"line": line, "character": 0},
+                            "end": {"line": line, "character": units(text)}},
+                  "newText": text.upper()}]}}}})
+        next_id += 1
         return None
     uri = p.get("textDocument", {}).get("uri")
     pos = p.get("position", {})
@@ -265,6 +307,8 @@ def answer(msg):
             return [{"targetUri": loc["uri"], "targetRange": loc["range"],
                      "targetSelectionRange": loc["range"]}]
         return loc
+    if method == "textDocument/codeAction":
+        return code_actions(uri, p)
     if method == "textDocument/formatting":
         return formatting(docs[uri], p.get("options", {}))
     if method == "textDocument/rangeFormatting":
@@ -343,6 +387,8 @@ def main():
                     "signatureHelpProvider": {"triggerCharacters": ["(", ","]},
                     "documentFormattingProvider": True,
                     "documentRangeFormattingProvider": not os.environ.get("FAKE_LSP_NORANGE"),
+                    "codeActionProvider": {"resolveProvider": True},
+                    "executeCommandProvider": {"commands": ["fake.upper"]},
                 },
                 "serverInfo": {"name": "fake"}}})
         elif method == "initialized":

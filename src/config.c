@@ -208,6 +208,8 @@ static int live_auto_indent(void) { return indent_auto_default(); }
 static void apply_undo_steps(int v) { undo_set_max_steps(v); }
 static int live_undo_steps(void) { return undo_max_steps(); }
 static void apply_lsp(int v) { lsp_set_enabled(v); }
+static void apply_format_on_save(int v) { lspui_set_format_on_save(v); }
+static void apply_complete_typing(int v) { lspui_set_complete_typing(v); }
 static void apply_smart_home(int v) { smart_set_home(v); }
 static void apply_whitespace(int v) { view_set_whitespace(v); screen_force_repaint(); }
 static void apply_guides(int v) { view_set_guides(v); screen_force_repaint(); }
@@ -266,6 +268,15 @@ static struct setting settings[] = {
   {"editor", "language servers", SET_BOOL, 0, 0, 1, 0,
    "start the language server a filetype names, where it is installed",
    apply_lsp, lsp_setting},
+  /* Both off. A save that changes the text is a surprise to anyone who did
+   * not ask for one; and a list that opens as a word is typed turns the
+   * Enter at the end of a line into choosing from it. */
+  {"editor", "format on save", SET_BOOL, 0, 0, 0, 0,
+   "saving formats the file with its language server first",
+   apply_format_on_save, lspui_format_on_save},
+  {"editor", "complete while typing", SET_BOOL, 0, 0, 0, 0,
+   "the completion list opens by itself as a word is typed",
+   apply_complete_typing, lspui_complete_typing},
 
   {"view", "line numbers", SET_BOOL, 0, 0, 0, 0,
    "show the line-number gutter",

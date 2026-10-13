@@ -220,6 +220,10 @@ static struct {
   int nitems;
   int incomplete;         /* the server would say more given more to go on */
   int trigger;            /* asked because this was typed, not Alt-/ */
+
+  char **atitle;          /* code actions: what each is called */
+  char **ajson;           /* and each as the server sent it */
+  int nactions;
 } box;
 
 /* One edit a rename asks for: a range, in the server's units until it is
@@ -283,6 +287,15 @@ static void box_clear(void) {
     free(box.refs);
   }
   free(box.refuse);
+  {
+    int i;
+    for (i = 0; i < box.nactions; i++) {
+      free(box.atitle[i]);
+      free(box.ajson[i]);
+    }
+    free(box.atitle);
+    free(box.ajson);
+  }
   memset(&box, 0, sizeof(box));
 }
 
@@ -385,11 +398,18 @@ static void read_completions(const struct json *r) {
  * not forbid it -- gets both lists. */
 static void read_text_edits(struct fchange *f, const struct json *list);
 
+/* What a WorkspaceEdit being read is for, to say why it is refused. */
+static const char *edit_what = "rename";
+
 static void add_edits(const char *uri, const struct json *list) {
   char *path = lsp_uri_to_path(uri);
   int i;
   if (path == NULL) {
-    if (box.refuse == NULL) box.refuse = xstrdup("This rename reaches a file molly cannot open.");
+    if (box.refuse == NULL) {
+      char why[120];
+      snprintf(why, sizeof(why), "This %s reaches a file molly cannot open.", edit_what);
+      box.refuse = xstrdup(why);
+    }
     return;
   }
   for (i = 0; i < box.nfiles; i++)
@@ -433,9 +453,11 @@ static void read_workspace_edit(const struct json *we) {
   if (dc != NULL && dc->type == JSON_ARRAY) {
     for (k = dc->kid; k != NULL; k = k->next) {
       if (json_str(json_get(k, "kind")) != NULL) {
+        char why[160];
+        snprintf(why, sizeof(why), "This %s would create, move or delete files, "
+                 "which molly does not do.", edit_what);
         free(box.refuse);
-        box.refuse = xstrdup("This rename would create, move or delete files, "
-                             "which molly does not do.");
+        box.refuse = xstrdup(why);
         return;
       }
       add_edits(json_str(json_get(json_get(k, "textDocument"), "uri")),
@@ -553,8 +575,39 @@ void lsp_answer(int kind, struct buffer *b, unsigned edits, int cy, int cx,
     if (result == NULL) box.refuse = xstrdup("The language server could not format this.");
     else read_text_edits(&box.files[0], result);
   } else if (kind == LSP_REQ_RENAME) {
+    edit_what = "rename";
     if (result != NULL && result->type == JSON_OBJECT) read_workspace_edit(result);
     else box.refuse = xstrdup("The language server cannot rename that.");
+  } else if (kind == LSP_REQ_ACTIONS) {
+    const struct json *k;
+    int n = (result != NULL && result->type == JSON_ARRAY) ? result->n : 0;
+    if (n > 0) {
+      box.atitle = xmalloc(sizeof(char *) * (size_t)n);
+      box.ajson = xmalloc(sizeof(char *) * (size_t)n);
+    }
+    for (k = n > 0 ? result->kid : NULL; k != NULL; k = k->next) {
+      const char *t = json_str(json_get(k, "title"));
+      struct abuf ab = ABUF_INIT;
+      /* A disabled action is one the server shows to say why it cannot be
+       * done here; molly has nowhere to say that but the list, and an entry
+       * that does nothing when chosen is worse than none. */
+      if (t == NULL || json_get(k, "disabled") != NULL) continue;
+      json_write(&ab, k);
+      ab_append(&ab, "", 1);
+      box.atitle[box.nactions] = xstrdup(t);
+      box.ajson[box.nactions++] = ab.b;
+    }
+  } else if (kind == LSP_REQ_RESOLVE || kind == LSP_REQ_APPLY) {
+    /* A resolved CodeAction holds its edit; an applyEdit is the edit. */
+    const struct json *we = kind == LSP_REQ_RESOLVE ? json_get(result, "edit") : result;
+    edit_what = "change";
+    if (we != NULL && we->type == JSON_OBJECT) read_workspace_edit(we);
+    if (kind == LSP_REQ_RESOLVE && json_get(result, "command") != NULL) {
+      struct abuf ab = ABUF_INIT;
+      json_write(&ab, result);
+      ab_append(&ab, "", 1);
+      box.text = ab.b;          /* still to run, once the edit is made */
+    }
   }
   ui_request_redraw();
 }
@@ -876,21 +929,14 @@ static int apply_edits(struct fchange *f, int utf8, int *track_y, int *track) {
  * that is not opened into one and left there unsaved -- a rename that wrote
  * files behind the user's back would be the one edit molly made that undo
  * could not take back. The user is put back where they were. */
-static void deliver_rename(void) {
+/* The mailbox's edits, made: each file's in its buffer, opened when it is not
+ * open, and the cursor kept where it was in the buffer the user is in. How
+ * many changes in all, and how many of those and how many other files were
+ * outside that buffer, into *changes, *elsewhere and *others. */
+static void apply_workspace(int *changes, int *elsewhere, int *others) {
   struct buffer *home = V.buf;
-  int hy = CUR.cy, hx = CUR.cx, i, changes = 0, others = 0, opened = 0;
-  int home_changes = 0;
-
-  if (box.refuse != NULL) {
-    editor_set_status_message("%s", box.refuse);
-    return;
-  }
-  for (i = 0; i < box.nfiles; i++) changes += box.files[i].n;
-  if (changes == 0) {
-    editor_set_status_message("Nothing to rename there.");
-    return;
-  }
-  changes = 0;
+  int hy = CUR.cy, hx = CUR.cx, i, home_changes = 0;
+  *changes = *others = 0;
   for (i = 0; i < box.nfiles; i++) {
     struct fchange *f = &box.files[i];
     int at = buffer_on(f->path);
@@ -905,28 +951,212 @@ static void deliver_rename(void) {
           strncmp(f->path, cwd, n) == 0 && f->path[n] == '/')
         name = f->path + n + 1;
       editor_open_in_new_buffer(xstrdup(name));
-      opened++;
     }
     {
       int n = apply_edits(f, box.utf8, V.buf == home ? &hy : NULL,
                           V.buf == home ? &hx : NULL);
-      changes += n;
+      *changes += n;
       if (V.buf == home) home_changes += n;
     }
-    if (V.buf != home) others++;
+    if (V.buf != home) (*others)++;
   }
   if (V.buf != home) buf_show(buf_index_of(home));
   cursor_to(hy, hx);
+  *elsewhere = *changes - home_changes;
+}
+
+static void deliver_rename(void) {
+  int i, changes = 0, others = 0, elsewhere = 0;
+
+  if (box.refuse != NULL) {
+    editor_set_status_message("%s", box.refuse);
+    return;
+  }
+  for (i = 0; i < box.nfiles; i++) changes += box.files[i].n;
+  if (changes == 0) {
+    editor_set_status_message("Nothing to rename there.");
+    return;
+  }
+  apply_workspace(&changes, &elsewhere, &others);
   /* The other files are what needs saying: they changed where the user is
    * not looking, and are not saved. Their tabs say which, with a `*`. */
-  (void)opened;
   if (others > 0)
     editor_set_status_message("Renamed to %s: %d change%s, %d in %d other file%s, unsaved.",
                               rename_to, changes, changes == 1 ? "" : "s",
-                              changes - home_changes, others, others == 1 ? "" : "s");
+                              elsewhere, others, others == 1 ? "" : "s");
   else
     editor_set_status_message("Renamed to %s: %d change%s.", rename_to, changes,
                               changes == 1 ? "" : "s");
+}
+
+/* ---- code actions ------------------------------------------------------ */
+
+static void ask(int kind, const char *what);
+
+/* The action last chosen, to say what its edits were for when they come back
+ * from a resolve or a command. */
+static char action_title[120];
+
+/* Made: the mailbox's edits, said with what they were for. */
+static void deliver_change(const char *what) {
+  int i, changes = 0, others = 0, elsewhere = 0;
+  if (box.refuse != NULL) {
+    editor_set_status_message("%s", box.refuse);
+    return;
+  }
+  for (i = 0; i < box.nfiles; i++) changes += box.files[i].n;
+  if (changes == 0) {
+    if (what != NULL) editor_set_status_message("%s: nothing to change.", what);
+    return;
+  }
+  apply_workspace(&changes, &elsewhere, &others);
+  if (others > 0)
+    editor_set_status_message("%s: %d change%s, %d in %d other file%s, unsaved.",
+                              what != NULL ? what : "Changed", changes,
+                              changes == 1 ? "" : "s", elsewhere, others,
+                              others == 1 ? "" : "s");
+  else
+    editor_set_status_message("%s: %d change%s.", what != NULL ? what : "Changed",
+                              changes, changes == 1 ? "" : "s");
+}
+
+static char **pick_titles;
+
+static void pick_row(void *user, int i, char *dst, size_t dsz) {
+  (void)user;
+  snprintf(dst, dsz, "%s", pick_titles[i]);
+}
+
+/* Which of `n` titles, from a list; -1 for none. */
+static int pick(const char *title, char **titles, int n) {
+  struct widget widgets[2];
+  struct dialog d;
+  struct layer l;
+  int depth, li, chosen = -1;
+
+  pick_titles = titles;
+  widget_list(&widgets[0], 0, 0, 1, 1, n, pick_row, NULL);
+  widget_label(&widgets[1], 0, 1, 1, "Enter apply   Esc cancel");
+  widgets[0].sel = 0;
+  depth = layer_count();
+  memset(&l, 0, sizeof(l));
+  li = layer_push(&l);
+  if (li < 0) return -1;
+  for (;;) {
+    struct layer *lp;
+    int cols, rows, list_h, c, ns = 0, i, w = 24;
+    screen_sync_size();
+    for (i = 0; i < n; i++)
+      if (utf8_str_cols(titles[i]) + 6 > w) w = utf8_str_cols(titles[i]) + 6;
+    cols = grid_cols() - 4;
+    if (cols > w) cols = w;
+    if (cols < 16) cols = 16;
+    rows = n + 3 + 2;
+    if (rows > grid_rows() - 4) rows = grid_rows() - 4;
+    if (rows < 5) rows = 5;
+    list_h = rows - 2 - 1;
+    widgets[0].w = cols - 4;
+    widgets[0].h = list_h;
+    widgets[1].y = list_h;
+    widgets[1].w = cols - 4;
+    widget_list_clamp(&widgets[0]);
+    dialog_init(&d, title, widgets, 2, cols - 2, rows - 2);
+    lp = layer_get(li);
+    dialog_layout(&d, lp);
+    editor_refresh_screen();
+    c = ui_wait_key();
+    if (c == WINCH_KEY) continue;
+    if (c == MOUSE_KEY) {
+      struct mouse_event ev;
+      input_last_mouse(&ev);
+      if (ev.type == MOUSE_PRESS && ev.button == MOUSE_BUTTON_LEFT) {
+        int k = ev.y - (lp->y + 1 + widgets[0].y);
+        if (k >= 0 && k < widgets[0].h && widgets[0].top + k < n) {
+          chosen = widgets[0].top + k;
+          break;
+        }
+      }
+      continue;
+    }
+    if (c == ARROW_DOWN || c == CTRL_KEY('n')) ns = 1;
+    else if (c == ARROW_UP || c == CTRL_KEY('p')) ns = -1;
+    else if (c == PAGE_DOWN) ns = list_h;
+    else if (c == PAGE_UP) ns = -list_h;
+    else if (c == '\r') { chosen = widgets[0].sel; break; }
+    else if (c == '\x1b' || c == CTRL_KEY('c')) break;
+    else continue;
+    widget_list_move(&widgets[0], ns);
+  }
+  layer_pop_to(depth);
+  return chosen;
+}
+
+/* One action, chosen: its edit made when it came with one, then its command
+ * run when it has one; filled in by the server first when it has neither. */
+static void run_action(const char *title, const char *json, int utf8) {
+  struct json_doc *doc = json_parse(json, strlen(json));
+  snprintf(action_title, sizeof(action_title), "%s", title);
+  const struct json *a = json_root(doc), *we = json_get(a, "edit");
+  const struct json *cmd = json_get(a, "command");
+  if (a == NULL) {
+    json_free(doc);
+    return;
+  }
+  if (we != NULL && we->type == JSON_OBJECT) {
+    box_clear();
+    box.utf8 = utf8;
+    edit_what = "change";
+    read_workspace_edit(we);
+    deliver_change(title);
+    box_clear();
+  }
+  if (cmd != NULL) {
+    if (!lsp_code_action_run(V.buf, json, 0, CUR.cy, CUR.cx))
+      editor_set_status_message("The language server is not ready.");
+    else if (we == NULL)
+      editor_set_status_message("%s…", title);
+  } else if (we == NULL && !lsp_code_action_run(V.buf, json, 1, CUR.cy, CUR.cx)) {
+    editor_set_status_message("The language server gave nothing to do for that.");
+  }
+  json_free(doc);
+}
+
+static void deliver_actions(void) {
+  char **titles, **jsons;
+  int n = box.nactions, i, k, utf8 = box.utf8;
+  if (n == 0) {
+    editor_set_status_message("No actions here.");
+    return;
+  }
+  /* Out of the mailbox, which an answer arriving while the list is up would
+   * empty under it. */
+  titles = box.atitle;
+  jsons = box.ajson;
+  box.atitle = box.ajson = NULL;
+  box.nactions = 0;
+  box_clear();
+  k = pick("Code actions", titles, n);
+  if (k >= 0) run_action(titles[k], jsons[k], utf8);
+  for (i = 0; i < n; i++) {
+    free(titles[i]);
+    free(jsons[i]);
+  }
+  free(titles);
+  free(jsons);
+}
+
+/* Alt-Enter: what the server can do here -- fixes for the problem under the
+ * cursor, refactorings of the selection. */
+int lspui_code_actions(void) {
+  int y0 = CUR.cy, x0 = CUR.cx, y1 = CUR.cy, x1 = CUR.cx;
+  if (!lsp_can(V.buf, LSP_REQ_ACTIONS)) {
+    ask(LSP_REQ_ACTIONS, "offer code actions");
+    return 0;
+  }
+  if (CUR.sel_active) selection_span(&x0, &y0, &x1, &y1);
+  if (!lsp_code_actions(V.buf, y0, x0, y1, x1, CUR.cy, CUR.cx))
+    editor_set_status_message("The language server is not ready yet.");
+  return 0;
 }
 
 /* The name under the cursor, or "" -- letters, digits, underscores and
@@ -1081,6 +1311,44 @@ static void deliver_format(void) {
     editor_set_status_message("Formatted%s: %d change%s, one undo step.",
                               format_whole ? " the whole file" : "",
                               n, n == 1 ? "" : "s");
+}
+
+static int format_on_save;
+int lspui_format_on_save(void) { return format_on_save; }
+void lspui_set_format_on_save(int on) { format_on_save = on ? 1 : 0; }
+
+#define FORMAT_WAIT_MS 2000
+
+/* Format on save, done before the save: how many changes it made, 0 when it
+ * made none or there was nobody to make them, -1 when the server did not
+ * answer in time. Waits for the server's answer,
+ * up to FORMAT_WAIT_MS or Esc -- a save is a moment the user is waiting on
+ * anyway, and a format that arrived after the file was written would leave
+ * the buffer dirty with the formatted text unsaved. */
+int lspui_format_before_save(void) {
+  struct timespec t0, t1;
+  int y = CUR.cy, x = CUR.cx, n;
+  if (!format_on_save || !lsp_can(V.buf, LSP_REQ_FORMAT) ||
+      !lsp_format(V.buf, 0, 0, 0, 0, 0, tab_width(), indent_insert_spaces(), CUR.cy, CUR.cx))
+    return 0;
+  box_clear();
+  clock_gettime(CLOCK_MONOTONIC, &t0);
+  for (;;) {
+    long ms;
+    loop_wait(20);
+    if (box.kind == LSP_REQ_FORMAT) break;
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    ms = (t1.tv_sec - t0.tv_sec) * 1000 + (t1.tv_nsec - t0.tv_nsec) / 1000000;
+    if (ms >= FORMAT_WAIT_MS || input_escape_pressed()) return -1;
+  }
+  if (box.buf != V.buf || box.edits != V.buf->edits || box.refuse != NULL) {
+    box_clear();
+    return 0;
+  }
+  n = apply_edits(&box.files[0], box.utf8, &y, &x);
+  cursor_to(y, x);
+  box_clear();
+  return n;
 }
 
 /* Alt-Q: the language server's formatting -- of the selection when there is
@@ -1355,6 +1623,10 @@ static int nshown, csel, ctop;
 static int comp_layer = -1;
 static int comp_cy, comp_start;   /* the word being completed starts here */
 static int last_trigger;          /* what the last question was asked for */
+
+static int complete_typing;
+int lspui_complete_typing(void) { return complete_typing; }
+void lspui_set_complete_typing(int on) { complete_typing = on ? 1 : 0; }
 
 /* Display columns of `n` bytes, which need not end in a NUL. */
 static int utf8_str_cols_n(const char *s, int n) {
@@ -1769,7 +2041,15 @@ void lspui_after_key(int c) {
   if (CUR.cx == 0 || CUR.cy >= row_count() ||
       row_at(CUR.cy)->chars[CUR.cx - 1] != c)
     return;
-  if (lsp_is_trigger(V.buf, c)) comp_ask(c);
+  if (lsp_is_trigger(V.buf, c)) {
+    comp_ask(c);
+  } else if (complete_typing && ident_byte((unsigned char)c) &&
+             CUR.cx - word_start() >= 2 && lsp_can(V.buf, LSP_REQ_COMPLETION)) {
+    /* Asked as if by Alt-/, but quietly: nothing to offer two letters into a
+     * word is not news. */
+    last_trigger = 1;
+    lsp_ask(V.buf, LSP_REQ_COMPLETION, CUR.cy, CUR.cx, 0, NULL);
+  }
 }
 
 /* ---- the mailbox --------------------------------------------------------- */
@@ -1833,8 +2113,29 @@ void lspui_deliver(void) {
     box_clear();
     return;
   }
+  /* The server's own edit, from a command it was asked to run, is made
+   * wherever the user has got to: it is to files, not to the cursor. */
+  if (box.kind == LSP_REQ_APPLY) {
+    deliver_change(action_title[0] ? action_title : NULL);
+    box_clear();
+    return;
+  }
   if (box.buf != V.buf || box.buf->edits != box.edits || CUR.cy != box.cy ||
       CUR.cx != box.cx) {
+    box_clear();
+    return;
+  }
+  if (box.kind == LSP_REQ_ACTIONS) {
+    deliver_actions();
+    return;
+  }
+  if (box.kind == LSP_REQ_RESOLVE) {
+    char *then = box.text;
+    box.text = NULL;
+    deliver_change(action_title);
+    if (then != NULL && !lsp_code_action_run(V.buf, then, 0, CUR.cy, CUR.cx))
+      editor_set_status_message("The language server is not ready.");
+    free(then);
     box_clear();
     return;
   }

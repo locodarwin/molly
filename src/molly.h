@@ -715,6 +715,10 @@ struct json_doc;
 #define LSP_REQ_REFERENCES 6
 #define LSP_REQ_SIGNATURE  7
 #define LSP_REQ_FORMAT     8
+#define LSP_REQ_ACTIONS    9    /* the code actions at a place */
+#define LSP_REQ_RESOLVE    10   /* one of them, filled in */
+#define LSP_REQ_APPLY      11   /* not asked: the server's own workspace/applyEdit */
+#define LSP_REQ_EXECUTE    12   /* a command run; its edits come as an APPLY */
 
 /* A piece of a row that a diagnostic covers: bytes [x0, x1). See lspui.c. */
 struct diag_span {
@@ -1144,6 +1148,7 @@ int json_int(const struct json *v, int dflt);
 struct json_doc *json_parse(const char *s, size_t len);
 void json_free(struct json_doc *doc);
 void json_put_str(struct abuf *ab, const char *s, int len);
+void json_write(struct abuf *ab, const struct json *v);
 void json_putf(struct abuf *ab, const char *fmt, ...);
 
 /* layer.c */
@@ -1235,6 +1240,8 @@ int lsp_can(struct buffer *b, int kind);
 int lsp_is_trigger(struct buffer *b, int c);
 int lsp_is_sig_trigger(struct buffer *b, int c);
 int lsp_can_format_range(struct buffer *b);
+int lsp_code_actions(struct buffer *b, int y0, int x0, int y1, int x1, int cy, int cx);
+int lsp_code_action_run(struct buffer *b, const char *action, int resolve, int cy, int cx);
 int lsp_format(struct buffer *b, int range, int y0, int x0, int y1, int x1,
                int tab_size, int spaces, int cy, int cx);
 char *lsp_uri_to_path(const char *uri);
@@ -1261,6 +1268,12 @@ int lspui_complete(void);
 int lspui_definition(void);
 int lspui_references(void);
 int lspui_format(void);
+int lspui_code_actions(void);
+int lspui_format_before_save(void);
+int lspui_format_on_save(void);
+void lspui_set_format_on_save(int on);
+int lspui_complete_typing(void);
+void lspui_set_complete_typing(int on);
 int lspui_problems(void);
 int lspui_problems_jump(void);
 int lspui_rename(void);

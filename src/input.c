@@ -254,6 +254,8 @@ static int decode_key(unsigned char c) {
    * a key that is not printable, and the one readline and every shell already
    * use for deleting a word. */
   if (b == 0x7f) return ALT_KEY(0x7f);
+  /* And Alt-Enter, Esc and CR, which is code actions' key. */
+  if (b == '\r') return ALT_KEY('\r');
 
   return '\x1b';
 }

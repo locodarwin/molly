@@ -58,6 +58,8 @@ def run_interleaved(argv, before_keys, touch, after_keys, rows=24, cols=80):
     it open, which is not expressible as a single flat key list."""
     pid, fd = pty.fork()
     if pid == 0:
+        # Sized before the exec, not only after: see pty_harness.run.
+        fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
         os.execve(argv[0], argv, dict(os.environ, TERM="xterm", MOLLY_LSP="off",
                                       MOLLY_STATE=""))
 

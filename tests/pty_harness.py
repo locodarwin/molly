@@ -50,6 +50,11 @@ def run(argv, keys, rows=24, cols=80, settle=0.4, env=None, status=False,
                        MOLLY_LSP="off", MOLLY_STATE="")
         if env:
             environ.update(env)
+        # The size, set here as well as by the parent below: the parent's ioctl
+        # can lose the race with this exec on a loaded machine, and molly then
+        # finds a 0x0 terminal, asks it for the cursor's position to measure it,
+        # gets no answer from a harness that is not a terminal, and exits.
+        fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
         os.execve(argv[0], argv, environ)
 
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))

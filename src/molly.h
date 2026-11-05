@@ -1027,7 +1027,8 @@ void editor_clear_rows(void);
 void editor_free_rows(void);
 void editor_row_truncate(erow *row, int at);
 void editor_insert_row(int at, char *s, size_t len);
-void editor_open(char *filename);
+int file_open_read(const char *path, const char **why);
+void editor_open(char *filename, int fd);
 void editor_recompute_dirty(void);
 void editor_row_append_string(erow *row, char *s, size_t len);
 void editor_row_delete_char(erow *row, int at);
@@ -1458,6 +1459,7 @@ void syntax_row(const struct syntax *s, const char *r, int rs, int state_in,
 
 /* term.c */
 _Noreturn void die(const char *s);
+_Noreturn void die_because(const char *s, const char *why);
 int get_cursor_position(int *rows, int *cols);
 int get_window_size(int *rows, int *cols);
 int read_byte(unsigned char *c);
@@ -1495,7 +1497,7 @@ int editor_quit_dialog(void);
 #define QUIT_CANCEL  0
 char *editor_prompt(char *prompt, void (*callback)(char *, int));
 void editor_help(void);
-void editor_open_in_new_buffer(char *path);
+int editor_open_in_new_buffer(char *path);
 
 /* undo.c */
 int undo_can_redo(void);

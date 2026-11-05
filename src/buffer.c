@@ -834,7 +834,38 @@ int editor_fill_rows(FILE *fp, int adopt) {
   return 0;
 }
 
-void editor_open(char *filename) {
+/* A descriptor to read `path` from, if it is a regular file. -1 otherwise, with
+ * *why saying what is wrong, or NULL if the file simply does not exist yet.
+ *
+ * Non-blocking, because opening a FIFO with no writer never returns, with Ctrl-C
+ * already off and no screen drawn. Nothing but a regular file is let through: a
+ * device can have no end to read. The caller reads this descriptor rather than
+ * opening the name again, so what was checked is what is read. */
+int file_open_read(const char *path, const char **why) {
+  struct stat st;
+  int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+  *why = NULL;
+  if (fd == -1) {
+    if (errno != ENOENT) *why = strerror(errno);
+    return -1;
+  }
+  if (fstat(fd, &st) == -1) {
+    *why = strerror(errno);
+  } else if (S_ISDIR(st.st_mode)) {
+    *why = strerror(EISDIR);
+  } else if (!S_ISREG(st.st_mode)) {
+    *why = "not a regular file";
+  }
+  if (*why != NULL) {
+    close(fd);
+    return -1;
+  }
+  return fd;
+}
+
+/* Into the current buffer. `fd` is from file_open_read(), and -1 for a file that
+ * does not exist yet. */
+void editor_open(char *filename, int fd) {
   free(B.filename);
   B.filename = xstrdup(filename);
   build_recovery_path();
@@ -843,20 +874,16 @@ void editor_open(char *filename) {
   syntax_retype();
   B.have_disk_mtime = 0;
 
-  FILE *fp = fopen(filename, "r");
-  if (!fp) {
-    /* A missing file opens as an empty clean buffer. The dirty/snapshot
-     * reset matters from mid-session too: after switching files the stale
-     * snapshot of the previous buffer must not leak into this one. */
-    if (errno == ENOENT) {
-      B.dirty = 0;
-      saved_snapshot_take();
-      return;
-    }
-    die("fopen");
+  /* A missing file opens as an empty clean buffer. The dirty/snapshot
+   * reset matters from mid-session too: after switching files the stale
+   * snapshot of the previous buffer must not leak into this one. */
+  if (fd == -1) {
+    B.dirty = 0;
+    saved_snapshot_take();
+    return;
   }
-  /* The error refusal also covers a directory, which used to open as an
-   * empty buffer that could never be saved. */
+  FILE *fp = fdopen(fd, "r");
+  if (!fp) die("fdopen");
   if (editor_fill_rows(fp, 1) == -1) die(filename);
   /* fstat on the still-open descriptor, not a path-based stat after close:
    * the file could otherwise be replaced between the two calls, baselining

@@ -661,7 +661,7 @@ static void deliver_definition(void) {
     if (getcwd(cwd, sizeof(cwd)) != NULL && (n = strlen(cwd)) > 1 &&
         strncmp(box.path, cwd, n) == 0 && box.path[n] == '/')
       name = box.path + n + 1;
-    editor_open_in_new_buffer(xstrdup(name));
+    if (!editor_open_in_new_buffer(xstrdup(name))) return;
   }
   y = box.line;
   x = 0;
@@ -837,8 +837,8 @@ int lspui_problems_jump(void) {
     if (found >= 0) {
       if (V.buf != buf_at(found)) buf_show(found);
       free(path);
-    } else {
-      editor_open_in_new_buffer(path);
+    } else if (!editor_open_in_new_buffer(path)) {
+      return 1;
     }
   }
   cursor_to(ln - 1, col);
@@ -933,10 +933,13 @@ static int apply_edits(struct fchange *f, int utf8, int *track_y, int *track) {
  * open, and the cursor kept where it was in the buffer the user is in. How
  * many changes in all, and how many of those and how many other files were
  * outside that buffer, into *changes, *elsewhere and *others. */
+static int apply_refused;   /* files the last of these could not open */
+
 static void apply_workspace(int *changes, int *elsewhere, int *others) {
   struct buffer *home = V.buf;
   int hy = CUR.cy, hx = CUR.cx, i, home_changes = 0;
   *changes = *others = 0;
+  apply_refused = 0;
   for (i = 0; i < box.nfiles; i++) {
     struct fchange *f = &box.files[i];
     int at = buffer_on(f->path);
@@ -950,7 +953,10 @@ static void apply_workspace(int *changes, int *elsewhere, int *others) {
       if (getcwd(cwd, sizeof(cwd)) != NULL && (n = strlen(cwd)) > 1 &&
           strncmp(f->path, cwd, n) == 0 && f->path[n] == '/')
         name = f->path + n + 1;
-      editor_open_in_new_buffer(xstrdup(name));
+      if (!editor_open_in_new_buffer(xstrdup(name))) {
+        apply_refused++;
+        continue;
+      }
     }
     {
       int n = apply_edits(f, box.utf8, V.buf == home ? &hy : NULL,
@@ -963,6 +969,14 @@ static void apply_workspace(int *changes, int *elsewhere, int *others) {
   if (V.buf != home) buf_show(buf_index_of(home));
   cursor_to(hy, hx);
   *elsewhere = *changes - home_changes;
+}
+
+/* Said last, over what was done, because it is what the user must not miss. */
+static void say_refused(void) {
+  if (apply_refused > 0)
+    editor_set_status_message("%d file%s could not be opened, so %s not changed.",
+                              apply_refused, apply_refused == 1 ? "" : "s",
+                              apply_refused == 1 ? "it was" : "they were");
 }
 
 static void deliver_rename(void) {
@@ -987,6 +1001,7 @@ static void deliver_rename(void) {
   else
     editor_set_status_message("Renamed to %s: %d change%s.", rename_to, changes,
                               changes == 1 ? "" : "s");
+  say_refused();
 }
 
 /* ---- code actions ------------------------------------------------------ */
@@ -1018,6 +1033,7 @@ static void deliver_change(const char *what) {
   else
     editor_set_status_message("%s: %d change%s.", what != NULL ? what : "Changed",
                               changes, changes == 1 ? "" : "s");
+  say_refused();
 }
 
 static char **pick_titles;
@@ -1201,7 +1217,11 @@ static void disk_line(const char *path, int n, char *dst, size_t dsz,
   int line = 0;
   dst[0] = '\0';
   if (*cached_path == NULL || strcmp(*cached_path, path) != 0) {
-    FILE *fp = fopen(path, "r");
+    /* The name came from a server, and could be a FIFO. */
+    const char *why;
+    int fd = file_open_read(path, &why);
+    FILE *fp = fd == -1 ? NULL : fdopen(fd, "r");
+    if (fp == NULL && fd != -1) close(fd);
     free(*cache);
     free(*cached_path);
     *cache = NULL;

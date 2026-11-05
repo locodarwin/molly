@@ -191,8 +191,15 @@ int main(int argc, char *argv[]) {
   /* One buffer per file, in the order given, with the first left showing. The
    * empty buffer molly starts with is reused for the first file rather than
    * left behind, which is what editor_open_in_new_buffer does. */
-  for (i = 0; i < nfiles; i++)
+  for (i = 0; i < nfiles; i++) {
+    /* Named on the command line, a file that cannot be edited ends here with the
+     * reason, rather than leaving an editor open on something else. */
+    const char *why;
+    int fd = file_open_read(argv[files[i]], &why);
+    if (fd != -1) close(fd);
+    else if (why != NULL) die_because(argv[files[i]], why);
     editor_open_in_new_buffer(xstrdup(argv[files[i]]));
+  }
   if (nfiles > 0) buf_show(0);
 
   if (have_line) {

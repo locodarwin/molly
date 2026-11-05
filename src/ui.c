@@ -614,6 +614,8 @@ char *editor_open_dialog(void) {
  * one -- rows, cursor, selection, undo history, line-ending flags -- goes
  * with it. The caller guarantees no unsaved changes. */
 /* Open `path` in a buffer of its own, and show it. Takes ownership of `path`.
+ * Returns 0, having said why and left the current buffer showing, if it is not
+ * something that can be edited.
  *
  * This replaces editor_switch_file(), which emptied the single buffer and loaded
  * over the top of it -- and which is why Ctrl-O used to refuse outright while
@@ -626,23 +628,36 @@ char *editor_open_dialog(void) {
  * The empty unnamed buffer molly starts with is reused rather than left behind,
  * so `molly` then Ctrl-O gives one tab and not two. Anything the user has typed
  * into it makes it not empty, and then it stays. */
-void editor_open_in_new_buffer(char *path) {
+int editor_open_in_new_buffer(char *path) {
   int already = buf_find_path(path);
   struct buffer *cur = V.buf;
+  const char *why;
+  int fd;
 
   if (already >= 0) {
     buf_show(already);
     editor_set_status_message("Already open: %s (%d of %d)", path,
                               buf_current() + 1, buf_count());
     free(path);
-    return;
+    return 1;
+  }
+
+  /* Before a buffer is made for it, so a refusal leaves the one in use showing. */
+  fd = file_open_read(path, &why);
+  if (fd == -1 && why != NULL) {
+    /* The last part only: the dialog gives a whole path, and the reason is what
+     * must not fall off the end of the message bar. */
+    const char *slash = strrchr(path, '/');
+    editor_set_status_message("Can't open %s: %s", slash && slash[1] ? slash + 1 : path, why);
+    free(path);
+    return 0;
   }
 
   if (!(cur->filename == NULL && cur->numrows == 0 && !cur->dirty &&
         !cur->grep_results && !cur->problems && cur->tty == NULL))
     buf_show(buf_index_of(buf_new()));
 
-  editor_open(path);
+  editor_open(path, fd);
   recent_note(path);
   git_refresh(V.buf);
   cursors_collapse();
@@ -654,4 +669,5 @@ void editor_open_in_new_buffer(char *path) {
       buf_name(V.buf), row_count(),
       buf_current() + 1, buf_count());
   free(path);
+  return 1;
 }

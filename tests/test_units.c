@@ -4343,7 +4343,10 @@ static void lsp_open_file(const char *name) {
   char path[64];
   editor_clear_rows();
   snprintf(path, sizeof(path), "%s", name);
-  editor_open(path);
+  {
+    const char *why;
+    editor_open(path, file_open_read(path, &why));
+  }
   lsp_buf = V.buf;
 }
 

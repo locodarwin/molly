@@ -6309,6 +6309,67 @@ def test_stray_bytes(tmpdir):
           edit_bytes(tmpdir, b"ab\ncd\n", [RIGHT, SH_DOWN, SH_DOWN, "\x1b[3~", SAVE]), b"a\n")
 
 
+def test_only_regular_files(tmpdir):
+    """A FIFO with no writer used to block the open forever, with Ctrl-C off and
+    no screen, and a device could have no end to read. In a dialog, a file that
+    could not be read used to end the session."""
+    print("\nopening: only regular files, and a refusal is not the end")
+    d = tempfile.mkdtemp(dir=tmpdir)
+    fifo = os.path.join(d, "pipe")
+    os.mkfifo(fifo)
+    locked = os.path.join(d, "locked")
+    with open(locked, "w") as fh:
+        fh.write("secret\n")
+    os.chmod(locked, 0)
+    good = os.path.join(d, "good.txt")
+    with open(good, "w") as fh:
+        fh.write("good\n")
+
+    def named(path):
+        return run([MOLLY, path], [0.1], status=True)
+
+    # Each named at startup: out at once with the reason, no key needed. The
+    # harness would otherwise kill it, which is status 9 rather than 1.
+    for label, path, why in (("a FIFO", fifo, b"not a regular file"),
+                             ("a character device", "/dev/zero", b"not a regular file"),
+                             ("a directory", d, b"Is a directory"),
+                             ("a file that cannot be read", locked, b"Permission denied"),
+                             ("a path through a file", good + "/x", b"Not a directory")):
+        out, st = named(path)
+        check("%s named at startup exits 1" % label,
+              os.WIFEXITED(st) and os.WEXITSTATUS(st), 1)
+        check("and says why", why in out, True)
+
+    out, st = run([MOLLY, good, fifo], [0.1], status=True)
+    check("one bad name among several exits too",
+          os.WIFEXITED(st) and os.WEXITSTATUS(st), 1)
+
+    # A file that does not exist yet is still a new file.
+    new = os.path.join(d, "new.txt")
+    run([MOLLY, new], ["hi", SAVE])
+    with open(new) as fh:
+        check("a name with no file behind it is still a new file", fh.read(), "hi\n")
+    os.unlink(new)
+
+    # From the dialog: the buffer in use stays, with its unsaved edit, and the
+    # message says why. Ctrl-O lists ".." first, then the files in order:
+    # good.txt, locked, pipe.
+    shell = "cd '%s' && exec '%s' \"$0\"" % (d, MOLLY)
+    OPEN = "\x0f"
+    for label, downs, why in (("a FIFO", 3, b"not a regular file"),
+                              ("a file that cannot be read", 2, b"Permission denied")):
+        out, st = run(["/bin/bash", "-c", shell, "good.txt"],
+                      ["X", OPEN, 0.2] + [DOWN] * downs + ["\r", 0.2, SAVE, "\x11"],
+                      status=True)
+        check("%s from the dialog says why" % label, why in out, True)
+        check("and the session goes on to quit normally",
+              os.WIFEXITED(st) and os.WEXITSTATUS(st), 0)
+        with open(good) as fh:
+            check("and the file in use is the one saved", fh.read(), "Xgood\n")
+        with open(good, "w") as fh:
+            fh.write("good\n")
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -6397,6 +6458,7 @@ def main():
         test_git(tmpdir)
         test_control_bytes(tmpdir)
         test_stray_bytes(tmpdir)
+        test_only_regular_files(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

@@ -3,13 +3,12 @@
 
 #include "molly.h"
 
-_Noreturn void die(const char *s) {
-  int saved = errno;
-  /* `s` can be a file name, and this goes straight to the terminal. */
-  char safe[512];
+/* Copy `s` for printing straight to the terminal, which is where a fatal error
+ * goes: `s` can be a file name. */
+static void clean_for_terminal(const char *s, char *safe, size_t size) {
   size_t out = 0;
   int i = 0, len = (int)strlen(s);
-  while (i < len && out + 5 < sizeof(safe)) {
+  while (i < len && out + 5 < size) {
     int n = utf8_char_bytes(s, len, i);
     if (utf8_safe(s + i, n)) {
       memcpy(safe + out, s + i, (size_t)n);
@@ -20,6 +19,12 @@ _Noreturn void die(const char *s) {
     i += n;
   }
   safe[out] = '\0';
+}
+
+_Noreturn void die(const char *s) {
+  int saved = errno;
+  char safe[512];
+  clean_for_terminal(s, safe, sizeof(safe));
   write_recovery_all();
   write(STDOUT_FILENO, "\x1b[2J", 4);
   write(STDOUT_FILENO, "\x1b[H", 3);
@@ -28,6 +33,16 @@ _Noreturn void die(const char *s) {
   exit(1);
 }
 
+/* The same way out, for a reason errno has no words for. */
+_Noreturn void die_because(const char *s, const char *why) {
+  char safe[512];
+  clean_for_terminal(s, safe, sizeof(safe));
+  write_recovery_all();
+  write(STDOUT_FILENO, "\x1b[2J", 4);
+  write(STDOUT_FILENO, "\x1b[H", 3);
+  fprintf(stderr, "%s: %s\n", safe, why);
+  exit(1);
+}
 
 /* Runs from atexit, where die() -- which calls exit() again -- would be
  * undefined behavior. If the terminal is already gone there is nothing left

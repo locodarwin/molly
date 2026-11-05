@@ -6205,6 +6205,21 @@ def test_git(tmpdir):
     check("without running a program the repository's config names",
           sorted(os.listdir(ran)), [])
 
+    # A file opened by a relative name: git is run in its directory, and not in
+    # one of the same name that $CDPATH finds first.
+    elsewhere = os.path.join(tmpdir, "elsewhere", "repo")
+    os.makedirs(elsewhere, exist_ok=True)
+    here = os.getcwd()
+    os.chdir(tmpdir)
+    try:
+        scr = Screen(14, 50)
+        scr.feed(run([MOLLY, "repo/f.txt"], [0.5], rows=14, cols=50,
+                     env={"CDPATH": os.path.dirname(elsewhere)}))
+    finally:
+        os.chdir(here)
+    check("a relative name is looked up where it is, whatever CDPATH says",
+          scr.text()[1][0], " ")
+
     outside = os.path.join(tmpdir, "loose.txt")
     with open(outside, "w") as fh:
         fh.write("x\n")

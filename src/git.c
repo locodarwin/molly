@@ -57,6 +57,16 @@ static int quote(char *dst, size_t n, const char *s) {
   return 1;
 }
 
+/* A directory to cd into, quoted for sh. A relative one starts ./, because to
+ * cd a bare name is looked up in $CDPATH first, which would put git in some
+ * other checkout, and `-` is the directory before. */
+static int quote_dir(char *dst, size_t n, const char *dir) {
+  char rel[4200];
+  if (dir[0] == '/') return quote(dst, n, dir);
+  snprintf(rel, sizeof(rel), "./%s", dir);
+  return quote(dst, n, rel);
+}
+
 /* The file's directory and its name in it, quoted for sh; 0 for a buffer
  * with no file. */
 static int where(const struct buffer *b, char *qdir, char *qbase, size_t n) {
@@ -67,7 +77,7 @@ static int where(const struct buffer *b, char *qdir, char *qbase, size_t n) {
   if (slash == NULL) snprintf(dir, sizeof(dir), ".");
   else if (slash == b->filename) snprintf(dir, sizeof(dir), "/");
   else snprintf(dir, sizeof(dir), "%.*s", (int)(slash - b->filename), b->filename);
-  return quote(qdir, n, dir) &&
+  return quote_dir(qdir, n, dir) &&
          quote(qbase, n, slash != NULL ? slash + 1 : b->filename);
 }
 
@@ -325,7 +335,7 @@ int git_log_enter(void) {
   erow *r;
   size_t n, k = 0;
   if (V.buf->git_view != 1 || CUR.cy >= row_count() || V.buf->git_dir == NULL) return 0;
-  if (!quote(qd, sizeof(qd), V.buf->git_dir)) return 1;
+  if (!quote_dir(qd, sizeof(qd), V.buf->git_dir)) return 1;
   r = row_at(CUR.cy);
   while (k < (size_t)r->size && k + 1 < sizeof(hash) && isxdigit((unsigned char)r->chars[k])) {
     hash[k] = r->chars[k];

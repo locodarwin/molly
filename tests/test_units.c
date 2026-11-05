@@ -253,7 +253,8 @@ static void contains(const char *label, const char *haystack, const char *needle
 static void paint_hostile(void) {
   grid_begin();
   grid_role(ROLE_TEXT);
-  grid_puts(0, 0, "a\x1b]0;x\x07" "b\xc2\x9b" "c\x9b" "d\xc0\x80" "e\n\t\r" "f\xc3\xa9", 26);
+  static const char text[] = "a\x1b]0;x\x07" "b\xc2\x9b" "c\x9b" "d\xc0\x80" "e\n\t\r" "f\xc3\xa9";
+  grid_puts(0, 0, text, (int)sizeof(text) - 1);
   grid_flush();
 }
 

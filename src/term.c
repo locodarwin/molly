@@ -26,8 +26,7 @@ _Noreturn void die(const char *s) {
   char safe[512];
   clean_for_terminal(s, safe, sizeof(safe));
   write_recovery_all();
-  write(STDOUT_FILENO, "\x1b[2J", 4);
-  write(STDOUT_FILENO, "\x1b[H", 3);
+  write_all(STDOUT_FILENO, "\x1b[2J\x1b[H", 7);
   errno = saved;
   perror(safe);
   exit(1);
@@ -38,8 +37,7 @@ _Noreturn void die_because(const char *s, const char *why) {
   char safe[512];
   clean_for_terminal(s, safe, sizeof(safe));
   write_recovery_all();
-  write(STDOUT_FILENO, "\x1b[2J", 4);
-  write(STDOUT_FILENO, "\x1b[H", 3);
+  write_all(STDOUT_FILENO, "\x1b[2J\x1b[H", 7);
   fprintf(stderr, "%s: %s\n", safe, why);
   exit(1);
 }
@@ -74,7 +72,7 @@ static void handle_fatal_signal(int sig) {
    * open/write/fsync/close it always was. */
   write_recovery_all();
   tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.orig_termios);
-  write(STDOUT_FILENO, reset, sizeof(reset) - 1);
+  write_all(STDOUT_FILENO, reset, sizeof(reset) - 1);
   raise(sig);
 }
 

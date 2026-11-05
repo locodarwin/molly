@@ -2,6 +2,12 @@ CC      ?= cc
 CFLAGS  ?= -Wall -Wextra -O2 -std=c11
 INSTALL ?= install
 
+# Exploit mitigations. For a compiler without these flags: make HARDEN=
+HARDEN  ?= -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -fstack-protector-strong -fPIE
+ifneq ($(strip $(HARDEN)),)
+HARDEN_LD ?= -pie -Wl,-z,relro,-z,now
+endif
+
 PREFIX  ?= /usr/local
 BINDIR   = $(PREFIX)/bin
 LOCALBIN = $(HOME)/.local/bin
@@ -10,10 +16,10 @@ SRC = $(wildcard src/*.c)
 OBJ = $(SRC:.c=.o)
 
 molly: $(OBJ)
-	$(CC) $(CFLAGS) $(OBJ) -o molly
+	$(CC) $(CFLAGS) $(HARDEN) $(OBJ) -o molly $(HARDEN_LD)
 
 src/%.o: src/%.c src/molly.h
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) $(HARDEN) -c $< -o $@
 
 install: molly
 	@if [ -n "$(DESTDIR)" ]; then \
@@ -48,7 +54,7 @@ test: molly test-units tests/regex_cli
 # registers one source, so only a direct test covers waiting on several) and the
 # theme's color handling.
 test-units: $(LIBOBJ) tests/test_units.c src/molly.h
-	$(CC) $(CFLAGS) -Isrc tests/test_units.c $(LIBOBJ) -o tests/units_test
+	$(CC) $(CFLAGS) $(HARDEN) -Isrc tests/test_units.c $(LIBOBJ) -o tests/units_test $(HARDEN_LD)
 	./tests/units_test
 
 # Rewrite the golden screens from current behavior. Only when an output change
@@ -59,12 +65,31 @@ golden: molly
 # The driver tests/fuzz_regex.py drives: molly's regex engine on one side of a
 # differential test, with Python's re on the other.
 tests/regex_cli: $(LIBOBJ) tests/regex_cli.c src/molly.h
-	$(CC) $(CFLAGS) -Isrc tests/regex_cli.c $(LIBOBJ) -o tests/regex_cli
+	$(CC) $(CFLAGS) $(HARDEN) -Isrc tests/regex_cli.c $(LIBOBJ) -o tests/regex_cli $(HARDEN_LD)
 
 test-oom: molly
 	python3 tests/oom_sweep.py ./molly
 
-clean:
-	rm -f molly editor $(OBJ) tests/units_test tests/regex_cli
+# Linux only: confirms the binary really has the mitigations in HARDEN.
+check-hardening: molly
+	readelf -hW molly | grep -q 'Type:.*DYN'
+	readelf -lW molly | grep -q GNU_RELRO
+	readelf -dW molly | grep -q BIND_NOW
+	readelf -sW --dyn-syms molly | grep -q __stack_chk_fail
+	readelf -sW --dyn-syms molly | grep -q '_chk'
 
-.PHONY: clean install uninstall test test-oom test-units golden
+# The unit checks and the pty checks of what a file, a paste or another user can
+# reach, against an AddressSanitizer and UBSan build, failing on any report. Built
+# in one go so its objects stay apart from the ordinary ones.
+# Needs a compiler with sanitizer runtimes: make test-sanitize CC=clang
+SAN = -g -O1 -std=c11 -fno-omit-frame-pointer -fsanitize=address,undefined \
+      -fno-sanitize-recover=undefined
+test-sanitize:
+	$(CC) $(SAN) $(SRC) -o molly_asan
+	$(CC) $(SAN) -Isrc tests/test_units.c $(filter-out src/main.c,$(SRC)) -o tests/units_asan
+	sh tests/sanitize.sh ./molly_asan ./tests/units_asan
+
+clean:
+	rm -f molly molly_asan editor $(OBJ) tests/units_test tests/units_asan tests/regex_cli
+
+.PHONY: clean install uninstall test test-oom test-units test-sanitize check-hardening golden

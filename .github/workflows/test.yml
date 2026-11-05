@@ -28,3 +28,7 @@ jobs:
       # Allocation-failure sweep: every allocation failed in turn, the
       # editor must survive or exit through die().
       - run: make test-oom
+      - run: make check-hardening
+      # The unit checks and the checks of what a file, a paste or another user can
+      # reach, again, failing on any sanitizer report.
+      - run: make test-sanitize CC=clang

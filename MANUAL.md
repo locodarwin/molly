@@ -1674,7 +1674,8 @@ A **language server** is a program that knows a language (clangd for C and
 C++, rust-analyzer for Rust, pylsp for Python) and answers questions about the
 file you are editing: what is wrong with it, where a name is defined, what a
 name is, and what could come next. Molly starts the one your file's language
-names the first time you open such a file, tells it about every change, and
+names the first time you open such a file in a project you have said it may
+start in (see [Asked first](#asked-first)), tells it about every change, and
 shows you what it says.
 
     F2 / Shift-F2  Next / previous problem
@@ -1725,6 +1726,34 @@ language server = none
 The line is run by the shell, so arguments, a variable in front and `~` all
 work. `[editor] language servers = off` turns every server off at once, and is
 in the [Options dialog](#the-options-dialog).
+
+### Asked first
+
+A language server reads the whole project it is started for, and some do more:
+rust-analyzer builds the project, which runs its build scripts and macros. So
+opening a file is not taken as permission. The first time a server would start
+in a project, molly asks on the message bar:
+
+    Start rust-analyzer for ~/src/thing? It may run the project's code. (y/N):
+
+`y` starts it, and molly does not ask about that project again. Anything else,
+Enter or Esc included, is no: the server is not started there, nothing is asked
+again, and **Language server status** says why. **Restart language servers**
+forgets every no, so the next file you open in such a project asks again. A
+server that is not installed is never asked about.
+
+The answers are kept in `projects`, beside the [recent files](#recent-files)
+list: a line each, `yes` or `no` and a directory. An answer covers that
+directory and everything under it, and the nearest one counts, so you can
+answer for a whole tree by editing the file:
+
+```
+yes /home/me/src
+no /home/me/src/downloaded
+```
+
+`yes /` answers yes for every project, which is how to never be asked. With no
+state directory (`MOLLY_STATE` set empty), an answer lasts until molly exits.
 
 ### Which project
 
@@ -2327,7 +2356,7 @@ comments back, explaining each setting and its default.
 | `MOLLY_DUMP_CONFIG` | Print the parsed configuration (the file's path, every setting's value, the key bindings it asked for and any warnings) and exit, without touching the terminal. See [Configuration](#configuration). |
 | `MOLLY_CONFIG` | Read configuration from this path instead of `~/.config/molly/mollyrc`. Set to the empty string to read none at all, which is what the test suite does so that its results do not depend on the configuration of the machine it runs on. |
 | `MOLLY_UNDO_STEPS` | Lower the undo history's step limit, which is how the test suite exercises its eviction. |
-| `MOLLY_STATE` | Keep molly's state (the [recent files](#recent-files) list) in this directory instead of `$XDG_STATE_HOME/molly`. Set to the empty string to keep none; the test suite does, so that running it leaves nothing behind and does not see what you opened. |
+| `MOLLY_STATE` | Keep molly's state (the [recent files](#recent-files) list and the projects a language server [may start in](#asked-first)) in this directory instead of `$XDG_STATE_HOME/molly`. Set to the empty string to keep none; the test suite does, so that running it leaves nothing behind and does not see what you opened. |
 | `MOLLY_LSP` | Set to `off` to start no language server whatever the configuration says. The test suite sets it, so that a machine with clangd installed draws the same screens as one without; its own language-server tests set it back and name a fake server instead. |
 
 ## File Format Notes

@@ -4845,6 +4845,17 @@ def test_harness_startup(tmpdir):
 FAKE_LSP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fake_lsp.py")
 
 
+def trust_all(tmpdir):
+    """A state directory whose answer for every project is yes: a language
+    server is started only where the user has said it may be, and the tests
+    of the servers are not tests of the question."""
+    d = os.path.join(tmpdir, "trust-all")
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "projects"), "w") as fh:
+        fh.write("yes /\n")
+    return d
+
+
 def test_lsp(tmpdir):
     """A language server's diagnostics, seen from the editor.
 
@@ -4874,7 +4885,7 @@ def test_lsp(tmpdir):
                rows=12, cols=60):
         with open(rc, "w") as fh:
             fh.write("[syntax c]\nlanguage server = %s\n%s" % (server, extra_rc))
-        e = {"MOLLY_CONFIG": rc, "MOLLY_LSP": "", "FAKE_LSP_LOG": log}
+        e = {"MOLLY_CONFIG": rc, "MOLLY_LSP": "", "MOLLY_STATE": trust_all(tmpdir), "FAKE_LSP_LOG": log}
         e.update(env or {})
         scr = Screen(rows, cols)
         scr.feed(run([MOLLY, path], keys, rows=rows, cols=cols, env=e))
@@ -4948,7 +4959,7 @@ def test_lsp(tmpdir):
 
         fresh()
         out = run([MOLLY, path], [WAIT, "\x11", 1.0],
-                  env={"MOLLY_CONFIG": rc, "MOLLY_LSP": "", "FAKE_LSP_LOG": log},
+                  env={"MOLLY_CONFIG": rc, "MOLLY_LSP": "", "MOLLY_STATE": trust_all(tmpdir), "FAKE_LSP_LOG": log},
                   status=True)
         check("quitting asks the server to shut down", logged('"shutdown"'), True)
         check("and to exit", logged('"exit"'), True)
@@ -4988,6 +4999,79 @@ def test_lsp(tmpdir):
         os.chdir(here)
 
 
+def test_lsp_trust(tmpdir):
+    """A language server starts in a project only once the user has said it may.
+
+    A server reads the project it is started for, and some build it, which runs
+    the project's own code; opening a file is not consent to that. Asked once a
+    project, the answer kept in the state directory. The fake server writes its
+    log when it starts, so whether there is a log is whether it ran.
+    """
+    print("\nlanguage server: asked once a project")
+
+    work = os.path.join(tmpdir, "lsptrust")
+    proj = os.path.join(work, "proj")
+    state = os.path.join(work, "state")
+    os.makedirs(proj, exist_ok=True)
+    rc = os.path.join(work, "lsprc")
+    log = os.path.join(work, "lsplog")
+    src = os.path.join(proj, "main.c")
+    with open(os.path.join(proj, "Makefile"), "w") as fh:
+        fh.write("all:\n")
+    with open(src, "w") as fh:
+        fh.write("int BAD;\n")
+    PALETTE, WAIT = "\x00", 2.0
+
+    def session(keys, server="python3 -I %s" % FAKE_LSP):
+        with open(rc, "w") as fh:
+            fh.write("[syntax c]\nlanguage server = %s\n" % server)
+        if os.path.exists(log):
+            os.remove(log)
+        scr = Screen(12, 100)
+        scr.feed(run([MOLLY, src], keys, rows=12, cols=100,
+                     env={"MOLLY_CONFIG": rc, "MOLLY_LSP": "", "MOLLY_STATE": state,
+                          "FAKE_LSP_LOG": log}))
+        return scr
+
+    def answers():
+        try:
+            with open(os.path.join(state, "projects")) as fh:
+                return fh.read()
+        except OSError:
+            return ""
+
+    scr = session([1.0])
+    check("opening a file in a new project asks first",
+          "Start python3 for" in scr.text()[11] and "(y/N)" in scr.text()[11], True)
+    check("and starts nothing until answered", os.path.exists(log), False)
+    scr = session([1.0, "\r", WAIT])
+    check("Enter is no", answers(), "no %s\n" % proj)
+    check("and nothing is started", os.path.exists(log), False)
+    scr = session([WAIT])
+    check("a no is kept: not asked again",
+          "Start python3" in "\n".join(scr.text()), False)
+    check("and not started", os.path.exists(log), False)
+    scr = session([1.0, PALETTE, "language server status", "\r", 0.5])
+    check("its status says why", "as you asked" in scr.text()[11], True)
+    scr = session([1.0, PALETTE, "restart language servers", "\r", 1.0])
+    check("Restart language servers asks again",
+          "Start python3 for" in scr.text()[11], True)
+    scr = session([1.0])
+    check("and the no it forgot stays forgotten",
+          "Start python3 for" in scr.text()[11], True)
+    scr = session([1.0, "y\r", WAIT])
+    check("y starts it", os.path.exists(log), True)
+    check("and is kept", answers(), "yes %s\n" % proj)
+    scr = session([WAIT])
+    check("so the next session starts it without asking",
+          ("Start python3" not in "\n".join(scr.text())) and os.path.exists(log), True)
+
+    os.remove(os.path.join(state, "projects"))
+    scr = session([1.0], server="molly-no-such-server --stdio")
+    check("a server that is not installed is not asked about",
+          "Start " in scr.text()[11], False)
+
+
 def test_lsp_questions(tmpdir):
     """F12, Alt-Left and Alt-K: asking a language server where and what.
 
@@ -5009,7 +5093,7 @@ def test_lsp_questions(tmpdir):
     WAIT = 2.0
 
     def screen(keys, files=("main.c",), env=None, rows=16, cols=60):
-        e = {"MOLLY_CONFIG": rc, "MOLLY_LSP": ""}
+        e = {"MOLLY_CONFIG": rc, "MOLLY_LSP": "", "MOLLY_STATE": trust_all(tmpdir)}
         e.update(env or {})
         scr = Screen(rows, cols)
         scr.feed(run([MOLLY] + list(files), keys, rows=rows, cols=cols, env=e))
@@ -5117,7 +5201,7 @@ def test_lsp_complete(tmpdir):
     def session(keys, text="int fake_gamma;\n\n", env=None):
         with open("c.c", "w") as fh:
             fh.write(text)
-        e = {"MOLLY_CONFIG": rc, "MOLLY_LSP": ""}
+        e = {"MOLLY_CONFIG": rc, "MOLLY_LSP": "", "MOLLY_STATE": trust_all(tmpdir)}
         e.update(env or {})
         scr = Screen(16, 60)
         scr.feed(run([MOLLY, "c.c"], keys, rows=16, cols=60, env=e))
@@ -5201,7 +5285,7 @@ def test_lsp_complete(tmpdir):
             fh.write("\n")
         scr = Screen(16, 60)
         scr.feed(run([MOLLY, "notes.txt"], [WAIT, COMPLETE], rows=16, cols=60,
-                     env={"MOLLY_CONFIG": rc, "MOLLY_LSP": ""}))
+                     env={"MOLLY_CONFIG": rc, "MOLLY_LSP": "", "MOLLY_STATE": trust_all(tmpdir)}))
         check("Alt-/ without a server says why",
               "No language server for this file." in scr.text()[15], True)
     finally:
@@ -5470,7 +5554,7 @@ def test_lsp_extras(tmpdir):
         if text is not None:
             with open(name, "w") as fh:
                 fh.write(text)
-        e = {"MOLLY_CONFIG": rc(extra), "MOLLY_LSP": ""}
+        e = {"MOLLY_CONFIG": rc(extra), "MOLLY_LSP": "", "MOLLY_STATE": trust_all(tmpdir)}
         e.update(env or {})
         scr = Screen(14, 72)
         scr.feed(run([MOLLY, name], keys, rows=14, cols=72, env=e))
@@ -5581,7 +5665,7 @@ def test_lsp_rename(tmpdir):
             fh.write("extern int widget;\n")
 
     def session(keys, env=None):
-        e = {"MOLLY_CONFIG": rc, "MOLLY_LSP": ""}
+        e = {"MOLLY_CONFIG": rc, "MOLLY_LSP": "", "MOLLY_STATE": trust_all(tmpdir)}
         e.update(env or {})
         scr = Screen(12, 72)
         scr.feed(run([MOLLY, "main.c"], keys, rows=12, cols=72, env=e))
@@ -5661,7 +5745,7 @@ def test_lsp_references(tmpdir):
     def session(keys):
         scr = Screen(20, 72)
         scr.feed(run([MOLLY, "main.c"], keys, rows=20, cols=72,
-                     env={"MOLLY_CONFIG": rc, "MOLLY_LSP": ""}))
+                     env={"MOLLY_CONFIG": rc, "MOLLY_LSP": "", "MOLLY_STATE": trust_all(tmpdir)}))
         return scr
 
     here = os.getcwd()
@@ -5720,7 +5804,7 @@ def test_lsp_signature(tmpdir):
     def session(keys, env=None):
         with open("s.c", "w") as fh:
             fh.write("int a;\nint b;\nint c;\nint d;\n\n")
-        e = {"MOLLY_CONFIG": rc, "MOLLY_LSP": ""}
+        e = {"MOLLY_CONFIG": rc, "MOLLY_LSP": "", "MOLLY_STATE": trust_all(tmpdir)}
         e.update(env or {})
         scr = Screen(14, 60)
         scr.feed(run([MOLLY, "s.c"], keys, rows=14, cols=60, env=e))
@@ -5789,7 +5873,7 @@ def test_lsp_problems(tmpdir):
             fh.write("NOTE x\nBAD\n")
         scr = Screen(18, 72)
         scr.feed(run([MOLLY, "main.c", "other.c"], keys, rows=18, cols=72,
-                     env={"MOLLY_CONFIG": rc, "MOLLY_LSP": ""}))
+                     env={"MOLLY_CONFIG": rc, "MOLLY_LSP": "", "MOLLY_STATE": trust_all(tmpdir)}))
         return [r.rstrip() for r in scr.text()]
 
     def rows(text):
@@ -5845,7 +5929,7 @@ def test_lsp_format(tmpdir):
     def session(keys, env=None, text=MESSY, save=True):
         with open("main.c", "w") as fh:
             fh.write(text)
-        e = {"MOLLY_CONFIG": rc, "MOLLY_LSP": ""}
+        e = {"MOLLY_CONFIG": rc, "MOLLY_LSP": "", "MOLLY_STATE": trust_all(tmpdir)}
         e.update(env or {})
         scr = Screen(12, 64)
         scr.feed(run([MOLLY, "main.c"], keys + (["\x13", 0.3] if save else []),
@@ -6777,6 +6861,7 @@ def main():
         test_block(tmpdir)
         test_soft_wrap(tmpdir)
         test_lsp(tmpdir)
+        test_lsp_trust(tmpdir)
         test_lsp_questions(tmpdir)
         test_lsp_complete(tmpdir)
         test_terminal(tmpdir)

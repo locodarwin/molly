@@ -20,24 +20,27 @@ static char *recent[RECENT_MAX];
 static int nrecent;
 static int loaded;
 
-/* The list's file, or 0 when there is to be none. */
-static int recent_path(char *dst, size_t n) {
+/* A file of molly's state, `name` in the directory above, or 0 when there is to
+ * be none. The trusted projects (trust.c) are kept the same way. */
+int state_path(char *dst, size_t n, const char *name) {
   const char *over = getenv("MOLLY_STATE"), *home;
   if (over != NULL) {
     if (over[0] == '\0') return 0;
-    snprintf(dst, n, "%s/recent", over);
+    snprintf(dst, n, "%s/%s", over, name);
     return 1;
   }
   over = getenv("XDG_STATE_HOME");
   if (over != NULL && over[0] == '/') {
-    snprintf(dst, n, "%s/molly/recent", over);
+    snprintf(dst, n, "%s/molly/%s", over, name);
     return 1;
   }
   home = getenv("HOME");
   if (home == NULL || home[0] == '\0') return 0;
-  snprintf(dst, n, "%s/.local/state/molly/recent", home);
+  snprintf(dst, n, "%s/.local/state/molly/%s", home, name);
   return 1;
 }
+
+static int recent_path(char *dst, size_t n) { return state_path(dst, n, "recent"); }
 
 static void load(void) {
   char path[4096], line[4096];

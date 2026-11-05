@@ -4424,6 +4424,42 @@ static void test_lsp(void) {
     check("a scratch directory to work in", 0, 1);
     return;
   }
+  {
+    /* The projects a server may start in: the nearest answer up from one. */
+    char state[600], path[700];
+    FILE *fp;
+    snprintf(state, sizeof(state), "%s/state", tmpl);
+    setenv("MOLLY_STATE", state, 1);
+    trust_cleanup();
+    check("nobody has been asked about a project", trust_lookup("/src/a"), -1);
+    trust_set("/src", 1);
+    trust_set("/src/b", 0);
+    check("a yes covers the projects under it", trust_lookup("/src/a/x"), 1);
+    check("and a nearer no overrides it", trust_lookup("/src/b/y"), 0);
+    check("a name that only starts the same is not under it", trust_lookup("/srcx"), -1);
+    trust_cleanup();
+    check("the answers are kept for the next session",
+          trust_lookup("/src/a") * 10 + trust_lookup("/src/b"), 10);
+    trust_forget_noes();
+    trust_cleanup();
+    check("restarting forgets the noes, for good, leaving the yes above",
+          trust_lookup("/src/b") * 10 + trust_lookup("/src/a"), 11);
+    setenv("MOLLY_STATE", "", 1);
+    trust_cleanup();
+    trust_set("/elsewhere", 1);
+    check("with no state directory an answer lasts the session",
+          trust_lookup("/elsewhere"), 1);
+
+    /* And the conversation below is in a state directory that says yes to all. */
+    snprintf(path, sizeof(path), "%s/projects", tmpl);
+    fp = fopen(path, "w");
+    if (fp != NULL) {
+      fputs("yes /\n", fp);
+      fclose(fp);
+    }
+    setenv("MOLLY_STATE", tmpl, 1);
+    trust_cleanup();
+  }
   snprintf(logpath, sizeof(logpath), "%s/log", tmpl);
   lsp_logpath = logpath;
   setenv("FAKE_LSP_LOG", logpath, 1);

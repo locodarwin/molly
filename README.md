@@ -121,8 +121,9 @@ Molly does everything olly does. All of the following work today:
   ones that get you out: window and buffer switches, the menu bar, the palette
   and quit. When the shell exits, its window closes.
 - **Language servers**: open a C, C++, Rust or Python file with clangd,
-  rust-analyzer or pylsp installed and molly starts it; if the server is not
-  installed, molly says nothing. Problems are underlined in the text and counted
+  rust-analyzer or pylsp installed and molly starts it, once you have said yes
+  to that project (asked once, since a server may run the project's code); if
+  the server is not installed, molly says nothing. Problems are underlined in the text and counted
   on the status bar, `F2` walks them and `Ctrl-F2` lists them all, kept up to
   date; `F12` goes to a definition and `Alt-Left` comes back; `Alt-K` shows what
   a name is; `Alt-/` completes the word, and typing `.` asks for completions

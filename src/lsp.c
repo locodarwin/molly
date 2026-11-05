@@ -712,17 +712,23 @@ static const char *project_root(const char *filename) {
   return root_cache[i].root;
 }
 
+/* The server for a command line in a project, if it has one already. */
+static struct server *server_find(const char *cmd, const char *root) {
+  int i;
+  for (i = 0; i < LSP_MAX_SERVERS; i++)
+    if (servers[i].state != SRV_FREE && strcmp(servers[i].cmd, cmd) == 0 &&
+        strcmp(servers[i].root, root) == 0)
+      return &servers[i];
+  return NULL;
+}
+
 /* The server for a command line in a project, started if it is new. */
 static struct server *server_get(const char *cmd, const char *root) {
   int i, freeslot = -1;
-  for (i = 0; i < LSP_MAX_SERVERS; i++) {
-    if (servers[i].state == SRV_FREE) {
-      if (freeslot < 0) freeslot = i;
-      continue;
-    }
-    if (strcmp(servers[i].cmd, cmd) == 0 && strcmp(servers[i].root, root) == 0)
-      return &servers[i];
-  }
+  struct server *s = server_find(cmd, root);
+  if (s != NULL) return s;
+  for (i = 0; i < LSP_MAX_SERVERS && freeslot < 0; i++)
+    if (servers[i].state == SRV_FREE) freeslot = i;
   if (freeslot < 0) return NULL;
   {
     struct server *s = &servers[freeslot];
@@ -847,15 +853,104 @@ static void doc_change(struct buffer *b, struct server *s) {
   free(text.b);
 }
 
-/* Which server a buffer should be open with, or NULL. Starts it if need be. */
+/* ---- asking first ----------------------------------------------------------
+ *
+ * A server reads the project it is started for, and rust-analyzer builds it,
+ * which runs the project's own code: opening a file is not consent to that. So
+ * a server is started in a project only once the user has said yes to it there
+ * (trust.c keeps the answers). A server that is not installed is not asked
+ * about: there is nothing to start.
+ *
+ * Asked from the main loop and not here, because here is inside the event loop
+ * -- every quiet tick, under whatever menu, dialog or prompt is open -- and a
+ * question cannot open inside another one. One question at a time: a second
+ * project waits its turn, and the sweep finds it again once the first is
+ * answered. */
+static struct {
+  int pending;
+  char *cmd, *root;
+  char name[32];
+} trust_q;
+
+static void trust_q_clear(void) {
+  free(trust_q.cmd);
+  free(trust_q.root);
+  memset(&trust_q, 0, sizeof(trust_q));
+}
+
+/* Which server a buffer should be open with, or NULL. Starts it if need be,
+ * when the project has been said yes to; asks, when nobody has been asked. */
 static struct server *server_for(struct buffer *b) {
-  const char *cmd;
+  const char *cmd, *root;
+  struct server *s;
+  int trusted;
   if (!lsp_enabled() || b->filename == NULL || b->syn == NULL || b->grep_results ||
       b->problems)
     return NULL;
   cmd = syntax_lsp(b->syn);
   if (cmd == NULL || cmd[0] == '\0') return NULL;
-  return server_get(cmd, project_root(b->filename));
+  root = project_root(b->filename);
+  if ((s = server_find(cmd, root)) != NULL) return s;
+  trusted = trust_lookup(root);
+  if (trusted == 0) return NULL;
+  if (trusted < 0) {
+    char name[32];
+    /* Not installed: started, which finds it missing and remembers that. */
+    if (!program_exists(cmd, name, sizeof(name))) return server_get(cmd, root);
+    if (!trust_q.pending) {
+      trust_q.pending = 1;
+      trust_q.cmd = xstrdup(cmd);
+      trust_q.root = xstrdup(root);
+      snprintf(trust_q.name, sizeof(trust_q.name), "%s", name);
+      ui_request_redraw();   /* wakes the main loop, which asks */
+    }
+    return NULL;
+  }
+  return server_get(cmd, root);
+}
+
+/* From the main loop: the question a server is waiting on, if there is one.
+ * Anything but yes is no, and kept, as Enter on (y/N) means; Restart language
+ * servers asks again. */
+void lsp_trust_ask(void) {
+  char prompt[200], where[64];
+  const char *root, *home = getenv("HOME");
+  size_t hl = home != NULL ? strlen(home) : 0;
+  char *ans;
+  int yes;
+  if (!trust_q.pending) return;
+  if (!lsp_enabled() || trust_lookup(trust_q.root) >= 0) {
+    trust_q_clear();
+    return;
+  }
+  /* The project as ~/..., and the end of it when it is long: the end is the
+   * part that says which. */
+  root = trust_q.root;
+  if (hl > 1 && strncmp(root, home, hl) == 0 && (root[hl] == '/' || root[hl] == '\0'))
+    snprintf(where, sizeof(where), "~%s", root + hl);
+  else
+    snprintf(where, sizeof(where), "%s", root);
+  if (strlen(root) > 32 && utf8_str_cols(where) > 32) {
+    const char *tail = root + strlen(root) - 30;
+    while (*tail != '\0' && utf8_is_cont((unsigned char)*tail)) tail++;
+    snprintf(where, sizeof(where), "\xe2\x80\xa6%s", tail);
+  }
+  snprintf(prompt, sizeof(prompt),
+           "Start %s for %s? It may run the project's code. (y/N): %%s",
+           trust_q.name, where);
+  ans = editor_prompt(prompt, NULL);
+  yes = ans != NULL && (ans[0] == 'y' || ans[0] == 'Y');
+  free(ans);
+  trust_set(trust_q.root, yes);
+  if (yes) {
+    editor_set_status_message("Starting %s for %s.", trust_q.name, where);
+    trust_q_clear();
+    lsp_idle();
+  } else {
+    editor_set_status_message("%s not started for %s. Restart language servers to be "
+                              "asked again.", trust_q.name, where);
+    trust_q_clear();
+  }
 }
 
 /* Bring one buffer's server up to date with it: open, change or close. */
@@ -1522,6 +1617,8 @@ void lsp_stop_all(void) {
 void lsp_cleanup(void) {
   int i;
   lsp_stop_all();
+  trust_q_clear();
+  trust_cleanup();
   for (i = 0; i < ROOT_CACHE; i++) {
     free(root_cache[i].dir);
     free(root_cache[i].root);
@@ -1561,6 +1658,14 @@ void lsp_describe(struct buffer *b, char *dst, size_t n) {
     snprintf(dst, n, "No language server for %s.",
              b->syn != NULL ? syntax_name(b->syn) : "this file");
     return;
+  }
+  if (b->filename != NULL) {
+    const char *root = project_root(b->filename);
+    if (server_find(cmd, root) == NULL && trust_lookup(root) == 0) {
+      snprintf(dst, n, "Not started for this project, as you asked. Restart language "
+                       "servers to be asked again.");
+      return;
+    }
   }
   for (i = 0; i < LSP_MAX_SERVERS; i++) {
     struct server *s = &servers[i];

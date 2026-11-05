@@ -274,6 +274,9 @@ int main(int argc, char *argv[]) {
     lspui_problems_refresh();
     /* Terminals whose shells have exited close here, for the same reason. */
     tty_tidy();
+    /* And whether a language server may start in a project, when one is
+     * waiting to: a question, so here, where nothing else is open. */
+    lsp_trust_ask();
     editor_refresh_screen();
   }
 

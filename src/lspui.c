@@ -173,6 +173,8 @@ void lspui_status(void) {
 }
 
 void lspui_restart(void) {
+  /* And the projects said no to are asked about again. */
+  trust_forget_noes();
   lsp_stop_all();
   lsp_idle();
   editor_set_status_message(lsp_enabled() ? "Language servers restarted."

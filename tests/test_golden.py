@@ -666,9 +666,11 @@ def main():
     # the interpreter to start; the screen does not depend on how long it took.
     # MOLLY_LSP back to empty, because the harness pins it off.
     fake = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fake_lsp.py")
+    # The state directory is this one, whose answer for every project is yes.
     lsp_files = {"sample.c": "int a;\nint BAD = 1; /* WARN */\nNOTE\n",
-                 "lsprc": "[syntax c]\nlanguage server = python3 -I %s\n" % fake}
-    lsp_env = {"MOLLY_CONFIG": "lsprc", "MOLLY_LSP": ""}
+                 "lsprc": "[syntax c]\nlanguage server = python3 -I %s\n" % fake,
+                 "projects": "yes /\n"}
+    lsp_env = {"MOLLY_CONFIG": "lsprc", "MOLLY_LSP": "", "MOLLY_STATE": "."}
     check("lsp-diagnostics", [2.0], rows=10, cols=50, files=lsp_files,
           args=["sample.c"], env=lsp_env)
     check("lsp-diagnostics-256", [2.0], rows=10, cols=50, files=lsp_files,

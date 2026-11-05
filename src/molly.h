@@ -1203,6 +1203,13 @@ const char *recent_at(int i);
 int recent_count(void);
 void editor_recent_dialog(void);
 void recent_cleanup(void);
+int state_path(char *dst, size_t n, const char *name);
+
+/* trust.c: the projects a language server may be started in */
+int trust_lookup(const char *root);
+void trust_set(const char *root, int yes);
+void trust_forget_noes(void);
+void trust_cleanup(void);
 void recent_note(const char *filename);
 
 /* git.c */
@@ -1264,6 +1271,7 @@ void lsp_cleanup(void);
 void lsp_describe(struct buffer *b, char *dst, size_t n);
 void lsp_diag_clear(struct buffer *b);
 void lsp_idle(void);
+void lsp_trust_ask(void);
 void lsp_rows_moved(struct buffer *b, int at, int delta);
 void lsp_set_enabled(int on);
 int lsp_setting(void);

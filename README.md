@@ -54,10 +54,16 @@ Molly does everything olly does. All of the following work today:
   room and the cursor, horizontal scroll and wide-character alignment all
   follow it.
 - **Atomic saves**: the file is written to a private temporary file and
-  renamed into place, so an interrupted save never leaves it truncated. Line
-  endings (`LF` or `CRLF`), a missing final newline, and the file's mode and
-  owner are all preserved. If the file changed on disk since it was opened,
-  Molly asks before overwriting it.
+  renamed into place, so an interrupted save never leaves it truncated. Where a
+  rename would lose something (a teammate's ownership, a hard link, an ACL) the
+  file is rewritten in place instead and Molly says so, and it refuses a file you
+  have no right to write. Each line's ending (`LF` or `CRLF`), a missing final
+  newline, and the file's mode and owner are all preserved. If the file changed on
+  disk since it was opened, Molly asks before overwriting it.
+- **Safe with untrusted files**: control characters and malformed UTF-8 show as
+  a reversed `?` and never reach your terminal, a paste is text and cannot run a
+  command, and only regular files open. The binary is built with the usual exploit
+  mitigations; `make HARDEN=` turns them off for a compiler without them.
 - **UTF-8-aware editing**: the cursor, `Backspace` and `Delete` move over
   whole characters, text round-trips as raw bytes, and display width is
   honored so wide (CJK) and combining characters stay aligned on screen.

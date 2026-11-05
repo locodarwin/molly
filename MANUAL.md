@@ -399,6 +399,9 @@ replacement) is an editable field on the bottom line, with a real cursor in it.
 | `Enter` | Accept |
 | `Esc` | Cancel |
 
+Pasting from your terminal only fills in the answer. Line breaks in it are
+dropped and nothing in it accepts the prompt, so `Enter` is still yours to press.
+
 An answer longer than the room for it scrolls sideways, so the hint at the end of
 the line stays where it is. On a terminal too narrow for both, the hint is dropped
 and the whole width goes to the answer. Molly has no prompt history yet.
@@ -837,6 +840,15 @@ depends on your terminal honoring OSC 52 (some disable it by default for
 security); where it is off, Molly's own `Ctrl-V` still pastes its internal
 buffer. Molly does not *read* the system clipboard: `Ctrl-V` pastes only what
 Molly last copied or cut.
+
+### Pasting from your terminal
+
+Your terminal's own paste (`Ctrl-Shift-V`, middle click) arrives as text and not
+as typing. It goes in as one undo step, at every cursor, replacing any selection,
+with its line breaks and tabs. Other control characters in it are dropped, so text
+copied from a web page cannot run a command. It is not auto-indented and pairs are
+not closed, since it brings its own. This relies on your terminal's bracketed paste;
+one without it delivers a paste as typing.
 
 ## Several Cursors
 
@@ -1580,8 +1592,9 @@ in. A shell that exits with an error says so on the message bar.
 ### Copying, pasting and scrolling back
 
 - **Paste** (`Edit ▸ Paste`, or Paste in the palette) types molly's clipboard
-  into the program. A shell that asked for bracketed paste gets it, so a
-  pasted command is not run until you press `Enter`.
+  into the program, and so does pasting from your own terminal. A shell that asked
+  for bracketed paste gets it, so a pasted command is not run until you press
+  `Enter`.
 - **Copying out of a terminal**: drag across it with the mouse. What you drag
   over is highlighted, and letting go copies it to molly's clipboard, and to
   your own terminal's through OSC 52 where it supports that, as `Ctrl-C` does in a
@@ -1957,14 +1970,27 @@ power failure therefore leaves the original file untouched. The temporary name
 is unpredictable and created exclusively, so it cannot collide with a file of
 your own and cannot be redirected by anything else in the directory.
 
-This has two consequences:
+A rename only asks for a writable directory, so Molly uses one only when the
+temporary file can stand in for the original completely. If it cannot, Molly
+rewrites the file where it is and says `written (in place, not atomic)`. Your
+work is saved, and the file keeps everything below, but that write has no crash
+protection. That happens when:
 
-- Saving replaces the file, so any **hard links** to it are broken: the other
-  names keep the old contents.
-- Renaming requires a writable **directory**. If the file is writable but its
-  directory is not, Molly falls back to rewriting the file in place and says
-  `written (in place, not atomic)`. Your work is saved, but that write has no
-  crash protection.
+- the file has other **hard links**, which go on seeing the same contents;
+- it belongs to someone else, or to a group you are not in, as with a teammate's
+  group-writable file, whose owner and group do not change;
+- it has **extended attributes** or an ACL that the temporary file would not have;
+- its directory is not writable, or takes no new file.
+
+Molly will not save over a file that is not yours to write, even where a rename
+would get through. It says why and offers another name, as it does for anything
+that is not a regular file, such as a directory or a FIFO. `Esc` at that prompt
+cancels the save. A read-only file of your own asks first, since the permission
+is yours to change, and so does naming a new buffer after a file that exists. A
+name you type becomes the buffer's only once a save to it has worked.
+
+If there is no room on the disk for the temporary file, the save fails and your
+file is left as it was. The mode is kept, including setuid and setgid.
 
 When the file name is a symbolic link, Molly follows it and replaces the file
 it points at, leaving the link itself alone.
@@ -2306,9 +2332,11 @@ comments back, explaining each setting and its default.
 
 ## File Format Notes
 
-- Line endings are preserved. A file loaded with Windows `CRLF` endings is
-  saved back with `CRLF`; a Unix `LF` file stays `LF`. A brand-new file uses
-  `LF`.
+- Line endings are preserved, line by line. A file with mixed `CRLF` and `LF`
+  endings keeps them on every line you do not edit, and a new line takes the
+  ending of the file's first line. A brand-new file uses `LF`. Exactly one line
+  ending comes off a line when it is read, so any other carriage return is text
+  and is saved as it was.
 - A trailing newline is preserved too: if the file you opened ended without
   one, the save leaves it without one. A brand-new file is given a trailing
   newline.
@@ -2318,6 +2346,16 @@ comments back, explaining each setting and its default.
   characters. Display width is honored: East Asian wide characters take two
   columns, combining marks take none, so the cursor and horizontal scrolling
   stay aligned with what the terminal shows.
+- A byte that is not part of a whole UTF-8 character is one character by itself,
+  and the cursor can stop on it from either side.
+- Control characters and malformed UTF-8 are never sent to your terminal, where
+  an escape sequence in a file could set the window title or the clipboard, or
+  repaint the screen. In the text each one draws as a reversed `?`, one column
+  wide. In a file name or a message it is a plain `?`. The file keeps the real
+  bytes.
+- Only regular files open. A FIFO, a device or a directory named on the command
+  line ends Molly with the reason. From the file browser, the current buffer stays
+  and the message bar says why, as it does for a file you may not read.
 - The status bar shows the file name capped at 20 characters.
 - A file is read into memory whole, and Molly needs about one and a
   half times its size: a 743 MB log of ten million lines opens in under half a

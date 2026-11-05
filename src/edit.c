@@ -56,9 +56,9 @@ void editor_insert_newline(void) {
     u->cy0 = CUR.cy;
     u->cx1 = 0;
     u->cy1 = CUR.cy + 1;
+    u->crlf = (unsigned char)B.eol_crlf;
     undo_push(u);
-    editor_insert_row(CUR.cy + 1, &row->chars[CUR.cx], row->size - CUR.cx);
-    editor_row_truncate(row_at(CUR.cy), CUR.cx);
+    uc_do_split(u);
   }
   CUR.cy++;
   CUR.cx = 0;
@@ -122,11 +122,11 @@ void editor_delete_char(void) {
     u->cy0 = pre_cy;
     u->cx1 = prev->size;
     u->cy1 = CUR.cy - 1;
+    u->crlf = prev->crlf;
     undo_push(u);
     clear_redo();
     CUR.cx = prev->size;
-    editor_row_append_string(prev, row->chars, row->size);
-    editor_delete_row(CUR.cy);
+    uc_do_join(u);
     CUR.cy--;
   }
   B.undo.locked = 0;
@@ -190,10 +190,10 @@ void editor_del_char(void) {
     u->cy0 = pre_cy;
     u->cx1 = row->size;
     u->cy1 = CUR.cy;
+    u->crlf = row->crlf;
     undo_push(u);
     clear_redo();
-    editor_row_append_string(row, (*row_at(CUR.cy + 1)).chars, (*row_at(CUR.cy + 1)).size);
-    editor_delete_row(CUR.cy + 1);
+    uc_do_join(u);
   }
   B.undo.locked = 0;
 }

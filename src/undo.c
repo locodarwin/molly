@@ -17,6 +17,7 @@ struct uchange *uc_new(int kind, int row, int at, const char *text, size_t len) 
   u->cx1 = 0;
   u->cy1 = 0;
   u->group = B.undo.active_group;
+  u->crlf = 0;
   return u;
 }
 
@@ -166,16 +167,24 @@ void uc_do_delete(struct uchange *u) {
   editor_row_delete_n(row_at(u->row), u->at, u->len);
 }
 
+/* A row's line break belongs to the end of its text: a join keeps the second
+ * row's and loses the first's, and a split gives the old one to the new row and
+ * the first row the one in the record. */
 void uc_do_join(struct uchange *u) {
+  unsigned char tail = row_at(u->row + 1)->crlf;
   editor_row_append_string(row_at(u->row), (*row_at(u->row + 1)).chars,
       (*row_at(u->row + 1)).size);
   editor_delete_row(u->row + 1);
+  row_at(u->row)->crlf = tail;
 }
 
 void uc_do_split(struct uchange *u) {
   erow *row = row_at(u->row);
+  unsigned char tail = row->crlf;
   editor_insert_row(u->row + 1, row->chars + u->at, row->size - u->at);
   editor_row_truncate(row_at(u->row), u->at);
+  row_at(u->row + 1)->crlf = tail;
+  row_at(u->row)->crlf = u->crlf;
 }
 
 void uc_do_newrow(struct uchange *u) {

@@ -372,6 +372,7 @@ void editor_insert_row(int at, char *s, size_t len) {
   row->chars = chars;
   row->syn_in = 0;
   row->syn_out = 0;
+  row->crlf = (unsigned char)B.eol_crlf;
   editor_update_row(row);
   /* Inserting shifts every row below, so their stored entry states now belong
    * to the wrong rows. */
@@ -490,20 +491,19 @@ void editor_row_delete_n(erow *row, int at, int n) {
 }
 
 
-/* Write every row to an already-open descriptor, ending each with the line
- * ending the file was loaded with (LF, or CRLF), and omitting the final one
+/* Write every row to an already-open descriptor, ending each with its own line
+ * ending (LF, or CRLF), and omitting the final one
  * if the file had no trailing newline. Rows are gathered into a 64 KB buffer
  * and written a chunk at a time: writing each row and then its newline cost
  * two syscalls per line, 100,000 of them for a 50,000-line file. */
 static int editor_write_rows(int fd, size_t *total) {
   static char buf[65536];
-  const char *eol = B.eol_crlf ? "\r\n" : "\n";
-  size_t eollen = B.eol_crlf ? 2 : 1;
   size_t used = 0, n = 0;
   int j;
   for (j = 0; j < row_count(); j++) {
     size_t len = (size_t)(*row_at(j)).size;
-    size_t elen = (j == row_count() - 1 && !B.final_newline) ? 0 : eollen;
+    const char *eol = (*row_at(j)).crlf ? "\r\n" : "\n";
+    size_t elen = (j == row_count() - 1 && !B.final_newline) ? 0 : strlen(eol);
     if (used + len + elen > sizeof(buf)) {
       if (write_all(fd, buf, used) == -1) return -1;
       used = 0;
@@ -886,7 +886,7 @@ static char *read_all(FILE *fp, size_t *len) {
  * no file loads differently. */
 static void rows_from_text(char *text, size_t n, int adopt) {
   size_t i = 0, w = 0, lines = 0;
-  int saw_cr = 0, had_final_nl = 1;
+  int first_cr = 0, had_final_nl = 1;
   const char *p;
 
   for (p = text; p < text + n && (p = memchr(p, '\n', (size_t)(text + n - p)));
@@ -907,11 +907,13 @@ static void rows_from_text(char *text, size_t n, int adopt) {
     size_t e = nl ? (size_t)(nl - text) : n, len = e - i;
     int had_cr = 0;
     had_final_nl = (nl != NULL);
-    while (len > 0 && text[i + len - 1] == '\r') {
+    /* Exactly one line ending comes off, and only a real one. Any other carriage
+     * return is text: taking it would change bytes nobody edited. */
+    if (nl != NULL && len > 0 && text[i + len - 1] == '\r') {
       had_cr = 1;
       len--;
     }
-    if (had_cr) saw_cr = 1;
+    if (i == 0) first_cr = had_cr;
     if (len > INT_MAX - 1) die("line too long");
     if (adopt) {
       erow *row = &B.row[B.gap];
@@ -924,11 +926,13 @@ static void rows_from_text(char *text, size_t n, int adopt) {
       row->wrows = 1;
       row->syn_in = 0;
       row->syn_out = 0;
+      row->crlf = (unsigned char)had_cr;
       B.gap++;
       B.numrows++;
       w += len + 1;
     } else {
       editor_insert_row(row_count(), text + i, len);
+      row_at(row_count() - 1)->crlf = (unsigned char)had_cr;
     }
     i = e + 1;
   }
@@ -945,8 +949,11 @@ static void rows_from_text(char *text, size_t n, int adopt) {
     free(text);
   }
   if (lines > 0) {
-    B.eol_crlf = saw_cr;
+    B.eol_crlf = first_cr;
     B.final_newline = had_final_nl;
+    /* A last line with no ending has none to keep, and takes the file's if it is
+     * ever given one. */
+    if (!had_final_nl) row_at(row_count() - 1)->crlf = (unsigned char)first_cr;
   }
 }
 

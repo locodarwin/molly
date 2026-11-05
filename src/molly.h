@@ -149,6 +149,10 @@ typedef struct erow {
    * state is a tag and an index that fit in six bits (see syntax.c). */
   unsigned char syn_in;
   unsigned char syn_out;
+
+  /* The line break after this row is \r\n rather than \n. Per row because a file
+   * with mixed endings keeps them, on lines nobody edited. */
+  unsigned char crlf;
 } erow;
 
 _Static_assert(sizeof(void *) != 8 || sizeof(erow) <= 24,
@@ -205,6 +209,7 @@ struct uchange {
   size_t len;
   int cx0, cy0, cx1, cy1;
   int group;  /* 0 = standalone; otherwise shared id of a multi-edit group */
+  unsigned char crlf;  /* UC_JOIN, UC_SPLIT: the line break that goes or comes */
 };
 
 struct undoState {
@@ -260,7 +265,7 @@ struct buffer {
   size_t textlen;
   char *filename;
   int dirty;
-  int eol_crlf;         /* write \r\n line endings, as the loaded file used */
+  int eol_crlf;         /* a new line break is \r\n, as the file's first line is */
   int final_newline;    /* the file ended with a newline (so the save should) */
   struct undoState undo;
 

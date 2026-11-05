@@ -3351,7 +3351,7 @@ static void test_storage_load(void) {
   check("and the snapshot agrees", editor_matches_saved(), 1);
 
   store_load("a\r\r\nb", 5);
-  check_str("every carriage return before the newline goes", mc_text(), "a\nb");
+  check_str("exactly one carriage return before the newline goes", row_at(0)->chars, "a\r");
   check("no final newline is remembered", B.final_newline, 0);
   check("and the last line is terminated in the spare byte", row_at(1)->chars[1], '\0');
 

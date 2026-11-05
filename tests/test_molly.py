@@ -6495,6 +6495,56 @@ def test_save_keeps_the_file(tmpdir):
         os.chdir(cwd)
 
 
+def test_line_endings(tmpdir):
+    """Each line keeps the ending it came with, and a carriage return that is not
+    part of one is text. A save used to rewrite every line to one style."""
+    print("\nline endings: per line, and only real ones")
+    UN, RE = "\x1a", "\x19"
+    MIXED = b"one\r\ntwo\nthree\r\nfour\n"
+
+    def e(text, keys):
+        return edit_bytes(tmpdir, text, keys + [SAVE])
+
+    check("mixed endings survive an edit elsewhere", e(MIXED, ["X"]),
+          b"Xone\r\ntwo\nthree\r\nfour\n")
+    check("a new line takes the first line's ending", e(MIXED, [END, "\r"]),
+          b"one\r\n\r\ntwo\nthree\r\nfour\n")
+    check("and on a file that starts with LF",
+          e(b"one\ntwo\r\n", [END, "\r"]), b"one\n\ntwo\r\n")
+    check("a split line's tail keeps the ending it had",
+          e(b"ab\ncd\r\nef\n", [DOWN, RIGHT, "\r"]), b"ab\nc\nd\r\nef\n")
+    check("joining with Backspace keeps the second line's",
+          e(MIXED, [DOWN, "\x7f"]), b"onetwo\nthree\r\nfour\n")
+    check("joining with Delete does too",
+          e(MIXED, [END, "\x1b[3~"]), b"onetwo\nthree\r\nfour\n")
+
+    # Through undo and redo, whichever way the break went.
+    check("undoing a join puts the ending back",
+          e(MIXED, [END, "\x1b[3~", UN]), MIXED)
+    check("redoing it takes it away again",
+          e(MIXED, [END, "\x1b[3~", UN, RE]), b"onetwo\nthree\r\nfour\n")
+    check("undoing a split puts it back",
+          e(b"ab\ncd\r\nef\n", [DOWN, RIGHT, "\r", UN]), b"ab\ncd\r\nef\n")
+    check("undoing a selection across lines puts them all back",
+          e(MIXED, [RIGHT, SH_DOWN, SH_DOWN, SH_DOWN, "\x1b[3~", UN]), MIXED)
+    check("a selection across lines keeps the far line's ending",
+          e(MIXED, [RIGHT, SH_DOWN, "\x1b[3~"]), b"owo\nthree\r\nfour\n")
+
+    # Carriage returns that are not line endings: "exactly one comes off".
+    check("two before a newline: one is text", e(b"abc\r\r\nx\n", ["Z"]), b"Zabc\r\r\nx\n")
+    check("one at the end of a file with no newline", e(b"a\nend\r", ["Z"]), b"Za\nend\r")
+    check("one in the middle of a line", e(b"a\rb\n", ["Z"]), b"Za\rb\n")
+    check("alone on a last line", e(b"a\n\r", ["Z"]), b"Za\n\r")
+    check("the whole first report", e(b"abc\r\r\nmid\nend\r", ["Z"]), b"Zabc\r\r\nmid\nend\r")
+    check("a file with no ending at all stays so", e(b"abc", ["Z"]), b"Zabc")
+
+    # Plain files of either kind are as they were.
+    check("all CRLF stays CRLF", e(b"a\r\nb\r\n", [END, "\r", "c"]), b"a\r\nc\r\nb\r\n")
+    check("all LF stays LF", e(b"a\nb\n", [END, "\r", "c"]), b"a\nc\nb\n")
+    check("a line added after a CRLF file's unterminated last line takes its ending",
+          e(b"a\r\nb", [DOWN, END, "\r", "c"]), b"a\r\nb\r\nc")
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -6585,6 +6635,7 @@ def main():
         test_stray_bytes(tmpdir)
         test_only_regular_files(tmpdir)
         test_save_keeps_the_file(tmpdir)
+        test_line_endings(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

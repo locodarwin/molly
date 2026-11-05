@@ -4817,6 +4817,26 @@ static void test_vt(void) {
   check_str("ECH blanks in place", vt_row_text(t, 0), "   def");
   vts(t, "\x1b[2;1H=\x1b[4b");
   check_str("REP repeats the last character", vt_row_text(t, 1), "=====");
+  {
+    /* What one short sequence may make the editor do. A repeat larger than the
+     * screen only scrolls copies of one line, and a tab move past the edge goes
+     * nowhere: either uncapped made 256 KiB of output take a quarter of a
+     * minute, in the loop the keyboard waits on. */
+    struct vt *big = vt_new(24, 80, 5000);
+    struct abuf ab = ABUF_INIT;
+    long t0;
+    vts(big, "=\x1b[999999b");
+    check("a repeat writes at most a screenful", vt_pushed(big) <= 24, 1);
+    {
+      static const char moves[] = "\x1b[999999I\x1b[999999Z";
+      while (ab.len < 256 * 1024) ab_append(&ab, moves, (int)sizeof(moves) - 1);
+    }
+    t0 = lsp_test_ms();
+    vt_feed(big, ab.b, (size_t)ab.len);
+    check("and 256 KiB of tab moves take no time", lsp_test_ms() - t0 < 2000, 1);
+    free(ab.b);
+    vt_free(big);
+  }
   vts(t, "\x1b[H\x1b[2Jaaa\r\nbbb\r\nccc\x1b[2;1H\x1b[L");
   check_str("IL opens a line", vt_row_text(t, 1), "");
   check_str("pushing the rest down", vt_row_text(t, 2), "bbb");

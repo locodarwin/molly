@@ -249,7 +249,10 @@ static void reverse_index(struct vt *t) {
   else if (t->cy > 0) t->cy--;
 }
 
+/* A count past the width moves no further, and is cut to it: a sequence of a
+ * few bytes must not buy a million turns of the loop. */
 static void tab_forward(struct vt *t, int n) {
+  if (n > t->cols) n = t->cols;
   while (n-- > 0) {
     int x = t->cx + 1;
     while (x < t->cols - 1 && !t->tabs[x]) x++;
@@ -260,6 +263,7 @@ static void tab_forward(struct vt *t, int n) {
 }
 
 static void tab_back(struct vt *t, int n) {
+  if (n > t->cols) n = t->cols;
   while (n-- > 0) {
     int x = t->cx - 1;
     while (x > 0 && !t->tabs[x]) x--;
@@ -648,14 +652,16 @@ static void csi_dispatch(struct vt *t, char f) {
   }
   case 'Z': tab_back(t, n); break;
   case 'b': {
-    /* REP: the character before the cursor, again. */
+    /* REP: the character before the cursor, again. At most a screenful: more
+     * only scrolls copies of one line through the scrollback, and ten bytes
+     * asking for 65,535 of them made output a thousand times its size. */
     struct vt_cell *r = row_ptr(t, t->cy);
     int x = t->wrapnext ? t->cx : t->cx - 1;
     if (x >= 0 && r[x].w > 0) {
       uint32_t cp = r[x].cp;
       int save_g0 = t->g0_graphics, save_g1 = t->g1_graphics;
       t->g0_graphics = t->g1_graphics = 0;   /* already translated */
-      if (n > 65535) n = 65535;
+      if (n > t->rows * t->cols) n = t->rows * t->cols;
       while (n-- > 0) put_char(t, cp);
       t->g0_graphics = save_g0;
       t->g1_graphics = save_g1;

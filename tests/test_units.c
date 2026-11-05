@@ -3386,11 +3386,20 @@ static void test_storage_load(void) {
     for (i = 0; i < (int)sizeof(big); i++) big[i] = (i % 100 == 99) ? '\n' : 'a' + i % 26;
     mc_load("");
     if (pipe(fds) == 0) {
-      if (write(fds[1], big, sizeof(big)) != (ssize_t)sizeof(big)) {}
+      /* From another process: a pipe made while this user is over the kernel's
+       * pipe-user-pages-soft holds 8K, and a write bigger than that from the
+       * one process that would read it never returns. */
+      pid_t writer = fork();
+      if (writer == 0) {
+        close(fds[0]);
+        if (write(fds[1], big, sizeof(big)) != (ssize_t)sizeof(big)) _exit(1);
+        _exit(0);
+      }
       close(fds[1]);
       fp = fdopen(fds[0], "r");
       editor_fill_rows(fp, 1);
       fclose(fp);
+      if (writer > 0) waitpid(writer, NULL, 0);
     }
     check("a pipe longer than the first guess is all there", row_count(), 200);
     check("to its last byte",

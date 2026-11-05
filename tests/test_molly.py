@@ -16,6 +16,7 @@ import re
 import select
 import shutil
 import signal
+import stat
 import struct
 import subprocess
 import sys
@@ -6370,6 +6371,130 @@ def test_only_regular_files(tmpdir):
             fh.write("good\n")
 
 
+def test_save_keeps_the_file(tmpdir):
+    """A save is a rename only when the temp file can stand in for the target
+    completely. Two real users are in tests/shared_files.py."""
+    print("\nsaving: what a rename would lose")
+    d = tempfile.mkdtemp(dir=tmpdir)
+
+    def fresh(name, mode=0o644):
+        p = os.path.join(d, name)
+        with open(p, "w") as fh:
+            fh.write("data\n")
+        os.chmod(p, mode)
+        return p
+
+    def read(p):
+        with open(p) as fh:
+            return fh.read()
+
+    # The ordinary case is still atomic and says nothing about it.
+    p = fresh("plain.txt")
+    ino = os.stat(p).st_ino
+    out = run([MOLLY, p], ["X", SAVE, 0.2])
+    check("an ordinary save is still a rename", os.stat(p).st_ino != ino, True)
+    check("with no in-place warning", b"in place" in out, False)
+    check("and the edit", read(p), "Xdata\n")
+
+    # Hard links.
+    p = fresh("link1.txt")
+    q = os.path.join(d, "link2.txt")
+    os.link(p, q)
+    out = run([MOLLY, p], ["X", SAVE, 0.2])
+    check("a hard link stays one file", os.stat(p).st_ino, os.stat(q).st_ino)
+    check("so the other name sees the edit", read(q), "Xdata\n")
+    check("and the message says it was not atomic", b"in place" in out, True)
+    os.unlink(q)
+    run([MOLLY, p], ["Y", SAVE])
+    check("with the other name gone, it is a rename again",
+          os.stat(p).st_nlink == 1 and read(p) == "YXdata\n", True)
+
+    # Extended attributes, where this filesystem has them.
+    p = fresh("xattr.txt")
+    try:
+        os.setxattr(p, "user.keep", b"kept")
+        has_xattrs = True
+    except OSError:
+        has_xattrs = False
+    if has_xattrs:
+        ino = os.stat(p).st_ino
+        run([MOLLY, p], ["X", SAVE, 0.2])
+        check("an extended attribute survives", os.getxattr(p, "user.keep"), b"kept")
+        check("because it stays the same file", os.stat(p).st_ino, ino)
+        check("with the edit", read(p), "Xdata\n")
+    else:
+        print("  skip  extended attributes: not on this filesystem")
+
+    # Setuid survives what a change of owner would clear, and a smaller file
+    # written in place is cut to length.
+    p = fresh("modes.txt", 0o4755)
+    run([MOLLY, p], ["X", SAVE])
+    check("setuid and the mode survive", os.stat(p).st_mode & 0o7777, 0o4755)
+    p = fresh("short.txt")
+    q = os.path.join(d, "short2.txt")
+    os.link(p, q)
+    with open(p, "w") as fh:
+        fh.write("one\ntwo\nthree\n")
+    run([MOLLY, p], ["\x1b[1;2B", "\x1b[1;2B", "\x1b[3~", SAVE])
+    check("written in place and shorter, the old tail is gone", read(p), "three\n")
+    os.unlink(q)
+
+    # Made read-only after it was opened: the rename would have gone through
+    # without a word. "n" leaves it alone, "y" is the owner's to say.
+    p = fresh("late.txt")
+
+    def lock():
+        os.chmod(p, 0o444)
+    out = run_interleaved([MOLLY, p], ["X"], lock, [SAVE, 0.2, "n\r", 0.2])
+    check("a file made read-only since is asked about", b"read-only" in out, True)
+    check("and no leaves it", read(p), "data\n")
+    run_interleaved([MOLLY, p], ["\x00", "read only", "\r", "X"], lambda: None,
+                    [SAVE, 0.2, "y\r", 0.2])
+    check("and yes replaces it", read(p), "Xdata\n")
+    check("still read-only", os.stat(p).st_mode & 0o777, 0o444)
+
+    # Naming a new buffer. The name only sticks once a save to it has worked.
+    cwd = os.getcwd()
+    os.chdir(d)
+    try:
+        taken = fresh("taken.txt")
+        run([MOLLY], ["new", SAVE, "taken.txt\r", 0.2, "n\r", 0.2])
+        check("naming a file that exists asks, and no leaves it", read(taken), "data\n")
+        run([MOLLY], ["new", SAVE, "taken.txt\r", 0.2, "y\r", 0.2])
+        check("and yes overwrites it", read(taken), "new\n")
+
+        os.mkfifo("pipe")
+        out, st = run([MOLLY], ["new", SAVE, "pipe\r", 0.2, "\x1b", 0.2, "\x11\x11\x11"],
+                      status=True)
+        check("a FIFO is refused", b"not a regular file" in out, True)
+        check("and stays one", stat.S_ISFIFO(os.stat("pipe").st_mode), True)
+
+        run([MOLLY], ["new", SAVE, "pipe\r", 0.2, "other.txt\r", 0.2])
+        check("the refusal offers another name", read("other.txt"), "new\n")
+
+        # The second save goes to the same place without asking, so the good
+        # name stuck, and the bad one did not.
+        run([MOLLY], ["new", SAVE, "pipe\r", 0.2, "third.txt\r", 0.2, "2", SAVE, 0.2])
+        check("the name that worked is the buffer's", read("third.txt"), "new2\n")
+
+        os.mkdir("sub")
+        run([MOLLY], ["new", SAVE, "sub\r", 0.2, "fourth.txt\r", 0.2])
+        check("so is a directory refused", read("fourth.txt"), "new\n")
+
+        # A named buffer whose file has become a FIFO: nothing written down it,
+        # which would have blocked with no reader.
+        p = fresh("was.txt")
+
+        def swap():
+            os.unlink(p)
+            os.mkfifo(p)
+        out = run_interleaved([MOLLY, p], ["X"], swap, [SAVE, 0.2, "\x1b", 0.2])
+        check("a file that became a FIFO is refused too", b"not a regular file" in out, True)
+        check("and is left a FIFO", stat.S_ISFIFO(os.stat(p).st_mode), True)
+    finally:
+        os.chdir(cwd)
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -6459,6 +6584,7 @@ def main():
         test_control_bytes(tmpdir)
         test_stray_bytes(tmpdir)
         test_only_regular_files(tmpdir)
+        test_save_keeps_the_file(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

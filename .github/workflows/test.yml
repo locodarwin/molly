@@ -7,8 +7,20 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      # A two-user test that skips itself must fail here, not pass unnoticed.
+      MOLLY_REQUIRE_NAMESPACES: "1"
     steps:
       - uses: actions/checkout@v5
+      # What tests/shared_files.py needs: newuidmap, subordinate IDs for this
+      # user, and unprivileged user namespaces, which Ubuntu restricts by default.
+      - name: Allow user namespaces with several UIDs
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y uidmap
+          grep -q "^$(id -un):" /etc/subuid || echo "$(id -un):100000:65536" | sudo tee -a /etc/subuid
+          grep -q "^$(id -un):" /etc/subgid || echo "$(id -un):100000:65536" | sudo tee -a /etc/subgid
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - run: make
       # Event-loop unit tests, the pty-driven regression suite, the
       # golden-screen snapshots, and the differential replace-all fuzz.

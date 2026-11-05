@@ -3,6 +3,8 @@
 
 #include "molly.h"
 
+#include <sys/xattr.h>
+
 /* --- where a buffer's text lives -----------------------------------------
  *
  * A file is read in one piece, into one block (B.text), and each row is a span
@@ -523,82 +525,104 @@ static int editor_write_rows(int fd, size_t *total) {
   return 0;
 }
 
-/* A rename is only durable once the directory entry itself is on disk. */
+/* What save_to() came to. */
+enum { SAVE_DONE, SAVE_STOPPED, SAVE_REFUSED };
 
-void editor_save(void) {
-  if (B.tty != NULL) {
-    editor_set_status_message("A terminal is not a file to save.");
-    return;
+/* Whether every extended attribute on `a` is on `b` with the same value. A value
+ * too long for the buffers counts as different: the answer only ever decides
+ * between a rename and a slower write that keeps everything. */
+static int xattrs_within(const char *a, const char *b) {
+  char names[8192], va[4096], vb[4096];
+  ssize_t n = listxattr(a, names, sizeof(names)), i = 0;
+  if (n == -1) return errno == ENOTSUP || errno == ENOSYS;
+  while (i < n) {
+    const char *name = names + i;
+    ssize_t la = getxattr(a, name, va, sizeof(va));
+    ssize_t lb = getxattr(b, name, vb, sizeof(vb));
+    if (la == -1 || la != lb || memcmp(va, vb, (size_t)la) != 0) return 0;
+    i += (ssize_t)strlen(name) + 1;
   }
-  if (B.readonly) {
-    editor_set_status_message("This file is read-only. View > Read only turns that off.");
-    return;
-  }
-  if (B.filename == NULL) {
-    char *name = editor_prompt("Save as: %s (ESC to cancel)", NULL);
-    if (name == NULL) {
-      editor_set_status_message("Save aborted");
-      return;
-    }
-    /* An empty answer must not become the file name: it can never be saved
-     * to, and because it is non-NULL it would suppress this prompt forever,
-     * stranding the buffer with no way to write it out. */
-    if (name[0] == '\0') {
-      free(name);
-      editor_set_status_message("Save aborted: no file name given");
-      return;
-    }
-    B.filename = name;
-    build_recovery_path();
-    B.have_disk_mtime = 0;
-  }
+  return 1;
+}
 
-  /* Format on save: the server's edits made first, so what is written is
-   * what it formats to. Here, once the name is settled and before anything
-   * is looked at on disk; a server that does not answer in time is not
-   * waited for, and the file is saved as it is. */
-  int formatted = lspui_format_before_save();
-  char fmsg[48] = "";
-  if (formatted > 0)
-    snprintf(fmsg, sizeof(fmsg), ", formatted (%d change%s)", formatted,
-             formatted == 1 ? "" : "s");
-  else if (formatted < 0)
-    snprintf(fmsg, sizeof(fmsg), ", not formatted: no answer in time");
+/* Ask a yes/no question. */
+static int save_confirm(char *question) {
+  char *ans = editor_prompt(question, NULL);
+  int yes = ans != NULL && (ans[0] == 'y' || ans[0] == 'Y');
+  free(ans);
+  return yes;
+}
 
+/* Write the buffer to `name`.
+ *
+ * Writing a temp file and renaming it over the target is what makes a save atomic,
+ * and it is also a way round the file's permissions: a rename asks only for a
+ * writable directory. So it would replace a file the user may not write, hand a
+ * teammate's file to the saver and their group, drop ACLs and other extended
+ * attributes, split hard links, and swap a FIFO for a regular file. The rename is
+ * used only when the temp file can stand in for the target completely. Otherwise
+ * the file is rewritten where it is, which keeps all of that and says it was not
+ * atomic, and a file the user has no right to write is refused.
+ *
+ * `typed` is a name just given, rather than the buffer's own. SAVE_REFUSED sets
+ * *why, and the caller offers another name. The others have set the message. */
+static int save_to(const char *name, int typed, const char *fmsg, const char **why,
+                   struct stat *after, int *have_after) {
   /* If the name is a symlink, write past it to the real target so atomic
    * rename replaces the file contents rather than the link itself. */
-  const char *target = B.filename;
+  const char *target = name;
   char *resolved = NULL;
   struct stat st;
-  if (lstat(B.filename, &st) == 0 && S_ISLNK(st.st_mode)) {
-    resolved = realpath(B.filename, NULL);
+  if (lstat(name, &st) == 0 && S_ISLNK(st.st_mode)) {
+    resolved = realpath(name, NULL);
     if (resolved == NULL) {
       editor_set_status_message("Save failed: %s", strerror(errno));
-      return;
+      return SAVE_STOPPED;
     }
     target = resolved;
   }
 
   int target_exists = (stat(target, &st) == 0);
 
+  if (target_exists && !S_ISREG(st.st_mode)) {
+    *why = S_ISDIR(st.st_mode) ? strerror(EISDIR) : "not a regular file";
+    free(resolved);
+    return SAVE_REFUSED;
+  }
+
+  if (target_exists && typed &&
+      !save_confirm("That file already exists. Overwrite it? (y/N): %s")) {
+    editor_set_status_message("Save aborted: the file already exists");
+    free(resolved);
+    return SAVE_STOPPED;
+  }
+
   /* Someone else may have written the file since it was opened (or last
    * saved). Ask before overwriting their change -- only meaningful when
    * there's a prior on-disk version to compare against and to lose. */
-  if (B.have_disk_mtime && target_exists && !mtime_eq(st.st_mtim, B.on_disk_mtime)) {
-    char *ans = editor_prompt(
-        "File changed on disk since opened. Save anyway? (y/N): %s", NULL);
-    int proceed = ans != NULL && (ans[0] == 'y' || ans[0] == 'Y');
-    free(ans);
-    if (!proceed) {
-      editor_set_status_message("Save aborted: file changed on disk");
-      free(resolved);
-      return;
-    }
+  if (!typed && B.have_disk_mtime && target_exists &&
+      !mtime_eq(st.st_mtim, B.on_disk_mtime) &&
+      !save_confirm("File changed on disk since opened. Save anyway? (y/N): %s")) {
+    editor_set_status_message("Save aborted: file changed on disk");
+    free(resolved);
+    return SAVE_STOPPED;
+  }
+
+  /* Ours to replace if we say so, since the permission is ours to change. Not
+   * someone else's: that a rename would work is not permission. */
+  int writable = !target_exists || access(target, W_OK) == 0;
+  if (!writable && st.st_uid != geteuid()) {
+    *why = strerror(EACCES);
+    free(resolved);
+    return SAVE_REFUSED;
+  }
+  if (!writable && !save_confirm("This file is read-only. Save anyway? (y/N): %s")) {
+    editor_set_status_message("Save aborted: the file is read-only");
+    free(resolved);
+    return SAVE_STOPPED;
   }
 
   mode_t mode = target_exists ? (st.st_mode & 07777) : default_file_mode();
-  uid_t owner_uid = target_exists ? st.st_uid : (uid_t)-1;
-  gid_t owner_gid = target_exists ? st.st_gid : (gid_t)-1;
 
   /* Write to a unique temp file next to the target, then rename over it, so
    * an interrupted save never leaves the real file truncated or empty.
@@ -611,7 +635,7 @@ void editor_save(void) {
   if (tmp == NULL) {
     editor_set_status_message("Save failed: out of memory");
     free(resolved);
-    return;
+    return SAVE_STOPPED;
   }
   memcpy(tmp, target, tlen);
   memcpy(tmp + tlen, ".XXXXXX", sizeof(".XXXXXX"));
@@ -619,50 +643,80 @@ void editor_save(void) {
   size_t total = 0;
   int fd = mkstemp(tmp);
 
-  if (fd == -1) {
-    /* No room to create a sibling temp file -- typically a writable file in
-     * a read-only directory. Fall back to rewriting the file in place, which
-     * still saves the user's work, but say so: this write is not atomic. */
-    int direct = open(target, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC |
-                              O_NOFOLLOW, mode);
-    if (direct == -1) {
-      editor_set_status_message("Save failed: %s", strerror(errno));
-      free(tmp);
-      free(resolved);
-      return;
-    }
-    int dok = (editor_write_rows(direct, &total) == 0);
-    if (dok && fsync(direct) == -1) dok = 0;
-    struct stat st_after;
-    int have_after = dok && (fstat(direct, &st_after) == 0);
-    if (close(direct) == -1) dok = 0;
+  /* A full disk is no reason to overwrite the only good copy. */
+  if (fd == -1 && (errno == ENOSPC || errno == EDQUOT || errno == ENOMEM)) {
+    editor_set_status_message("Save failed: %s", strerror(errno));
     free(tmp);
     free(resolved);
+    return SAVE_STOPPED;
+  }
+
+  if (fd != -1) {
+    /* In this order, because a change of owner clears setuid and setgid.
+     * mkstemp creates at 0600, so the content is never briefly world-readable. */
+    int stands_in = 1;
+    if (target_exists) {
+      if (st.st_nlink > 1) stands_in = 0;
+      if (fchown(fd, st.st_uid, st.st_gid) == -1) stands_in = 0;
+    }
+    if (fchmod(fd, mode) == -1 && target_exists) stands_in = 0;
+    if (stands_in && target_exists &&
+        !(xattrs_within(target, tmp) && xattrs_within(tmp, target)))
+      stands_in = 0;
+    if (!stands_in) {
+      close(fd);
+      unlink(tmp);
+      fd = -1;
+    }
+  }
+
+  if (fd == -1) {
+    /* Rewrite the file where it is: no room for a sibling temp file -- typically
+     * a writable file in a read-only directory -- or one that could not stand in.
+     * Over the old bytes and cut to length afterwards, so running out of disk
+     * part way loses as little as it can. Non-blocking and checked once open,
+     * because the name could have become a FIFO since it was looked at. */
+    int direct = open(target, O_WRONLY | O_CREAT | O_CLOEXEC | O_NONBLOCK | O_NOFOLLOW, mode);
+    struct stat dst;
+    free(tmp);
+    if (direct == -1) {
+      *why = strerror(errno);
+      free(resolved);
+      return SAVE_REFUSED;
+    }
+    if (fstat(direct, &dst) == -1 || !S_ISREG(dst.st_mode)) {
+      close(direct);
+      *why = "not a regular file";
+      free(resolved);
+      return SAVE_REFUSED;
+    }
+    free(resolved);
+    int dok = (editor_write_rows(direct, &total) == 0);
+    if (dok && ftruncate(direct, (off_t)total) == -1) dok = 0;
+    /* Writing clears setuid and setgid. Best effort: the owner can put them back,
+     * and a teammate saving a group-writable file cannot. */
+    if (dok && (dst.st_mode & 06000)) (void)fchmod(direct, dst.st_mode & 07777);
+    if (dok && fsync(direct) == -1) dok = 0;
+    *have_after = dok && (fstat(direct, after) == 0);
+    if (close(direct) == -1) dok = 0;
     if (!dok) {
       editor_set_status_message("Save failed: %s", strerror(errno));
-      return;
+      return SAVE_STOPPED;
     }
     editor_set_status_message("%zu bytes written (in place, not atomic)%s",
         total, fmsg);
-    B.dirty = 0;
-    saved_snapshot_take();
-    B.have_disk_mtime = have_after;
-    if (have_after) B.on_disk_mtime = st_after.st_mtim;
-    if (B.recovery_path[0] != '\0') unlink(B.recovery_path);
-    lsp_buffer_saved(V.buf);
-    git_refresh(V.buf);
-    return;
+    return SAVE_DONE;
   }
 
   int ok = 1;
-  /* Not fatal if it fails: the file is saved either way, only its mode is off.
-   * mkstemp creates at 0600, so the content is never briefly world-readable. */
-  (void)fchmod(fd, mode);
-  /* Keep the file's owner across the replace when we have the privilege to;
-   * an unprivileged process simply cannot, and the save still succeeds. */
-  if (target_exists) (void)fchown(fd, owner_uid, owner_gid);
 
   if (editor_write_rows(fd, &total) == -1) {
+    ok = 0;
+    editor_set_status_message("Save failed: %s", strerror(errno));
+  }
+
+  /* Writing clears setuid and setgid, so they go back on after it. */
+  if (ok && (mode & 06000) && fchmod(fd, mode) == -1) {
     ok = 0;
     editor_set_status_message("Save failed: %s", strerror(errno));
   }
@@ -674,8 +728,7 @@ void editor_save(void) {
   /* Captured from the still-open fd, before close/rename: rename() doesn't
    * change the file's mtime (same inode), but re-stating the target path
    * afterward would be both an extra syscall and a needless race window. */
-  struct stat st_after;
-  int have_after = ok && (fstat(fd, &st_after) == 0);
+  *have_after = ok && (fstat(fd, after) == 0);
   if (close(fd) == -1 && ok) {
     ok = 0;
     editor_set_status_message("Save failed: %s", strerror(errno));
@@ -692,14 +745,90 @@ void editor_save(void) {
   free(tmp);
   free(resolved);
 
-  if (!ok) return;
+  if (!ok) return SAVE_STOPPED;
 
   editor_set_status_message("%zu bytes written%s", total, fmsg);
+  return SAVE_DONE;
+}
+
+/* A file name from the user; NULL, having said so, for none. An empty answer must
+ * not become the file name: it can never be saved to, and because it is non-NULL it
+ * would suppress the prompt forever, stranding the buffer with no way to write it
+ * out. */
+static char *save_ask_name(char *question) {
+  char *name = editor_prompt(question, NULL);
+  if (name == NULL) {
+    editor_set_status_message("Save aborted");
+    return NULL;
+  }
+  if (name[0] == '\0') {
+    free(name);
+    editor_set_status_message("Save aborted: no file name given");
+    return NULL;
+  }
+  return name;
+}
+
+void editor_save(void) {
+  if (B.tty != NULL) {
+    editor_set_status_message("A terminal is not a file to save.");
+    return;
+  }
+  if (B.readonly) {
+    editor_set_status_message("This file is read-only. View > Read only turns that off.");
+    return;
+  }
+  /* A typed name becomes the buffer's only once a save to it has worked, so a bad
+   * one cannot strand the buffer on it. */
+  char *typed = NULL;
+  if (B.filename == NULL) {
+    typed = save_ask_name("Save as: %s (ESC to cancel)");
+    if (typed == NULL) return;
+  }
+
+  /* Format on save: the server's edits made first, so what is written is
+   * what it formats to. Here, once the name is settled and before anything
+   * is looked at on disk; a server that does not answer in time is not
+   * waited for, and the file is saved as it is. */
+  int formatted = lspui_format_before_save();
+  char fmsg[48] = "";
+  if (formatted > 0)
+    snprintf(fmsg, sizeof(fmsg), ", formatted (%d change%s)", formatted,
+             formatted == 1 ? "" : "s");
+  else if (formatted < 0)
+    snprintf(fmsg, sizeof(fmsg), ", not formatted: no answer in time");
+
+  struct stat after;
+  int have_after = 0, result;
+  for (;;) {
+    const char *why = NULL;
+    char question[160];
+    char *other;
+    result = save_to(typed != NULL ? typed : B.filename, typed != NULL, fmsg, &why,
+                     &after, &have_after);
+    if (result != SAVE_REFUSED) break;
+    snprintf(question, sizeof(question),
+             "Can't save there: %s. Save as: %%s (ESC to cancel)", why);
+    other = save_ask_name(question);
+    free(typed);
+    typed = other;
+    if (typed == NULL) return;
+  }
+  if (result != SAVE_DONE) {
+    free(typed);
+    return;
+  }
+
   B.dirty = 0;
   saved_snapshot_take();
   B.have_disk_mtime = have_after;
-  if (have_after) B.on_disk_mtime = st_after.st_mtim;
+  if (have_after) B.on_disk_mtime = after.st_mtim;
   if (B.recovery_path[0] != '\0') unlink(B.recovery_path);
+  if (typed != NULL) {
+    free(B.filename);
+    B.filename = typed;
+    build_recovery_path();
+  }
   lsp_buffer_saved(V.buf);
   git_refresh(V.buf);
 }

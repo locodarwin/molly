@@ -40,6 +40,7 @@ LIBOBJ = $(filter-out src/main.o,$(OBJ))
 test: molly test-units tests/regex_cli
 	python3 tests/test_molly.py ./molly
 	python3 tests/test_golden.py ./molly
+	python3 tests/shared_files.py ./molly
 	python3 tests/fuzz_replace.py ./molly
 	python3 tests/fuzz_regex.py ./tests/regex_cli
 

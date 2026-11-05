@@ -182,7 +182,7 @@ def main():
         # its tracks rather than eat the machine it fails on.
         out, st = run(["/bin/bash", "-c",
                        "ulimit -v 2000000; exec %s %s" % (molly, path)],
-                      keys, status=True)
+                      keys, status=True, exit_wait=10.0)
         with open(path, "r") as fh:
             got = fh.read()
 

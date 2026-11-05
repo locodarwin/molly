@@ -3456,6 +3456,24 @@ static void test_storage_edit(void) {
   }
 }
 
+/* The caps count what is held, so going back and forth must not change it. */
+static void test_undo_size(void) {
+  size_t held;
+  int i;
+  printf("\nundo: the history's size\n");
+  mc_load("");
+  editor_insert_text("one\ntwo\nthree", 13);
+  held = B.undo.undo_bytes + B.undo.redo_bytes;
+  check("something is held", held > 0, 1);
+  for (i = 0; i < 2000; i++) {
+    editor_undo();
+    editor_redo();
+  }
+  check("back and forth leaves it as it was",
+        (long)(B.undo.undo_bytes + B.undo.redo_bytes), (long)held);
+  check("with nothing left on the redo side", (long)B.undo.redo_bytes, 0);
+}
+
 static void test_storage_gap(void) {
   /* A plain list of strings beside the buffer, given the same random edits:
    * the gap array has to agree with it after every one. */
@@ -5516,6 +5534,7 @@ int main(void) {
   test_lsp_rename_apply();
   test_windows_buffer_closed();
   test_control_cells();
+  test_undo_size();
   test_chords();
   test_config_parse();
   test_config_keys();

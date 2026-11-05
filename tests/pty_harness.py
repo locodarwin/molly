@@ -16,7 +16,8 @@ import termios
 import time
 
 
-def run(argv, keys, rows=24, cols=80, settle=0.4, env=None, status=False):
+def run(argv, keys, rows=24, cols=80, settle=0.4, env=None, status=False,
+        exit_wait=0.0):
     """Start argv under a pty, send `keys`, return everything it printed.
 
     A float in `keys` is treated as a pause in seconds rather than input. A
@@ -181,6 +182,17 @@ def run(argv, keys, rows=24, cols=80, settle=0.4, env=None, status=False):
             "pty_harness: %s said nothing for %.1fs after the last key, so what"
             " follows judges a session it may never have read (keys: %r)\n"
             % (os.path.basename(argv[0]), settle + 3.0, keys))
+
+    # For a session whose whole point is that it ends: the quit may simply not have
+    # been reached yet, on a loaded runner with a save and its fsync in front of it,
+    # and the kill below would then be reported as the program failing to quit.
+    deadline = time.time() + exit_wait
+    while reaped is None and time.time() < deadline:
+        drain(0.05)
+        done, st = os.waitpid(pid, os.WNOHANG)
+        if done:
+            reaped = st
+            drain(0.05)
 
     if reaped is None:
         try:

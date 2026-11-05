@@ -6294,7 +6294,8 @@ def test_stray_bytes(tmpdir):
     path = os.path.join(tmpdir, "f.txt")
     with open(path, "wb") as fh:
         fh.write(KEEP)
-    _, st = run([MOLLY, path], TO_IT + [SH_END, "\x1b[3~", SAVE, "\x11"], status=True)
+    _, st = run([MOLLY, path], TO_IT + [SH_END, "\x1b[3~", SAVE, "\x11"], status=True,
+                exit_wait=10.0)
     check("and the editor is still there to quit", os.WIFEXITED(st) and os.WEXITSTATUS(st), 0)
 
     # A selection across several lines, deleted and put back as one step.
@@ -6361,7 +6362,7 @@ def test_only_regular_files(tmpdir):
                               ("a file that cannot be read", 2, b"Permission denied")):
         out, st = run(["/bin/bash", "-c", shell, "good.txt"],
                       ["X", OPEN, 0.2] + [DOWN] * downs + ["\r", 0.2, SAVE, "\x11"],
-                      status=True)
+                      status=True, exit_wait=10.0)
         check("%s from the dialog says why" % label, why in out, True)
         check("and the session goes on to quit normally",
               os.WIFEXITED(st) and os.WEXITSTATUS(st), 0)
@@ -6629,6 +6630,28 @@ def test_paste(tmpdir):
     check("Alt with one of them is still a key", e("x\n", ["\x1b]", 0.4, "Y"]), "Yx\n")
 
 
+def test_signal_in_a_prompt(tmpdir):
+    """A hangup or a kill ends molly wherever it is waiting, and keeps the work."""
+    print("\nsignals: nothing that waits for a key can hold one up")
+    for name, keys in (("a prompt", ["X", "\x07"]),         # Go to line
+                       ("the open dialog", ["X", "\x0f"]),
+                       ("the find dialog", ["X", "\x06"]),
+                       ("the palette", ["X", "\x00"])):
+        for sig in (signal.SIGHUP, signal.SIGTERM):
+            path = os.path.join(tmpdir, "sig.txt")
+            rec = path + ".molly-recover"
+            with open(path, "w") as fh:
+                fh.write("data\n")
+            if os.path.exists(rec):
+                os.unlink(rec)
+            _, _, _, st, _ = run_until_signal([MOLLY, path], sig, keys=keys)
+            check("%s in %s ends it" % (sig.name, name),
+                  os.WIFSIGNALED(st) and os.WTERMSIG(st), sig)
+            check("with the work kept", os.path.exists(rec), True)
+            if os.path.exists(rec):
+                os.unlink(rec)
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -6668,6 +6691,7 @@ def main():
         test_external_change(tmpdir)
         test_line_endings(tmpdir)
         test_paste(tmpdir)
+        test_signal_in_a_prompt(tmpdir)
         test_symlink_race(tmpdir)
         test_signals(tmpdir)
         test_recovery(tmpdir)
@@ -6722,6 +6746,7 @@ def main():
         test_save_keeps_the_file(tmpdir)
         test_line_endings(tmpdir)
         test_paste(tmpdir)
+        test_signal_in_a_prompt(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

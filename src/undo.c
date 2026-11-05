@@ -220,19 +220,28 @@ void uc_apply(struct uchange *u, int redo) {
   editor_recompute_dirty();
 }
 
+/* Off the top of a stack, taking its size with it. Moving a record between the
+ * stacks added its size to one count and left it in the other, so going back and
+ * forth reached the byte cap and evicted history well within it. */
+static struct uchange *undo_pop(struct uchange **s, int *n, size_t *bytes) {
+  struct uchange *u = s[--*n];
+  *bytes -= u->len + sizeof(struct uchange);
+  return u;
+}
+
 void editor_undo(void) {
   if (B.undo.undo_n == 0) {
     editor_set_status_message("Nothing to undo");
     return;
   }
-  struct uchange *u = B.undo.undo[--B.undo.undo_n];
+  struct uchange *u = undo_pop(B.undo.undo, &B.undo.undo_n, &B.undo.undo_bytes);
   int group = u->group;
   uc_apply(u, 0);
   redo_push(u);
   /* Keep popping while the top of the stack belongs to the same group --
    * already in reverse push order, since both stacks are LIFO. */
   while (group != 0 && B.undo.undo_n > 0 && B.undo.undo[B.undo.undo_n - 1]->group == group) {
-    u = B.undo.undo[--B.undo.undo_n];
+    u = undo_pop(B.undo.undo, &B.undo.undo_n, &B.undo.undo_bytes);
     uc_apply(u, 0);
     redo_push(u);
   }
@@ -251,12 +260,12 @@ void editor_redo(void) {
     editor_set_status_message("Nothing to redo");
     return;
   }
-  struct uchange *u = B.undo.redo[--B.undo.redo_n];
+  struct uchange *u = undo_pop(B.undo.redo, &B.undo.redo_n, &B.undo.redo_bytes);
   int group = u->group;
   uc_apply(u, 1);
   undo_push(u);
   while (group != 0 && B.undo.redo_n > 0 && B.undo.redo[B.undo.redo_n - 1]->group == group) {
-    u = B.undo.redo[--B.undo.redo_n];
+    u = undo_pop(B.undo.redo, &B.undo.redo_n, &B.undo.redo_bytes);
     uc_apply(u, 1);
     undo_push(u);
   }

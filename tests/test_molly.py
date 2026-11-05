@@ -5408,6 +5408,17 @@ def test_terminal_extras(tmpdir):
         with open("f.txt") as fh:
             check("over two lines it is two lines", fh.read(), "a\nbhello\n")
 
+        # Paste is text: a program that asked for bracketed paste gets the
+        # clipboard between the markers, with no ESC of the clipboard's own to
+        # end it early -- the rest would be typed, and a shell would run it.
+        # Other controls go too, and a carriage return is a newline.
+        session(["printf '\\033[?2004h'; " + READ(25), WAIT, BACK, "\x01", "\x03",
+                 "\x1b[6;5~", PALETTE, "paste", "\r", WAIT],
+                text="a\x1b[201~b\x03\x7f\u009b\nc\rd\r\ne\n")
+        check("a paste cannot end a bracketed paste early", got(),
+              b"\x1b[200~a[201~b\nc\nd\ne\x1b[201~")
+        os.remove("got")
+
         LINES = "seq 1 200 | sed 's/^/n/'\r"
         scr = session([LINES, WAIT, SH_PGUP, "\x06", "n42", "\r", 0.3])
         text = [r.strip() for r in scr.text()]

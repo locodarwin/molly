@@ -585,14 +585,40 @@ int tty_key(int c) {
 }
 
 /* Paste, into the program: wrapped in the bracketed-paste markers when it has
- * asked for them, so a shell does not run the lines as they arrive. */
+ * asked for them, so a shell does not run the lines as they arrive.
+ *
+ * Text only, by the rule a paste from the outer terminal already follows (see
+ * read_paste): line breaks and tabs, and no other control character. The
+ * clipboard can hold anything a file held, and a copied ESC[201~ would end the
+ * paste early and have the rest typed -- a command, run with no Enter pressed.
+ * C1 controls go too, raw or as UTF-8, being escape sequences to whatever reads
+ * eight-bit ones. A line break is a newline, as read_paste makes it. */
 void tty_paste(const char *s, int len) {
   struct tty *t = V.buf->tty;
+  int i = 0, from = 0, bracketed;
   if (t == NULL || t->exited) return;
   t->scroll = 0;
-  if (vt_mode(t->vt, VT_MODE_BRACKETED_PASTE)) tty_write(t, "\x1b[200~", 6);
-  tty_write(t, s, len);
-  if (vt_mode(t->vt, VT_MODE_BRACKETED_PASTE)) tty_write(t, "\x1b[201~", 6);
+  bracketed = vt_mode(t->vt, VT_MODE_BRACKETED_PASTE);
+  if (bracketed) tty_write(t, "\x1b[200~", 6);
+  while (i < len) {
+    unsigned char c = (unsigned char)s[i];
+    int n = utf8_char_bytes(s, len, i);
+    int keep = n > 1 ? !(c == 0xC2 && (unsigned char)s[i + 1] < 0xA0)
+                     : c == '\t' || c == '\n' || (c >= 0x20 && c != 0x7f && (c < 0x80 || c >= 0xA0));
+    if (keep) {
+      i += n;
+      continue;
+    }
+    tty_write(t, s + from, i - from);
+    if (c == '\r') {
+      tty_write(t, "\n", 1);
+      if (i + 1 < len && s[i + 1] == '\n') i++;
+    }
+    i++;
+    from = i;
+  }
+  tty_write(t, s + from, i - from);
+  if (bracketed) tty_write(t, "\x1b[201~", 6);
 }
 
 /* The selected text, a line to a row with its trailing blanks dropped. */

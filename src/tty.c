@@ -40,6 +40,7 @@
 
 #define TTY_SCROLLBACK 5000
 #define TTY_READ_MAX   (256 * 1024)   /* per wake-up, so a flood cannot starve keys */
+#define TTY_REPLY_ROOM (64 * 1024)    /* queued past this, answers are dropped */
 
 struct tty {
   struct vt *vt;
@@ -143,9 +144,12 @@ static void on_output(void *user) {
     return;
   }
   {
+    /* Answers wait their turn behind what is already queued, and are dropped
+     * once that much is waiting: the program is not reading, and a queue that
+     * grew with every question it asked would grow without end. */
     int len;
     const char *r = vt_reply(t->vt, &len);
-    if (len > 0) tty_write(t, r, len);
+    if (len > 0 && t->wq.len - t->wdone < TTY_REPLY_ROOM) tty_write(t, r, len);
     vt_reply_done(t->vt);
   }
   {

@@ -589,8 +589,16 @@ static int param(const struct vt *t, int i, int dflt) {
   return t->params[i];
 }
 
+/* An answer for the program. Kept to a few kilobytes between reads: a program
+ * that asks and never reads the answers -- `cat` of a file full of questions --
+ * would otherwise have them pile up at twice the size of what it wrote. A
+ * program that reads them never has more than one or two waiting. */
+#define VT_REPLY_MAX 4096
+
 static void reply(struct vt *t, const char *s) {
-  ab_append(&t->reply, s, (int)strlen(s));
+  int n = (int)strlen(s);
+  if (t->reply.len + n > VT_REPLY_MAX) return;
+  ab_append(&t->reply, s, n);
 }
 
 static void csi_dispatch(struct vt *t, char f) {

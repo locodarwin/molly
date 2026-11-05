@@ -4834,6 +4834,13 @@ static void test_vt(void) {
     t0 = lsp_test_ms();
     vt_feed(big, ab.b, (size_t)ab.len);
     check("and 256 KiB of tab moves take no time", lsp_test_ms() - t0 < 2000, 1);
+    ab.len = 0;
+    while (ab.len < 256 * 1024) ab_append(&ab, "\x1b[6n", 4);
+    vt_feed(big, ab.b, (size_t)ab.len);
+    vt_reply(big, &len);
+    check("answers to a program that does not read them are kept to 4 KiB",
+          len > 0 && len <= 4096, 1);
+    vt_reply_done(big);
     free(ab.b);
     vt_free(big);
   }

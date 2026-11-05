@@ -1932,8 +1932,14 @@ void editor_process_key(int c) {
 
   if (cmd != NULL) {
     res = cmd_run(cmd);
-  } else if ((c == '\t' || (c < 256 && !iscntrl(c))) && B.readonly) {
+  } else if ((c == PASTE_KEY || c == '\t' || (c < 256 && !iscntrl(c))) && B.readonly) {
     editor_set_status_message("This file is read-only. View > Read only turns that off.");
+  } else if (c == PASTE_KEY) {
+    /* At every cursor, as one undo step, with no indenting or closing of pairs:
+     * it brings its own. */
+    int len;
+    const char *text = input_paste_text(&len);
+    cursors_insert_text(text, len);
   } else if (c == '\t' || (c < 256 && !iscntrl(c))) {
     /* Unbound and printable: it is text. Tab is a control character, so testing
      * iscntrl() alone threw it away and a tab could not be typed at all; key

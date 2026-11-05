@@ -108,6 +108,77 @@ static int read_byte_patient(unsigned char *c, int ticks) {
  * visibly hang the editor. */
 #define SEQ_TICKS 3
 
+/* --- pasted text -----------------------------------------------------------
+ *
+ * With bracketed paste on, the terminal wraps a paste in ESC[200~ and ESC[201~, so
+ * it can be told from typing. Without that a control byte in it runs as a command:
+ * text copied from a web page could save over a file with Ctrl-S, a path and Enter.
+ * So it arrives here whole, as one PASTE_KEY, with the line breaks and tabs kept and
+ * every other control character gone, and it is text from then on. The terminal's
+ * own newline is a carriage return. */
+
+/* A stalled paste is ended by this much silence rather than holding the editor. */
+#define PASTE_TICKS 30
+#define PASTE_MAX (1 << 30)
+
+static char *paste_buf;
+static int paste_len, paste_cap;
+
+/* What the last PASTE_KEY brought. Kept until the next one, since a macro plays
+ * the key back. */
+const char *input_paste_text(int *len) {
+  *len = paste_len;
+  return paste_buf != NULL ? paste_buf : "";
+}
+
+static void paste_put(char c) {
+  if (paste_len >= PASTE_MAX) return;
+  if (paste_len + 1 >= paste_cap) {
+    paste_cap = paste_cap ? paste_cap * 2 : 4096;
+    paste_buf = xrealloc(paste_buf, (size_t)paste_cap);
+  }
+  paste_buf[paste_len++] = c;
+  paste_buf[paste_len] = '\0';
+}
+
+static void read_paste(void) {
+  static const char end[] = "\x1b[201~";
+  int matched = 0, last_cr = 0, k;
+  unsigned char c;
+  paste_len = 0;
+  while (read_byte_patient(&c, PASTE_TICKS)) {
+    if (c == (unsigned char)end[matched]) {
+      if (++matched == (int)sizeof(end) - 1) return;
+      continue;
+    }
+    /* The bytes held back were not the end after all. They begin with ESC, which
+     * is not kept, so all that is left of them is the printable rest. */
+    for (k = 1; k < matched; k++) paste_put(end[k]);
+    matched = (c == '\x1b');
+    if (matched) continue;
+    if (c == '\n' && last_cr) { last_cr = 0; continue; }
+    last_cr = (c == '\r');
+    if (c == '\r') c = '\n';
+    if (c == '\n' || c == '\t' || (c >= 0x20 && c != 0x7f)) paste_put((char)c);
+  }
+}
+
+/* A string sequence: OSC, DCS, SOS, PM or APC. These are replies a terminal sends
+ * to a query, and molly asks for nothing in them. Read to the end and thrown away,
+ * or their contents would be typed into the buffer. */
+static void skip_string(unsigned char intro, unsigned char c) {
+  for (;;) {
+    if (c == '\x18' || c == '\x1a') return;       /* CAN, SUB: abandoned */
+    if (c == '\x07' && intro == ']') return;       /* BEL ends an OSC */
+    if (c == '\x1b') {
+      if (!read_byte_patient(&c, SEQ_TICKS)) return;
+      if (c == '\\') return;                       /* ST */
+      continue;
+    }
+    if (!read_byte_patient(&c, SEQ_TICKS)) return;
+  }
+}
+
 /* Static, so that nothing can bypass the event loop by reading the terminal
  * directly: ui_wait_key below is the only caller, and the only way in. */
 static int decode_key(unsigned char c);
@@ -202,6 +273,11 @@ static int decode_key(unsigned char c) {
       case 'S': return F4_KEY;
       case '~':
         switch (atoi(params)) {
+          case 200:
+            read_paste();
+            return PASTE_KEY;
+          /* The end of a paste with no start. Not Esc: nothing was pressed. */
+          case 201: return WINCH_KEY;
           case 1: return HOME_KEY;
           case 3: return DEL_KEY;
           case 4: return END_KEY;
@@ -245,6 +321,17 @@ static int decode_key(unsigned char c) {
       case 'S': return F4_KEY;
     }
     return '\x1b';
+  }
+
+  /* The same bytes as Alt and one of these, told apart the way Esc and Alt are: a
+   * key press has nothing behind it, and a reply is already on its way. Nothing is
+   * drawn for it, so it is reported as a redraw rather than as a key. */
+  if (b == ']' || b == 'P' || b == 'X' || b == '^' || b == '_') {
+    unsigned char first;
+    if (read_byte(&first)) {
+      skip_string(b, first);
+      return WINCH_KEY;
+    }
   }
 
   /* Alt + a printable character. Anything else following Esc -- a control byte,

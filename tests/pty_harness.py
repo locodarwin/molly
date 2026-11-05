@@ -71,7 +71,7 @@ def run(argv, keys, rows=24, cols=80, settle=0.4, env=None, status=False):
     # It enters raw mode with TCSAFLUSH, which throws away input that arrived
     # before it got there, so typing on a timer races the start: on a loaded CI
     # runner molly took longer than the 0.3s this used to sleep and the first
-    # keystrokes vanished. The first byte molly writes ("\x1b[?2004l", from
+    # keystrokes vanished. The first byte molly writes ("\x1b[?2004h", from
     # enable_raw_mode) comes just after that tcsetattr, so its arrival does
     # prove the flush is behind us -- but it also comes *before* molly has
     # loaded the file, applied its configuration or painted anything, and a

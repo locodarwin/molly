@@ -216,6 +216,15 @@ int widget_input_key(struct widget *w, int c) {
     case END_KEY:
       w->icur = w->ilen;
       return 1;
+    /* It only fills in the text: nothing in it can accept the field, so a paste
+     * cannot answer a question or name a file to save over. */
+    case PASTE_KEY: {
+      int n, i;
+      const char *text = input_paste_text(&n);
+      for (i = 0; i < n; i++)
+        if (text[i] != '\n' && text[i] != '\t') input_insert_byte(w, (unsigned char)text[i]);
+      return 1;
+    }
     default:
       break;
   }

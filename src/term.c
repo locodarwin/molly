@@ -52,7 +52,7 @@ void disable_raw_mode(void) {
    * terminal that sends it escape sequences whenever the user clicks. Writing from
    * an atexit handler is allowed; failing is not worth checking for, since there is
    * nothing useful to do about it at this point. */
-  write_all(STDOUT_FILENO, "\x1b[?1006l\x1b[?1002l", 16);
+  write_all(STDOUT_FILENO, "\x1b[?2004l\x1b[?1006l\x1b[?1002l", 24);
   tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.orig_termios);
 }
 
@@ -68,7 +68,7 @@ void disable_raw_mode(void) {
  * and nothing noticed because the mouse was Phase 1 work and this handler was
  * Phase 0's. */
 static void handle_fatal_signal(int sig) {
-  static const char reset[] = "\x1b[?1006l\x1b[?1002l\x1b[?25h\x1b[2J\x1b[H";
+  static const char reset[] = "\x1b[?2004l\x1b[?1006l\x1b[?1002l\x1b[?25h\x1b[2J\x1b[H";
   /* All of them, and still async-signal-safe: the loop is plain reads of the
    * buffer list and a pointer assignment, and what it calls per buffer is the
    * open/write/fsync/close it always was. */
@@ -140,12 +140,9 @@ void enable_raw_mode(void) {
   if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) die("tcsetattr");
   raw_saved = raw;
 
-  /* Turn bracketed paste off even if the terminal or a parent shell left it
-   * on. Molly does not parse the "\x1b[200~...\x1b[201~" wrappers, so with the
-   * mode on a paste would arrive as a stray DEL key (the "\x1b[...~" prefix)
-   * plus literal text; off, a paste is just literal keystrokes and inserts
-   * cleanly. */
-  write_all(STDOUT_FILENO, "\x1b[?2004l", 8);
+  /* Bracketed paste on while molly runs, so a paste is text and not keystrokes.
+   * See input.c. */
+  write_all(STDOUT_FILENO, "\x1b[?2004h", 8);
 
   /* Mouse reporting: 1002 reports presses, releases and motion while a button is
    * held -- enough for click, drag and the wheel, without the flood that 1003's
@@ -222,13 +219,13 @@ int get_window_size(int *rows, int *cols) {
 void term_suspend(void) {
   int mouse = mouse_on;
   if (mouse) term_mouse_set(0);
-  write_all(STDOUT_FILENO, "\x1b[2J\x1b[H", 7);
+  write_all(STDOUT_FILENO, "\x1b[?2004l\x1b[2J\x1b[H", 15);
   tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.orig_termios);
   signal(SIGTSTP, SIG_DFL);
   raise(SIGTSTP);
   /* Continued. */
   tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw_saved);
-  write_all(STDOUT_FILENO, "\x1b[?2004l", 8);
+  write_all(STDOUT_FILENO, "\x1b[?2004h", 8);
   if (mouse) term_mouse_set(1);
   screen_force_repaint();
 }

@@ -53,6 +53,7 @@ enum editorKey {
   PAGE_DOWN,
   WINCH_KEY,  /* not a real keystroke -- a SIGWINCH woke the read loop */
   MOUSE_KEY,  /* nor this one -- a mouse report; see input_last_mouse */
+  PASTE_KEY,  /* nor this one -- pasted text; see input_paste_text */
   BACKTAB_KEY, /* Shift-Tab, which arrives as its own sequence rather than as
                 * Tab with a modifier, and which a focus order needs in order to
                 * have a way back round */
@@ -1140,6 +1141,7 @@ int input_last_key_had_ctrl(void);
 int input_last_key_had_shift(void);
 int ui_wait_key(void);
 void input_last_mouse(struct mouse_event *out);
+const char *input_paste_text(int *len);
 void ui_request_redraw(void);
 int macro_play(void);
 int macro_playing(void);

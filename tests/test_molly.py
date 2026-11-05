@@ -1095,10 +1095,10 @@ def test_osc52_clipboard(tmpdir):
           edit(tmpdir, "abcd\n", [SH_RIGHT, SH_RIGHT, COPY, END, PASTE, SAVE]),
           "abcdab\n")
 
-    # Bracketed paste is disabled at startup, so terminal-pasted text arrives as
-    # plain keystrokes rather than ESC[200~...~ wrappers Molly can't parse.
-    check("bracketed paste disabled at startup",
-          "\x1b[?2004l" in raw("x\n", []), True)
+    # Bracketed paste is on while molly runs and off when it has gone, whichever
+    # way it goes. test_paste has what it does.
+    check("bracketed paste enabled at startup", "\x1b[?2004h" in raw("x\n", []), True)
+    check("and off at the end", "\x1b[?2004l" in raw("x\n", ["\x11"]), True)
 
 
 # ------------------------------------------------------------- gutter ----
@@ -6545,6 +6545,90 @@ def test_line_endings(tmpdir):
           e(b"a\r\nb", [DOWN, END, "\r", "c"]), b"a\r\nb\r\nc")
 
 
+def test_paste(tmpdir):
+    """A paste is text. Nothing in it runs as a key, and it can't answer anything."""
+    print("\npaste: data, not keystrokes")
+
+    def paste(text):
+        return "\x1b[200~" + text + "\x1b[201~"
+
+    def e(original, keys):
+        return edit(tmpdir, original, keys + [SAVE])
+
+    check("it goes in", e("x\n", [paste("hello")]), "hellox\n")
+    check("with its line breaks, as the terminal sends them",
+          e("x\n", [paste("one\rtwo\r")]), "one\ntwo\nx\n")
+    check("or as a web page does", e("x\n", [paste("one\r\ntwo\n")]), "one\ntwo\nx\n")
+    check("and its tabs", e("x\n", [paste("a\tb")]), "a\tbx\n")
+    check("as text in UTF-8", e("x\n", [paste("日本é")]), "日本éx\n")
+
+    # The attack: copied text with a save, a path and Enter in it.
+    path = os.path.join(tmpdir, "paste.txt")
+    victim = os.path.join(tmpdir, "victim.txt")
+    with open(victim, "w") as fh:
+        fh.write("safe\n")
+    with open(path, "w") as fh:
+        fh.write("x\n")
+    run([MOLLY, path], [paste("a\x13b\x11c\x1b[3~d\x18e\x03f\x7fg"), 0.2, SAVE])
+    with open(path) as fh:
+        check("control characters in it do nothing and are dropped", fh.read(),
+              "ab" + "c[3~defgx\n")
+
+    # Prompts: Ctrl-S on an unnamed buffer asks for a name. A pasted name with a
+    # newline behind it fills the field and does not accept it.
+    cwd = os.getcwd()
+    os.chdir(tmpdir)
+    try:
+        run([MOLLY], ["text", SAVE, 0.2, paste("pasted-name\r"), 0.2, "\x1b"])
+        check("a paste does not accept a prompt",
+              os.path.exists("pasted-name"), False)
+        run([MOLLY], ["text", SAVE, 0.2, paste("pasted-name\r"), 0.2, "\r"])
+        check("the field holds it, without the line break",
+              os.path.exists("pasted-name"), True)
+        os.unlink("pasted-name")
+    finally:
+        os.chdir(cwd)
+
+    # One undo step, replacing a selection, no auto-indent or closing of pairs.
+    check("one undo step", e("x\n", [paste("a\rb\rc"), UNDO]), "x\n")
+    check("and redo", e("x\n", [paste("a\rb"), UNDO, REDO]), "a\nbx\n")
+    check("it replaces a selection", e("abc\n", [SH_RIGHT, SH_RIGHT, paste("Z")]), "Zc\n")
+    check("it is not auto-indented", e("  x\n", [END, paste("\ry")]), "  x\ny\n")
+    env = {"MOLLY_CONFIG": os.path.join(tmpdir, "paste.rc")}
+    with open(env["MOLLY_CONFIG"], "w") as fh:
+        fh.write("[editor]\nauto close = true\n")
+    check("and pairs are not closed", edit(tmpdir, "x\n", [paste("(a"), SAVE], env=env), "(ax\n")
+    os.unlink(env["MOLLY_CONFIG"])
+    check("it lands at every cursor", e("ab\ncd\n", ["\x1b[1;5B", paste("Z")]), "Zab\nZcd\n")
+    check("a read-only buffer refuses it",
+          e("x\n", ["\x00", "read only", "\r", paste("Z")]), "x\n")
+
+    # Into the integrated terminal, a paste is for the program; escapes stay out.
+    out = run([MOLLY], ["\x1bt", 0.6, paste("echo PASTE\x1b[31m-OK\r"), 0.6],
+              env={"SHELL": "/bin/sh", "PS1": "$ ", "ENV": ""})
+    check("a paste reaches the program in a terminal", b"PASTE[31m-OK" in out, True)
+
+    # Cut off in the middle, or never started: nothing hangs, nothing is typed.
+    check("an end with no start is nothing", e("x\n", ["\x1b[201~", "Y"]), "Yx\n")
+    check("the end marker's own start in the text is kept",
+          e("x\n", [paste("a\x1b[20b")]), "a[20bx\n")
+    big = "z" * 100000
+    check("a large paste arrives whole", e("", [paste(big), 1.5]), big + "\n")
+
+    # Replies to terminal queries. CSI was always read to its end; the rest are
+    # now, so what they hold is not typed.
+    for label, reply in (("an OSC ended by BEL", "\x1b]11;rgb:1111/2222/3333\x07"),
+                         ("an OSC ended by ST", "\x1b]11;rgb:1111/2222/3333\x1b\\"),
+                         ("a DCS", "\x1bP1$r0m\x1b\\"),
+                         ("an APC", "\x1b_Gi=1;OK\x1b\\"),
+                         ("a PM", "\x1b^hello\x1b\\"),
+                         ("a SOS", "\x1bXhello\x1b\\")):
+        check("%s is read to its end and dropped" % label, e("x\n", [reply, "Y"]), "Yx\n")
+    # Alt and those same characters, on their own, are still keypresses, which
+    # a slow enough next key shows.
+    check("Alt with one of them is still a key", e("x\n", ["\x1b]", 0.4, "Y"]), "Yx\n")
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -6583,6 +6667,7 @@ def main():
         test_save(tmpdir)
         test_external_change(tmpdir)
         test_line_endings(tmpdir)
+        test_paste(tmpdir)
         test_symlink_race(tmpdir)
         test_signals(tmpdir)
         test_recovery(tmpdir)
@@ -6636,6 +6721,7 @@ def main():
         test_only_regular_files(tmpdir)
         test_save_keeps_the_file(tmpdir)
         test_line_endings(tmpdir)
+        test_paste(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

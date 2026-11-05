@@ -529,6 +529,12 @@ int tty_key(int c) {
   char out[16];
 
   if (t == NULL || c == WINCH_KEY || c == MOUSE_KEY) return 0;
+  if (c == PASTE_KEY) {
+    int len;
+    const char *text = input_paste_text(&len);
+    tty_paste(text, len);
+    return 1;
+  }
   shift = input_last_key_had_shift();
   ctrl = input_last_key_had_ctrl();
   alt = input_last_key_had_alt();

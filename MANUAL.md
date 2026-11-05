@@ -1979,6 +1979,13 @@ Everything is asked of the `git` program, through the same path as the shell
 filter, so a slow repository is held to the [shell timeout](#configuration) and
 `Esc` stops it; without git, nothing is shown.
 
+A repository's own configuration can name programs for git to run (an
+fsmonitor, diff drivers, filters), and the column is worked out as soon as a
+file is opened, so molly runs git with all of those turned off: opening a file
+in a repository someone else set up does not run its programs. One consequence:
+blame says nothing about a file whose filter is marked required, such as one
+kept by git-lfs.
+
 ## Saving and Quitting
 
 | Key | Action |

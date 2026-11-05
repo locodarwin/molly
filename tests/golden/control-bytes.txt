@@ -1,0 +1,26 @@
+--- screen ---
+ File Edit Search View Go Window Help
+title?]0;PWNED?end
+sel?ect
+c1?31mdel?end
+~
+~
+sample.txt - 3 lines  Ln 2, Col 8  Sel 7
+HELP: Ctrl-S = save | Ctrl-Q = quit | Ct
+--- attrs ---
+gggggggggggggggggggggggggggggggggggggggg
+.....R........R
+RRR.RRR
+..R......R
+g
+g
+RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+
+--- colors ---
+1: 0-39 7/0
+5: 0-0 8/-
+6: 0-0 8/-
+--- modifiers ---
+1: 1-1 u  6-6 u  11-11 u  18-18 u  23-23 u  26-26 u  33-33 u
+--- cursor ---
+row 3 col 8 visible 1

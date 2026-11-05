@@ -747,6 +747,18 @@ def main():
     check("lsp-complete-narrow", comp_keys, rows=8, cols=16, files=comp_files,
           args=["sample.c"], env=lsp_env)
 
+    # A file that tries to talk to the terminal, shown as reversed question marks
+    # rather than obeyed. The second line is selected, where they turn the other
+    # way, and the third has a C1 CSI and a DEL between ordinary characters.
+    ctl_files = {"sample.txt": "title\x1b]0;PWNED\x07end\n"
+                               "sel\x01ect\n"
+                               "c1\x9b31mdel\x7fend\n"}
+    ctl_keys = ["\x1b[B", "\x1b[1;2F"]
+    check("control-bytes", ctl_keys, rows=8, cols=40, files=ctl_files)
+    check("control-bytes-256", ctl_keys, rows=8, cols=40, files=ctl_files,
+          env={"TERM": "xterm-256color"})
+    check("control-bytes-narrow", ctl_keys, rows=6, cols=12, files=ctl_files)
+
     print()
     if failed:
         for name, detail in failed:

@@ -6171,6 +6171,78 @@ def test_git(tmpdir):
     check("a file git does not track has no sign column", scr.text()[1][0], "x")
 
 
+def test_control_bytes(tmpdir):
+    """A file's contents and a file's name are text, never terminal commands.
+    The bytes still reach the disk untouched."""
+    print("\ncontrol bytes: nothing a file holds reaches the terminal")
+    path = os.path.join(tmpdir, "ctl.txt")
+    hostile = (b"osc\x1b]0;PWNED\x07end\n"
+               b"clip\x1b]52;c;UFdORUQ=\x07end\n"
+               b"dcs\x1bPq#0;2;0;0;0\x1b\\end\n"
+               b"csi\x1b[2Jend\n"
+               b"bel\x07end\n"
+               b"c1\xc2\x9b2Jend\n"
+               b"raw\x9b2Jend\n"
+               b"overlong\xc0\x9bend\n"
+               b"surrogate\xed\xa0\x80end\n"
+               b"huge\xf5\x80\x80\x80end\n"
+               b"cr\rend\n")
+
+    def is_clean(out):
+        return all(x not in out for x in
+                   (b"\x1b]0;", b"\x1b]52;", b"\x1bP", b"\x1b[2Jend",
+                    b"\x07", b"\xc2\x9b", b"\x9b2", b"\xc0", b"\xed\xa0", b"\xf5", b"\r" + b"end"))
+
+    with open(path, "wb") as fh:
+        fh.write(hostile)
+    out = run([MOLLY, path], [0.2])
+    check("a file's bytes are not written to the terminal", is_clean(out), True)
+    check("each of them shows as a reversed question mark",
+          b"\x1b[7m?\x1b[27m]0;PWNED\x1b[7m?\x1b[27mend" in out, True)
+
+    # The bytes around them go on being edited, and saved, as what they are.
+    run([MOLLY, path], ["Z", SAVE])
+    with open(path, "rb") as fh:
+        check("saving keeps every one of them", fh.read(), b"Z" + hostile)
+
+    # One column each, wherever a column is worked out: an end of line lands
+    # where the text says it does. 0xAD alone and NUL are the two the width
+    # table would have called zero wide; a stray byte has no width of its own.
+    with open(path, "wb") as fh:
+        fh.write(b"\xad\xad\x00\x01ab\n")
+    out = run([MOLLY, path], ["\x1b[F", 0.1])
+    check("a stray byte and a NUL take a column each",
+          cursor_col(out) - cursor_col(run([MOLLY, path], [0.1])), 6)
+
+    # The wide table and the combining marks are unharmed.
+    with open(path, "wb") as fh:
+        fh.write("日本 cafe\u0301\n".encode())
+    out = run([MOLLY, path], [0.1])
+    check("real text is drawn as it was", "日本 cafe\u0301".encode() in out, True)
+
+    # File names: the status bar, the prompt after a save, and a dialog's list.
+    name = "n\x1b]0;NAMED\x07.txt"
+    named = os.path.join(tmpdir, "names")
+    os.makedirs(named, exist_ok=True)
+    with open(os.path.join(named, name), "w") as fh:
+        fh.write("x\n")
+    shell = "cd '%s' && exec '%s' \"$0\"" % (named, MOLLY)
+    out = run(["/bin/bash", "-c", shell, name], ["Z", SAVE, 0.2])
+    check("a file name on the status bar is not obeyed",
+          b"\x1b]0;NAMED" not in out and b"n?]0;NAMED?.txt" in out, True)
+    out = run(["/bin/bash", "-c", shell, "other.txt"], ["\x0f", 0.3])
+    check("a file name in the open dialog is not obeyed",
+          b"\x1b]0;NAMED" not in out and b"]0;NAMED" in out, True)
+
+    # The way out, too: perror prints to the same terminal, after the editor's
+    # own screen is gone.
+    bad = "d\x1b]0;NAMED\x07"
+    os.makedirs(os.path.join(named, bad), exist_ok=True)
+    out = run(["/bin/bash", "-c", shell, bad], [])
+    check("a file name in a fatal error is not obeyed",
+          b"\x1b]0;NAMED" not in out and b"d?]0;NAMED?" in out, True)
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -6257,6 +6329,7 @@ def main():
         test_macros(tmpdir)
         test_folding(tmpdir)
         test_git(tmpdir)
+        test_control_bytes(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

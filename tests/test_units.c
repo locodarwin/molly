@@ -250,6 +250,44 @@ static void contains(const char *label, const char *haystack, const char *needle
   }
 }
 
+static void paint_hostile(void) {
+  grid_begin();
+  grid_role(ROLE_TEXT);
+  grid_puts(0, 0, "a\x1b]0;x\x07" "b\xc2\x9b" "c\x9b" "d\xc0\x80" "e\n\t\r" "f\xc3\xa9", 26);
+  grid_flush();
+}
+
+static void test_control_cells(void) {
+  char out[1024];
+  printf("\ngrid: nothing unsafe is written\n");
+  grid_resize(4, 40);
+  grid_invalidate();
+  grid_capture(out, sizeof(out), paint_hostile);
+  contains("each unsafe byte is a question mark, and real text survives", out,
+           "a?]0;x?b?c?d??e???f\xc3\xa9");
+
+  struct { const char *s; int n, bytes, safe; } t[] = {
+    {"a", 1, 1, 1},           {"\x1b", 1, 1, 0},       {"\x7f", 1, 1, 0},
+    {"\x80", 1, 1, 0},        {"\xff", 1, 1, 0},       {"\xc2\x80", 2, 2, 0},
+    {"\xc2\x9f", 2, 2, 0},    {"\xc2\xa0", 2, 2, 1},   {"\xc3\xa9", 2, 2, 1},
+    {"\xc0\x80", 2, 1, 0},    {"\xc1\xbf", 2, 1, 0},   {"\xe0\x80\x80", 3, 1, 0},
+    {"\xe0\xa0\x80", 3, 3, 1}, {"\xed\x9f\xbf", 3, 3, 1}, {"\xed\xa0\x80", 3, 1, 0},
+    {"\xf0\x80\x80\x80", 4, 1, 0}, {"\xf0\x90\x80\x80", 4, 4, 1},
+    {"\xf4\x8f\xbf\xbf", 4, 4, 1}, {"\xf4\x90\x80\x80", 4, 1, 0},
+    {"\xf5\x80\x80\x80", 4, 1, 0},
+  };
+  size_t i;
+  for (i = 0; i < sizeof(t) / sizeof(t[0]); i++) {
+    char label[64];
+    snprintf(label, sizeof(label), "utf8 table row %zu: length", i);
+    check(label, utf8_char_bytes(t[i].s, t[i].n, 0), t[i].bytes);
+    snprintf(label, sizeof(label), "utf8 table row %zu: safe", i);
+    check(label, utf8_safe(t[i].s, t[i].n), t[i].safe);
+  }
+  check("a mark after its base is one safe cell",
+            utf8_safe("e\xcc\x81", 3), 1);
+}
+
 static void paint_plain(void) {
   grid_begin();
   grid_role(ROLE_TEXT);
@@ -5465,6 +5503,7 @@ int main(void) {
   test_lsp_answers();
   test_lsp_rename_apply();
   test_windows_buffer_closed();
+  test_control_cells();
   test_chords();
   test_config_parse();
   test_config_keys();

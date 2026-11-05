@@ -294,7 +294,11 @@ void editor_draw_text_row(int y, erow *row, const struct drow *d,
               : (sev == 1 || sev == 2) ? lspui_severity_role(sev)
               : mark ? ROLE_WHITESPACE
               : roles ? roles[i] : ROLE_TEXT);
-    if (sev) grid_attrs(ATTR_UNDERLINE);
+    /* A control character or a stray byte is a reversed '?', so it cannot be
+     * taken for a real question mark. See grid_put_char(). */
+    int ctl = r[i] != '\t' && !utf8_safe(r + i, nb);
+    if (sev || ctl)
+      grid_attrs((unsigned char)((sev ? ATTR_UNDERLINE : 0) | (ctl ? ATTR_REVERSE : 0)));
     if (!selected) grid_tint(tint);
     prev_i = i;
     if (mark == 1)

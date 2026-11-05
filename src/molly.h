@@ -936,7 +936,8 @@ enum cell_role {
  * is what it gets. ATTR_RAW says the cell's color is the palette index it
  * carries rather than its role's, and italic and reverse become modifiers for
  * such cells because the program turns them on character by character. See
- * grid_color(). Nothing else sets these. */
+ * grid_color(). The one other user is the text area, whose control characters
+ * are ATTR_REVERSE on top of their role. */
 #define ATTR_ITALIC    0x04
 #define ATTR_REVERSE   0x08
 #define ATTR_RAW       0x10
@@ -1526,6 +1527,7 @@ int utf8_char_cols(const char *s, int size, int i, int *nbytes);
 int utf8_col_to_byte(const char *s, int col);
 int utf8_fit_cols(const char *s, int cols, int *out_cols);
 int utf8_is_cont(unsigned char c);
+int utf8_safe(const char *s, int nbytes);
 int utf8_prev(const char *s, int i);
 int utf8_str_cols(const char *s);
 

@@ -10,21 +10,43 @@
 
 int utf8_is_cont(unsigned char c) { return (c & 0xC0) == 0x80; }
 
-/* Bytes in the character starting at index i, validated: a lead byte whose
- * continuation bytes are missing or wrong is treated as a single byte. */
+/* Bytes in the character starting at index i, validated: anything that is not
+ * well-formed UTF-8 -- a missing or wrong continuation byte, an overlong form, a
+ * surrogate, a code point past U+10FFFF -- is treated as a single byte. */
 int utf8_char_bytes(const char *s, int size, int i) {
   if (i < 0 || i >= size) return 1;
   unsigned char c = (unsigned char)s[i];
   int n;
-  if (c >= 0xF0) n = 4;
+  if (c >= 0xF5) return 1;
+  else if (c >= 0xF0) n = 4;
   else if (c >= 0xE0) n = 3;
-  else if (c >= 0xC0) n = 2;
+  else if (c >= 0xC2) n = 2;
   else return 1;
   if (i + n > size) return 1;
   int k;
   for (k = 1; k < n; k++)
     if (!utf8_is_cont((unsigned char)s[i + k])) return 1;
+  unsigned char d = (unsigned char)s[i + 1];
+  if ((c == 0xE0 && d < 0xA0) || (c == 0xED && d > 0x9F) ||
+      (c == 0xF0 && d < 0x90) || (c == 0xF4 && d > 0x8F)) return 1;
   return n;
+}
+
+/* Whether these bytes may be written to a terminal as they stand: printable ASCII
+ * and well-formed UTF-8 other than the C1 controls. Everything else in a file is
+ * somebody else's escape sequence. ESC can set the title or the clipboard, make the
+ * terminal answer into molly's input, or repaint the screen; C1's CSI does the same
+ * in one character, and a lone 0x9B is CSI itself on a terminal not in UTF-8 mode. */
+int utf8_safe(const char *s, int nbytes) {
+  int i = 0;
+  while (i < nbytes) {
+    unsigned char c = (unsigned char)s[i];
+    int n = utf8_char_bytes(s, nbytes, i);
+    if (n == 1 && (c < 0x20 || c >= 0x7F)) return 0;
+    if (c == 0xC2 && (unsigned char)s[i + 1] < 0xA0) return 0;
+    i += n;
+  }
+  return 1;
 }
 
 /* Start index of the character before index i. */
@@ -125,6 +147,9 @@ int utf8_encode(uint32_t cp, char *dst) {
 /* Display columns of the character at index i (tabs are the caller's job). */
 int utf8_char_cols(const char *s, int size, int i, int *nbytes) {
   uint32_t cp = utf8_decode(s, size, i, nbytes);
+  /* A NUL or a byte that is no character draws as one '?' (see grid_put_char),
+   * whatever the table would say about the code point of the same number. */
+  if (*nbytes == 1 && (cp == 0 || cp >= 0x80)) return 1;
   return molly_wcwidth(cp);
 }
 

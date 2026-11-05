@@ -201,6 +201,16 @@ int grid_put_char(int y, int x, const char *s, int nbytes, int w) {
   if (y < 0 || y >= g_rows || x < 0 || x >= g_cols) return 0;
   if (nbytes <= 0) return 0;
 
+  /* The one place everything drawn passes through, so the one place a file's
+   * contents or a file's name are stopped from being a command to the terminal.
+   * A caller that wants the real bytes marked for the reader, as the text area
+   * does, sets ATTR_REVERSE; the buffer keeps them either way. */
+  if (!utf8_safe(s, nbytes)) {
+    s = "?";
+    nbytes = 1;
+    w = 1;
+  }
+
   if (w == 0) {
     /* Attach to the character to the left, stepping over the tail of a wide
      * glyph. With nothing to the left there is nothing to combine with. */
@@ -399,6 +409,8 @@ static void flush_row(struct abuf *ab, int y) {
         theme_style((unsigned char)c->bg, &t);
         if (t.bg >= 0) want.bg = t.bg;
       }
+      /* The opposite of what is around it, so it shows inside a selection too. */
+      if (c->attrs & ATTR_REVERSE) want.reverse = !want.reverse;
     }
     if (c->attrs & ATTR_BOLD) want.bold = 1;
     if (c->attrs & ATTR_UNDERLINE) want.underline = 1;

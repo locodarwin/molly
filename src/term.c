@@ -4,10 +4,27 @@
 #include "molly.h"
 
 _Noreturn void die(const char *s) {
+  int saved = errno;
+  /* `s` can be a file name, and this goes straight to the terminal. */
+  char safe[512];
+  size_t out = 0;
+  int i = 0, len = (int)strlen(s);
+  while (i < len && out + 5 < sizeof(safe)) {
+    int n = utf8_char_bytes(s, len, i);
+    if (utf8_safe(s + i, n)) {
+      memcpy(safe + out, s + i, (size_t)n);
+      out += (size_t)n;
+    } else {
+      safe[out++] = '?';
+    }
+    i += n;
+  }
+  safe[out] = '\0';
   write_recovery_all();
   write(STDOUT_FILENO, "\x1b[2J", 4);
   write(STDOUT_FILENO, "\x1b[H", 3);
-  perror(s);
+  errno = saved;
+  perror(safe);
   exit(1);
 }
 

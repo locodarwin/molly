@@ -467,7 +467,7 @@ static int ext_color(const struct vt *t, int i, int *out) {
     int first = k + 1;
     /* With colons, `38:2::r:g:b` has an empty color-space slot; with
      * semicolons there is none. Four sub-parameters means the slot is there. */
-    if (t->sub[k + 1] && k + 4 < t->nparams && t->sub[k + 4]) first = k + 2;
+    if (k + 4 < t->nparams && t->sub[k + 1] && t->sub[k + 4]) first = k + 2;
     if (first + 2 < t->nparams) {
       int r = t->params[first], g = t->params[first + 1], b = t->params[first + 2];
       if (r < 0) r = 0;
@@ -749,7 +749,12 @@ static void esc_inter_dispatch(struct vt *t, char inter, char f) {
 static void osc_dispatch(struct vt *t) {
   int ps = 0, i = 0;
   t->osc[t->osclen] = '\0';
-  while (i < t->osclen && isdigit((unsigned char)t->osc[i])) ps = ps * 10 + (t->osc[i++] - '0');
+  /* Capped like a CSI parameter: no OSC number is that large, and one that
+   * wrapped round could come out as 0 or 2, a title. */
+  while (i < t->osclen && isdigit((unsigned char)t->osc[i])) {
+    if (ps < 100000) ps = ps * 10 + (t->osc[i] - '0');
+    i++;
+  }
   if (i >= t->osclen || t->osc[i] != ';') return;
   i++;
   /* 0 and 2 are the window title, which molly shows as the buffer's name. The

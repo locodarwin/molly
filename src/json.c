@@ -22,6 +22,7 @@
  * code builds its output in. */
 
 #include "molly.h"
+#include <float.h>
 
 /* Nodes per chunk. A diagnostics message for a file with a few problems is tens
  * of nodes; a completion list from clangd is a few thousand. Chunks rather than
@@ -457,8 +458,13 @@ void json_write(struct abuf *ab, const struct json *v) {
   case JSON_FALSE: ab_append(ab, "false", 5); break;
   case JSON_TRUE: ab_append(ab, "true", 4); break;
   case JSON_NUMBER:
-    if (v->num == (double)(long long)v->num && v->num > -1e15 && v->num < 1e15)
+    /* The range first: a double outside long long's is no integer to convert.
+     * A number too large for a double was read as infinity, which JSON cannot
+     * spell; 1e999 is the same number to whatever reads it back. */
+    if (v->num > -1e15 && v->num < 1e15 && v->num == (double)(long long)v->num)
       json_putf(ab, "%lld", (long long)v->num);
+    else if (v->num > DBL_MAX || v->num < -DBL_MAX)
+      ab_append(ab, v->num > 0 ? "1e999" : "-1e999", v->num > 0 ? 5 : 6);
     else
       json_putf(ab, "%.17g", v->num);
     break;

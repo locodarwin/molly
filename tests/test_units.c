@@ -4207,6 +4207,17 @@ static void test_json(void) {
     free(ab.b);
   }
   {
+    /* Numbers past a long long, and past a double: still JSON going back. */
+    struct abuf ab = ABUF_INIT;
+    d = jp("[1e400,-1e400,1e20,7]");
+    json_write(&ab, json_root(d));
+    ab_append(&ab, "", 1);
+    check_str("a number too large for a double is still a number", ab.b,
+              "[1e999,-1e999,1e+20,7]");
+    json_free(d);
+    free(ab.b);
+  }
+  {
     /* Not NUL-terminated: the length is the end, whatever follows it. */
     const char s[] = "[1, 2]garbage";
     d = json_parse(s, 6);
@@ -5011,6 +5022,14 @@ static void test_vt(void) {
   check_str("OSC 2, ended by ST", vt_take_title(t), "other");
   vts(t, "\x1b]52;c;aGVsbG8=\x07");
   check("OSC 52 is not a title, and is ignored", vt_take_title(t) == NULL, 1);
+  vts(t, "\x1b]4294967298;wrapped\x07");
+  check("nor is a number so large it would wrap round to 2", vt_take_title(t) == NULL, 1);
+  /* A color as the 32nd parameter, with nothing after it: read within the
+   * sequence, which the sanitizer run checks. */
+  vts(t, "\x1b[31m\x1b[0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;38;2m"
+         "\x1b[HQ");
+  check("a color cut off by the parameter limit is no color",
+        vt_at(t, 0, 0)->cp == 'Q' && vt_at(t, 0, 0)->fg == -1, 1);
   vts(t, "\x07");
   check("BEL rings", vt_take_bell(t), 1);
   vt_free(t);

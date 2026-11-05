@@ -6243,6 +6243,72 @@ def test_control_bytes(tmpdir):
           b"\x1b]0;NAMED" not in out and b"d?]0;NAMED?" in out, True)
 
 
+def test_stray_bytes(tmpdir):
+    """A byte that is not part of a whole character is one character by itself,
+    going either way, and a selection can start or end on one."""
+    print("\nstray bytes: one character each, in both directions")
+    STRAY = b"a\x80\x80\x80b\n"
+    check("Right steps onto the first", edit_bytes(tmpdir, STRAY, [RIGHT, RIGHT, "X", SAVE]),
+          b"a\x80X\x80\x80b\n")
+    check("and past them all",
+          edit_bytes(tmpdir, STRAY, [RIGHT] * 4 + ["X", SAVE]), b"a\x80\x80\x80Xb\n")
+    check("Left steps back over one",
+          edit_bytes(tmpdir, STRAY, ["\x1b[F", LEFT, LEFT, "X", SAVE]),
+          b"a\x80\x80X\x80b\n")
+    check("Backspace takes one",
+          edit_bytes(tmpdir, STRAY, ["\x1b[F", LEFT, "\x7f", SAVE]), b"a\x80\x80b\n")
+    check("Delete takes one",
+          edit_bytes(tmpdir, STRAY, [RIGHT, "\x1b[3~", SAVE]), b"a\x80\x80b\n")
+    check("a truncated character is no character either",
+          edit_bytes(tmpdir, b"\xe2\x82Z\n", [RIGHT, "X", SAVE]), b"\xe2X\x82Z\n")
+
+    # A whole character is still one step, and vertical movement still lands
+    # on the start of one.
+    check("Right takes a whole character",
+          edit_bytes(tmpdir, "é€x\n".encode(), [RIGHT, "X", SAVE]), "éX€x\n".encode())
+    check("Left takes a whole character",
+          edit_bytes(tmpdir, "é€x\n".encode(), ["\x1b[F", LEFT, LEFT, "X", SAVE]),
+          "éX€x\n".encode())
+    check("Backspace takes a whole character",
+          edit_bytes(tmpdir, "é€\n".encode(), ["\x1b[F", "\x7f", SAVE]), "é\n".encode())
+    check("Down does not land inside a character",
+          edit_bytes(tmpdir, "ab\n€€\n".encode(), [RIGHT, DOWN, "X", SAVE]),
+          "ab\nX€€\n".encode())
+
+    # The hang: a selection anchored on a stray byte. Typing in front of one
+    # leaves the cursor on it. Deleting used to walk back until it met the
+    # anchor, jump over it, eat what was above and spin at the top of the file.
+    # A save and a quit that get through are the proof it stopped.
+    KEEP = b"keep1\nkeep2\n\x80\x80abc\n"
+    TO_IT = [DOWN, DOWN, "x"]
+    check("a selection from a stray byte to the end of the line deletes",
+          edit_bytes(tmpdir, KEEP, TO_IT + [SH_END, "\x1b[3~", SAVE]),
+          b"keep1\nkeep2\nx\n")
+    check("and undoes",
+          edit_bytes(tmpdir, KEEP, TO_IT + [SH_END, "\x1b[3~", "\x1a", SAVE]),
+          b"keep1\nkeep2\nx\x80\x80abc\n")
+    check("a selection from a stray byte across lines deletes",
+          edit_bytes(tmpdir, b"\x80\x80one\ntwo\nthree\n",
+                     ["x", SH_DOWN, SH_DOWN, "\x1b[3~", SAVE]), b"xhree\n")
+    path = os.path.join(tmpdir, "f.txt")
+    with open(path, "wb") as fh:
+        fh.write(KEEP)
+    _, st = run([MOLLY, path], TO_IT + [SH_END, "\x1b[3~", SAVE, "\x11"], status=True)
+    check("and the editor is still there to quit", os.WIFEXITED(st) and os.WEXITSTATUS(st), 0)
+
+    # A selection across several lines, deleted and put back as one step.
+    TEXT = b"one\ntwo\nthree\nfour\n"
+    check("a selection across lines deletes in one piece",
+          edit_bytes(tmpdir, TEXT, [RIGHT, SH_DOWN, SH_DOWN, "\x1b[3~", SAVE]), b"ohree\nfour\n")
+    check("and undoes in one step",
+          edit_bytes(tmpdir, TEXT, [RIGHT, SH_DOWN, SH_DOWN, "\x1b[3~", "\x1a", SAVE]), TEXT)
+    check("and redoes in one step",
+          edit_bytes(tmpdir, TEXT, [RIGHT, SH_DOWN, SH_DOWN, "\x1b[3~", "\x1a", "\x19", SAVE]),
+          b"ohree\nfour\n")
+    check("to the last character of the buffer",
+          edit_bytes(tmpdir, b"ab\ncd\n", [RIGHT, SH_DOWN, SH_DOWN, "\x1b[3~", SAVE]), b"a\n")
+
+
 def main():
     global MOLLY
     MOLLY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "./molly")
@@ -6330,6 +6396,7 @@ def main():
         test_folding(tmpdir)
         test_git(tmpdir)
         test_control_bytes(tmpdir)
+        test_stray_bytes(tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

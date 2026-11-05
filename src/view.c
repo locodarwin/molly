@@ -192,9 +192,7 @@ void editor_move_cursor(int key) {
     if (CUR.cx > row->size) CUR.cx = row->size;
     /* A vertical move can land the byte offset inside a character on the new
      * line; step back to the character boundary. */
-    while (CUR.cx > 0 && CUR.cx < row->size &&
-           utf8_is_cont((unsigned char)row->chars[CUR.cx]))
-      CUR.cx = utf8_prev(row->chars, CUR.cx);
+    if (CUR.cx < row->size) CUR.cx = utf8_boundary(row->chars, row->size, CUR.cx);
   } else {
     CUR.cx = 0;
   }

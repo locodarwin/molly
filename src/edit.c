@@ -132,6 +132,26 @@ void editor_delete_char(void) {
   B.undo.locked = 0;
 }
 
+/* Delete the bytes from `at` up to the cursor on the cursor's row, whatever
+ * they are, and leave the cursor at `at`. For a caller that knows the exact
+ * range rather than a number of characters. */
+void editor_delete_back_to(int at) {
+  erow *row = row_at(CUR.cy);
+  int n = CUR.cx - at;
+  if (n <= 0) return;
+  struct uchange *u = uc_new(UC_DELETE, CUR.cy, at, row->chars + at, (size_t)n);
+  u->back = 1;
+  u->cx0 = CUR.cx;
+  u->cy0 = CUR.cy;
+  u->cx1 = at;
+  u->cy1 = CUR.cy;
+  undo_push(u);
+  clear_redo();
+  editor_row_delete_n(row, at, n);
+  CUR.cx = at;
+  B.undo.locked = 0;
+}
+
 void editor_del_char(void) {
   if (CUR.cy >= row_count()) return;
   int pre_cx = CUR.cx, pre_cy = CUR.cy;

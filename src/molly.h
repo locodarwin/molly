@@ -1102,6 +1102,7 @@ void indent_sync(void);
 /* edit.c */
 void editor_del_char(void);
 void editor_delete_char(void);
+void editor_delete_back_to(int at);
 void editor_insert_char(int c);
 void editor_insert_newline(void);
 
@@ -1529,6 +1530,7 @@ int utf8_fit_cols(const char *s, int cols, int *out_cols);
 int utf8_is_cont(unsigned char c);
 int utf8_safe(const char *s, int nbytes);
 int utf8_prev(const char *s, int i);
+int utf8_boundary(const char *s, int size, int i);
 int utf8_str_cols(const char *s);
 
 /* vt.c */

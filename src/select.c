@@ -168,11 +168,12 @@ void clipboard_set(const char *s, int len) {
   E.clip_block = 0;  /* a block copy sets it again after this */
 }
 
-/* Delete the selected range, leaving the cursor at its start. Walks the far
- * end back to the near end with the tested single-character editor_delete_char
- * (which handles multibyte characters and line joins itself), so the selection
- * is always consumed on character boundaries. The whole run is one undo step.
- * No-op (just clears the selection) when it is empty. */
+/* Delete the selected range, leaving the cursor at its start. Exact byte ranges,
+ * a row at a time from the far end, with editor_delete_char() doing the joins. It
+ * used to walk back a character at a time until it reached the near end, and an
+ * end the walk stepped over was never reached: it ate the text above and spun at
+ * the top of the file. The whole run is one undo step. No-op (just clears the
+ * selection) when it is empty. */
 void selection_delete(void) {
   int ax, ay, bx, by;
   if (!selection_range(&ax, &ay, &bx, &by)) return;
@@ -193,7 +194,11 @@ void selection_delete(void) {
     CUR.cy = by;
     CUR.cx = bx;
   }
-  while (!(CUR.cy == ay && CUR.cx == ax)) editor_delete_char();
+  while (CUR.cy > ay) {
+    editor_delete_back_to(0);
+    editor_delete_char();
+  }
+  editor_delete_back_to(ax);
   undo_group_end();
 }
 

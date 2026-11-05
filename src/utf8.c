@@ -49,12 +49,26 @@ int utf8_safe(const char *s, int nbytes) {
   return 1;
 }
 
-/* Start index of the character before index i. */
+/* Start index of the character before index i, by the same rule as
+ * utf8_char_bytes: a walk back lands on every place a walk forward does. A byte
+ * that is not part of a whole character is a character by itself, in either
+ * direction, however many of them are in a row. */
 int utf8_prev(const char *s, int i) {
   if (i <= 0) return 0;
-  int j = i - 1;
-  while (j > 0 && utf8_is_cont((unsigned char)s[j])) j--;
-  return j;
+  int j;
+  for (j = i - 2; j >= 0 && j >= i - 4; j--)
+    if (utf8_char_bytes(s, i, j) == i - j) return j;
+  return i - 1;
+}
+
+/* Where a cursor at byte i belongs: i itself, unless that is inside a whole
+ * character, and then the start of that character. A stray continuation byte
+ * is not inside anything, so the cursor can pass it. */
+int utf8_boundary(const char *s, int size, int i) {
+  int j;
+  for (j = i - 1; j >= 0 && j >= i - 3; j--)
+    if (utf8_char_bytes(s, size, j) > i - j) return j;
+  return i;
 }
 
 /* Decode the character at index i to a code point, and report its byte length.

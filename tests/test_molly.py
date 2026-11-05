@@ -6175,6 +6175,36 @@ def test_git(tmpdir):
     scr = screen(["\x00", "file history", "\r", 0.5, "\r", 0.5])
     check("Enter on one shows that commit",
           any(r.startswith("commit ") for r in scr.text()), True)
+
+    # A repository's config names programs for git to run, and git runs them
+    # for the commands molly uses -- on opening a file, unasked. None may run,
+    # and each feature still answers.
+    ran = os.path.join(tmpdir, "git-ran")
+    os.makedirs(ran, exist_ok=True)
+    fake_gpg = os.path.join(tmpdir, "fakegpg")
+    with open(fake_gpg, "w") as fh:
+        fh.write("#!/bin/sh\ntouch %s/gpg\nexit 1\n" % ran)
+    os.chmod(fake_gpg, 0o755)
+    with open(os.path.join(repo, ".gitattributes"), "w") as fh:
+        fh.write("f.txt diff=hostile filter=hostile\n")
+    for key, value in (("core.fsmonitor", "touch %s/fsmonitor; false" % ran),
+                       ("diff.hostile.textconv", "touch %s/textconv; cat" % ran),
+                       ("diff.hostile.command", "touch %s/extdiff; true" % ran),
+                       ("filter.hostile.clean", "touch %s/clean; cat" % ran),
+                       ("filter.hostile.smudge", "touch %s/smudge; cat" % ran),
+                       ("log.showSignature", "true"), ("gpg.program", fake_gpg)):
+        subprocess.run(g + ["config", key, value], check=True)
+    scr = screen([0.5])
+    check("a hostile config still gets a sign column",
+          [scr.text()[i][0] for i in range(1, 6)], [" ", "▎", " ", " ", "▎"])
+    scr = screen(["\x00", "blame", "\r", 0.5])
+    check("and blame", "the first one" in scr.text()[13], True)
+    scr = screen(["\x00", "file history", "\r", 0.5, "\r", 0.5])
+    check("and a commit from the history",
+          any(r.startswith("commit ") for r in scr.text()), True)
+    check("without running a program the repository's config names",
+          sorted(os.listdir(ran)), [])
+
     outside = os.path.join(tmpdir, "loose.txt")
     with open(outside, "w") as fh:
         fh.write("x\n")

@@ -71,6 +71,29 @@ static int where(const struct buffer *b, char *qdir, char *qbase, size_t n) {
          quote(qbase, n, slash != NULL ? slash + 1 : b->filename);
 }
 
+/* git, as molly runs it: in a repository that is not trusted to name programs.
+ *
+ * A repository's own .git/config can name programs for git to run, and opening a
+ * file runs git in its repository, unasked -- a checkout from an archive, or one
+ * someone else set up, would run whatever its config says. git refuses only a
+ * repository owned by another user. So everything molly runs goes through this:
+ *
+ *   - core.fsmonitor off: `ls-files` and `blame` would start it;
+ *   - log.showSignature off: it runs gpg.program on every commit shown;
+ *   - every filter's clean, smudge and process empty: `blame` runs the clean
+ *     filter on the file. Their names are read from the config first, which
+ *     runs nothing. A filter marked required then fails, and git says nothing;
+ *   - and, on each command that diffs, --no-textconv and --no-ext-diff.
+ *
+ * GIT_PREP sets "$@" to the overrides, after the cd into the repository whose
+ * config they are; GIT is git with them. */
+#define GIT_PREP                                                                   \
+  "set --; while IFS= read -r k; do [ -n \"$k\" ] && set -- \"$@\" -c \"$k=\"; " \
+  "done <<EOF\n"                                                                   \
+  "$(git config --name-only --get-regexp '^filter\\..*\\.(clean|smudge|process)$' " \
+  "2>/dev/null)\nEOF\n"
+#define GIT "git -c core.fsmonitor=false -c log.showSignature=false \"$@\""
+
 /* Run a command for git, waiting for it; NULL with nothing to say on any
  * failure. The caller frees the output. */
 static char *run_git(const char *cmd, const char *in, int inlen, int *status) {
@@ -116,13 +139,13 @@ void git_refresh(struct buffer *b) {
   /* Untracked is exit 4 and no marks at all; tracked but not yet in HEAD
    * (added, not committed) is exit 3, every row new. -U0, so a hunk's
    * header says exactly which rows. */
-  n = strlen(qd) + strlen(qb) * 3 + 512;
+  n = strlen(qd) + strlen(qb) * 3 + 1024;
   cmd = xmalloc(n);
   snprintf(cmd, n,
-           "cd %s 2>/dev/null || exit 4; "
-           "git ls-files --error-unmatch -- %s >/dev/null 2>&1 || exit 4; "
+           "cd %s 2>/dev/null || exit 4\n" GIT_PREP
+           GIT " ls-files --error-unmatch -- %s >/dev/null 2>&1 || exit 4; "
            "t=$(mktemp) || exit 5; "
-           "git show HEAD:./%s >\"$t\" 2>/dev/null || { rm -f \"$t\"; exit 3; }; "
+           GIT " show HEAD:./%s >\"$t\" 2>/dev/null || { rm -f \"$t\"; exit 3; }; "
            "diff -U0 \"$t\" -; s=$?; rm -f \"$t\"; exit $s",
            qd, qb, qb);
   out = run_git(cmd, text.b != NULL ? text.b : "", text.len, &status);
@@ -205,9 +228,10 @@ void git_blame_line(void) {
     editor_set_status_message("Not a file git knows about.");
     return;
   }
-  n = strlen(qd) + strlen(qb) + 128;
+  n = strlen(qd) + strlen(qb) + 1024;
   cmd = xmalloc(n);
-  snprintf(cmd, n, "cd %s && git blame --porcelain -L %d,%d -- %s 2>/dev/null",
+  snprintf(cmd, n, "cd %s || exit 1\n" GIT_PREP
+                   GIT " blame --no-textconv --porcelain -L %d,%d -- %s 2>/dev/null",
            qd, CUR.cy + 1, CUR.cy + 1, qb);
   out = run_git(cmd, "", 0, NULL);
   free(cmd);
@@ -269,9 +293,9 @@ void git_log_file(void) {
     editor_set_status_message("Not a file git knows about.");
     return;
   }
-  n = strlen(qd) + strlen(qb) + 256;
+  n = strlen(qd) + strlen(qb) + 1024;
   cmd = xmalloc(n);
-  snprintf(cmd, n, "cd %s && git log --no-color --date=short "
+  snprintf(cmd, n, "cd %s || exit 1\n" GIT_PREP GIT " log --no-color --date=short "
                    "--format='%%h %%ad %%an  %%s' -- %s 2>/dev/null", qd, qb);
   out = run_git(cmd, "", 0, NULL);
   free(cmd);
@@ -309,9 +333,11 @@ int git_log_enter(void) {
   }
   hash[k] = '\0';
   if (k < 4) return 1;
-  n = strlen(qd) + 128;
+  n = strlen(qd) + 1024;
   cmd = xmalloc(n);
-  snprintf(cmd, n, "cd %s && git show --no-color --stat -p %s 2>/dev/null", qd, hash);
+  snprintf(cmd, n, "cd %s || exit 1\n" GIT_PREP
+                   GIT " show --no-color --no-ext-diff --no-textconv --stat -p %s 2>/dev/null",
+           qd, hash);
   out = run_git(cmd, "", 0, NULL);
   free(cmd);
   if (out == NULL || out[0] == '\0') {

@@ -203,6 +203,7 @@ void uc_apply(struct uchange *u, int redo) {
       case UC_JOIN: uc_do_join(u); break;
       case UC_SPLIT: uc_do_split(u); break;
       case UC_NEWROW: uc_do_newrow(u); break;
+      case UC_EOL: row_at(u->row)->crlf = u->crlf; break;
     }
     CUR.cx = u->cx1;
     CUR.cy = u->cy1;
@@ -213,6 +214,7 @@ void uc_apply(struct uchange *u, int redo) {
       case UC_JOIN: uc_do_split(u); break;
       case UC_SPLIT: uc_do_join(u); break;
       case UC_NEWROW: uc_do_delrow(u); break;
+      case UC_EOL: row_at(u->row)->crlf = (unsigned char)u->at; break;
     }
     CUR.cx = u->cx0;
     CUR.cy = u->cy0;

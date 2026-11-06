@@ -60,6 +60,8 @@ static void row_own(erow *row) {
 void saved_snapshot_free(void) {
   free(B.saved_off);
   B.saved_off = NULL;
+  free(B.saved_crlf);
+  B.saved_crlf = NULL;
   B.saved_numrows = -1;
 }
 
@@ -104,11 +106,15 @@ void saved_snapshot_take(void) {
   int i, n = row_count();
   size_t need, w = 0;
   size_t *off = malloc(sizeof(size_t) * ((size_t)n + 1));
+  unsigned char *crlf = malloc((size_t)n + 1);
 
-  if (off == NULL) {
+  if (off == NULL || crlf == NULL) {
+    free(off);
+    free(crlf);
     saved_snapshot_free();
     return;
   }
+  for (i = 0; i < n; i++) crlf[i] = row_at(i)->crlf;
   for (i = 0; i < n; i++) {
     off[i] = w;
     w += (size_t)row_at(i)->size + 1;
@@ -122,6 +128,7 @@ void saved_snapshot_take(void) {
     char *t = realloc(B.text, need);
     if (t == NULL) {
       free(off);
+      free(crlf);
       saved_snapshot_free();
       return;
     }
@@ -170,6 +177,8 @@ void saved_snapshot_take(void) {
 
   free(B.saved_off);
   B.saved_off = off;
+  free(B.saved_crlf);
+  B.saved_crlf = crlf;
   B.saved_numrows = n;
 }
 
@@ -180,7 +189,7 @@ int editor_matches_saved(void) {
     const erow *row = row_at(i);
     const char *was = B.text + B.saved_off[i];
     size_t len = B.saved_off[i + 1] - B.saved_off[i] - 1;
-    if ((size_t)row->size != len) return 0;
+    if ((size_t)row->size != len || row->crlf != B.saved_crlf[i]) return 0;
     if (row->chars != was && memcmp(row->chars, was, len) != 0) return 0;
   }
   return 1;
@@ -425,6 +434,8 @@ void editor_free_rows(void) {
   B.rowcap = 0;
   free(B.saved_off);
   B.saved_off = NULL;
+  free(B.saved_crlf);
+  B.saved_crlf = NULL;
   B.saved_numrows = 0;
   free(B.text);
   B.text = NULL;
@@ -954,6 +965,13 @@ static void rows_from_text(char *text, size_t n, int adopt) {
     /* A last line with no ending has none to keep, and takes the file's if it is
      * ever given one. */
     if (!had_final_nl) row_at(row_count() - 1)->crlf = (unsigned char)first_cr;
+  }
+  if (adopt) {
+    /* The breaks are part of what was loaded, now that the last row's is set. */
+    int k;
+    free(B.saved_crlf);
+    B.saved_crlf = xmalloc((size_t)row_count() + 1);
+    for (k = 0; k < row_count(); k++) B.saved_crlf[k] = row_at(k)->crlf;
   }
 }
 

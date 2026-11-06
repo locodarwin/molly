@@ -28,7 +28,7 @@ t.MOLLY = os.path.abspath(sys.argv[1])
 d = tempfile.mkdtemp()
 try:
     for name in ("test_control_bytes", "test_stray_bytes", "test_only_regular_files",
-                 "test_save_keeps_the_file", "test_line_endings", "test_paste",
+                 "test_save_keeps_the_file", "test_line_endings", "test_line_endings_per_line", "test_paste",
                  "test_signal_in_a_prompt", "test_save", "test_terminal"):
         getattr(t, name)(d)
 finally:

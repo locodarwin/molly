@@ -6704,7 +6704,7 @@ def test_save_keeps_the_file(tmpdir):
         os.chdir(cwd)
 
 
-def test_line_endings(tmpdir):
+def test_line_endings_per_line(tmpdir):
     """Each line keeps the ending it came with, and a carriage return that is not
     part of one is text. A save used to rewrite every line to one style."""
     print("\nline endings: per line, and only real ones")
@@ -6752,6 +6752,34 @@ def test_line_endings(tmpdir):
     check("all LF stays LF", e(b"a\nb\n", [END, "\r", "c"]), b"a\nc\nb\n")
     check("a line added after a CRLF file's unterminated last line takes its ending",
           e(b"a\r\nb", [DOWN, END, "\r", "c"]), b"a\r\nb\r\nc")
+
+    # The line commands build their rows afresh, and each row used to come out
+    # with the file's usual ending: a moved line left its own behind, and a sort
+    # gave every line the first line's.
+    AUP, ADOWN, PAL = "\x1b[1;3A", "\x1b[1;3B", "\x00"
+    MIX3 = b"c  \r\nb  \nA\r\n"
+    check("a line moved up takes its ending with it", e(MIX3, [DOWN, AUP]),
+          b"b  \nc  \r\nA\r\n")
+    check("and moved down", e(MIX3, [ADOWN]), b"b  \nc  \r\nA\r\n")
+    check("a duplicate has the original's", e(MIX3, [DOWN, "\x1bc"]),
+          b"c  \r\nb  \nb  \nA\r\n")
+    check("a sort keeps each line's",
+          e(MIX3, ["\x01", PAL, "sort lines", "\r"]), b"A\r\nb  \nc  \r\n")
+    check("as does trimming", e(MIX3, ["\x01", PAL, "trim", "\r"]), b"c\r\nb\nA\r\n")
+    check("changing case", e(MIX3, ["\x01", PAL, "upper", "\r"]), b"C  \r\nB  \nA\r\n")
+    check("and indenting", e(MIX3, ["\x01", "\t"]), b"\tc  \r\n\tb  \n\tA\r\n")
+    check("undo gives back the bytes there were", e(MIX3, [DOWN, AUP, UN]), MIX3)
+    check("and redo the moved ones",
+          e(MIX3, ["\x01", PAL, "sort lines", "\r", UN, RE]), b"A\r\nb  \nc  \r\n")
+    # Past a line of the same text: only the endings change, and that is an edit.
+    scr = Screen(24, 80)
+    path = os.path.join(tmpdir, "same.txt")
+    with open(path, "wb") as fh:
+        fh.write(b"x\r\nx\n")
+    scr.feed(run([MOLLY, path], [ADOWN, 0.2]))
+    check("moving a line past its twin with the other ending modifies the file",
+          "(modified)" in scr.text()[22], True)
+    check("which saves as the endings swapped", e(b"x\r\nx\n", [ADOWN]), b"x\nx\r\n")
 
 
 def test_paste(tmpdir):
@@ -6898,8 +6926,6 @@ def main():
         test_save(tmpdir)
         test_external_change(tmpdir)
         test_line_endings(tmpdir)
-        test_paste(tmpdir)
-        test_signal_in_a_prompt(tmpdir)
         test_symlink_race(tmpdir)
         test_window_size(tmpdir)
         test_signals(tmpdir)
@@ -6954,7 +6980,7 @@ def main():
         test_stray_bytes(tmpdir)
         test_only_regular_files(tmpdir)
         test_save_keeps_the_file(tmpdir)
-        test_line_endings(tmpdir)
+        test_line_endings_per_line(tmpdir)
         test_paste(tmpdir)
         test_signal_in_a_prompt(tmpdir)
     finally:

@@ -200,6 +200,7 @@ struct cursor {
 #define UC_JOIN 2
 #define UC_SPLIT 3
 #define UC_NEWROW 4
+#define UC_EOL 5     /* a row's line break, changed: `at` was, `crlf` is */
 
 struct uchange {
   int kind;
@@ -210,7 +211,7 @@ struct uchange {
   size_t len;
   int cx0, cy0, cx1, cy1;
   int group;  /* 0 = standalone; otherwise shared id of a multi-edit group */
-  unsigned char crlf;  /* UC_JOIN, UC_SPLIT: the line break that goes or comes */
+  unsigned char crlf;  /* UC_JOIN, UC_SPLIT: the line break that goes or comes; UC_EOL: the new one */
 };
 
 struct undoState {
@@ -290,6 +291,7 @@ struct buffer {
    * saved_off[saved_numrows] is where the last one ends. -1 rows means there is
    * no snapshot and nothing matches. */
   size_t *saved_off;
+  unsigned char *saved_crlf;  /* each saved line's break: \r\n or not */
   int saved_numrows;
   struct timespec on_disk_mtime;
   int have_disk_mtime;
@@ -1110,6 +1112,7 @@ void indent_sync(void);
 void editor_del_char(void);
 void editor_delete_char(void);
 void editor_delete_back_to(int at);
+void editor_set_row_eol(int y, int crlf);
 void editor_insert_char(int c);
 void editor_insert_newline(void);
 

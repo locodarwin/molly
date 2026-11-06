@@ -66,6 +66,22 @@ void editor_insert_newline(void) {
   B.undo.locked = 0;
 }
 
+/* Row y's line break made \r\n (crlf) or \n, as an edit of its own: undone and
+ * redone like one, and part of whatever group is open. For the line commands,
+ * which build rows afresh and know which break each one had. */
+void editor_set_row_eol(int y, int crlf) {
+  struct uchange *u;
+  if (y < 0 || y >= row_count() || row_at(y)->crlf == (crlf != 0)) return;
+  u = uc_new(UC_EOL, y, row_at(y)->crlf, "", 0);
+  u->crlf = (unsigned char)(crlf != 0);
+  u->cx0 = u->cx1 = CUR.cx;
+  u->cy0 = u->cy1 = CUR.cy;
+  undo_push(u);
+  row_at(y)->crlf = u->crlf;
+  clear_redo();
+  editor_recompute_dirty();
+}
+
 void editor_delete_char(void) {
   if (CUR.cy > row_count()) return;
   int pre_cx = CUR.cx, pre_cy = CUR.cy;

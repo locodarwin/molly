@@ -2372,7 +2372,8 @@ comments back, explaining each setting and its default.
 
 - Line endings are preserved, line by line. A file with mixed `CRLF` and `LF`
   endings keeps them on every line you do not edit, and a new line takes the
-  ending of the file's first line. A brand-new file uses `LF`. Exactly one line
+  ending of the file's first line. A line you move, duplicate, sort, indent,
+  trim, comment or change the case of keeps its own. A brand-new file uses `LF`. Exactly one line
   ending comes off a line when it is read, so any other carriage return is text
   and is saved as it was.
 - A trailing newline is preserved too: if the file you opened ended without

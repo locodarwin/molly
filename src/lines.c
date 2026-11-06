@@ -11,6 +11,10 @@
  * here that touches a row directly. An operation whose result is what was
  * already there changes nothing, so a file sorted twice is not modified twice.
  *
+ * Each row also says which line break it ends with, a file being allowed both:
+ * the rows built afresh would otherwise all get the file's usual one, so a row
+ * that moves takes its own break with it, and a copy has the original's.
+ *
  * The rows are the primary cursor's: its selection's rows, where a selection
  * that ends at the start of a row does not take that row in (the rule indent
  * uses, for the same reason -- selecting three lines by Shift-Down leaves the
@@ -44,27 +48,54 @@ static void rows_text(int r0, int r1, struct abuf *ab) {
   }
 }
 
-/* Replace rows [r0, r1] with `text`, as one undo step. Nothing at all if it
- * is what is there already. The cursor is left wherever the caller puts it. */
-static void replace_rows(int r0, int r1, const char *text, int len) {
+/* The line breaks of rows [r0, r1], onto the end of `dst`; returns the end. */
+static unsigned char *row_eols(int r0, int r1, unsigned char *dst) {
+  int i;
+  for (i = r0; i <= r1; i++) *dst++ = row_at(i)->crlf;
+  return dst;
+}
+
+/* Replace rows [r0, r1] with `text`, as one undo step, the rows it makes
+ * ending with the breaks in `eols`, one for each -- or, NULL, with the breaks of
+ * the rows they replace, row for row. Nothing at all if it is what is there
+ * already, breaks included. The cursor is left wherever the caller puts it. */
+static void replace_rows(int r0, int r1, const char *text, int len,
+                         const unsigned char *eols) {
   struct abuf now = ABUF_INIT;
-  rows_text(r0, r1, &now);
-  if (now.len == len && (len == 0 || memcmp(now.b, text, (size_t)len) == 0)) {
-    free(now.b);
-    return;
+  unsigned char *own = NULL;
+  int n = 1, i, same;
+  for (i = 0; i < len; i++)
+    if (text[i] == '\n') n++;
+  if (eols == NULL) {
+    own = xmalloc((size_t)n);
+    for (i = 0; i < n; i++) own[i] = r0 + i <= r1 ? row_at(r0 + i)->crlf : (unsigned char)B.eol_crlf;
+    eols = own;
   }
+  rows_text(r0, r1, &now);
+  same = now.len == len && (len == 0 || memcmp(now.b, text, (size_t)len) == 0);
   free(now.b);
+  if (same) {
+    for (i = 0; i < n && row_at(r0 + i)->crlf == eols[i]; i++) {}
+    if (i == n) {
+      free(own);
+      return;
+    }
+  }
   cursors_collapse();
   B.undo.locked = 1;
   undo_group_begin();
-  CUR.sy = r0;
-  CUR.sx = 0;
-  CUR.cy = r1;
-  CUR.cx = row_at(r1)->size;
-  CUR.sel_active = 1;
-  editor_insert_text(text, len);
+  if (!same) {
+    CUR.sy = r0;
+    CUR.sx = 0;
+    CUR.cy = r1;
+    CUR.cx = row_at(r1)->size;
+    CUR.sel_active = 1;
+    editor_insert_text(text, len);
+  }
+  for (i = 0; i < n; i++) editor_set_row_eol(r0 + i, eols[i]);
   undo_group_end();
   CUR.sel_active = 0;
+  free(own);
 }
 
 /* Put the cursor back, and the selection if there was one, `dy` rows from
@@ -90,14 +121,18 @@ static void place(const struct cursor *was, int dy) {
 void lines_duplicate(void) {
   struct cursor was = CUR;
   struct abuf ab = ABUF_INIT, both = ABUF_INIT;
+  unsigned char *eols;
   int r0, r1;
   if (!target_rows(&r0, &r1)) return;
   rows_text(r0, r1, &ab);
   ab_append(&both, ab.b, ab.len);
   ab_append(&both, "\n", 1);
   ab_append(&both, ab.b, ab.len);
-  replace_rows(r0, r1, both.b, both.len);
+  eols = xmalloc((size_t)(r1 - r0 + 1) * 2);
+  row_eols(r0, r1, row_eols(r0, r1, eols));
+  replace_rows(r0, r1, both.b, both.len, eols);
   place(&was, r1 - r0 + 1);
+  free(eols);
   free(ab.b);
   free(both.b);
 }
@@ -107,21 +142,26 @@ void lines_duplicate(void) {
 void lines_move(int dir) {
   struct cursor was = CUR;
   struct abuf ab = ABUF_INIT;
+  unsigned char *eols;
   int r0, r1;
   if (!target_rows(&r0, &r1)) return;
   if (dir < 0 ? r0 == 0 : r1 >= row_count() - 1) return;
+  eols = xmalloc((size_t)(r1 - r0 + 2));
   if (dir < 0) {
     rows_text(r0, r1, &ab);
     ab_append(&ab, "\n", 1);
     ab_append(&ab, row_at(r0 - 1)->chars, row_at(r0 - 1)->size);
-    replace_rows(r0 - 1, r1, ab.b, ab.len);
+    row_eols(r0 - 1, r0 - 1, row_eols(r0, r1, eols));
+    replace_rows(r0 - 1, r1, ab.b, ab.len, eols);
   } else {
     ab_append(&ab, row_at(r1 + 1)->chars, row_at(r1 + 1)->size);
     ab_append(&ab, "\n", 1);
     rows_text(r0, r1, &ab);
-    replace_rows(r0, r1 + 1, ab.b, ab.len);
+    row_eols(r0, r1, row_eols(r1 + 1, r1 + 1, eols));
+    replace_rows(r0, r1 + 1, ab.b, ab.len, eols);
   }
   place(&was, dir < 0 ? -1 : 1);
+  free(eols);
   free(ab.b);
 }
 
@@ -147,7 +187,12 @@ void lines_join(void) {
     if (k < r->size && ab.len > 0) ab_append(&ab, " ", 1);
     ab_append(&ab, r->chars + k, r->size - k);
   }
-  replace_rows(r0, r1, ab.b, ab.len);
+  {
+    /* One row, ending as the last of those joined did: the break after it is
+     * the only one left. */
+    unsigned char eol = row_at(r1)->crlf;
+    replace_rows(r0, r1, ab.b, ab.len, &eol);
+  }
   cursors_collapse();
   CUR.sel_active = 0;
   CUR.cy = r0;
@@ -172,6 +217,7 @@ void lines_sort(void) {
   struct cursor was = CUR;
   struct abuf ab = ABUF_INIT;
   erow **order;
+  unsigned char *eols;
   int r0, r1, i;
   if (!target_rows(&r0, &r1) || r1 == r0) {
     editor_set_status_message("Select the lines to sort.");
@@ -180,12 +226,15 @@ void lines_sort(void) {
   order = xmalloc(sizeof(*order) * (size_t)(r1 - r0 + 1));
   for (i = r0; i <= r1; i++) order[i - r0] = row_at(i);
   qsort(order, (size_t)(r1 - r0 + 1), sizeof(*order), row_cmp);
+  eols = xmalloc((size_t)(r1 - r0 + 1));
   for (i = 0; i <= r1 - r0; i++) {
     if (i > 0) ab_append(&ab, "\n", 1);
     ab_append(&ab, order[i]->chars, order[i]->size);
+    eols[i] = order[i]->crlf;   /* each line takes its break with it */
   }
   free(order);
-  replace_rows(r0, r1, ab.b, ab.len);
+  replace_rows(r0, r1, ab.b, ab.len, eols);
+  free(eols);
   place(&was, 0);
   free(ab.b);
   editor_set_status_message("Sorted %d lines.", r1 - r0 + 1);
@@ -211,7 +260,7 @@ void lines_trim(void) {
     if (i > r0) ab_append(&ab, "\n", 1);
     ab_append(&ab, r->chars, len);
   }
-  replace_rows(r0, r1, ab.b, ab.len);
+  replace_rows(r0, r1, ab.b, ab.len, NULL);
   place(&was, 0);
   free(ab.b);
   editor_set_status_message(n ? "Trimmed %d line%s." : "Nothing to trim.", n,
@@ -253,7 +302,7 @@ void lines_case(int upper) {
         ab_append(&ab, &c, 1);
       }
     }
-    if (changed) replace_rows(ay, by, ab.b, ab.len);
+    if (changed) replace_rows(ay, by, ab.b, ab.len, NULL);
     free(ab.b);
   }
   place(&was, 0);
@@ -309,7 +358,7 @@ void lines_comment(void) {
       if (i == was.cy) dx = ml + 1;
     }
   }
-  replace_rows(r0, r1, ab.b, ab.len);
+  replace_rows(r0, r1, ab.b, ab.len, NULL);
   free(ab.b);
   place(&was, 0);
   if (!was.sel_active) {

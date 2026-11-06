@@ -379,8 +379,9 @@ int grep_jump(int delta) {
     col = result_cols[at] <= row_at(CUR.cy)->size ? result_cols[at] : -1;
   else
     col = search_find_in_row(CUR.cy, grep_query);
-  CUR.cx = col >= 0 ? col : 0;
-  CUR.sel_active = 0;
+  /* The column was found when the list was made; the file may have been
+   * edited since, which cursor_place() allows for. */
+  cursor_place(CUR.cy, col >= 0 ? col : 0);
   editor_set_status_message("Match %d of %d: %.*s:%d", at + 1, total,
                             pl > 50 ? 50 : pl, r->chars + p0, ln);
   return 1;

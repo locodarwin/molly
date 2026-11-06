@@ -1609,6 +1609,7 @@ int editor_row_cx_to_rx(erow *row, int cx);
 int text_cell(const char *s, int len, int i, int col, int tabw, int *nb);
 int editor_row_rx_to_cx(erow *row, int rx);
 void cursors_collapse(void);
+void cursor_place(int cy, int cx);
 int cursors_newest(void);
 int cursors_skip_next(void);
 int cursors_drop_last(void);

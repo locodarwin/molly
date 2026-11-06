@@ -49,6 +49,28 @@ static void cursors_clamp(void) {
   }
 }
 
+/* One cursor at (cy, cx), for a jump to a place remembered from earlier: a
+ * bookmark, a step back, a problem or a search result. The text may have
+ * changed since, so the row is clamped to the buffer, the column to the row,
+ * and a column that now falls inside a character moves to its start, or the
+ * next thing typed would split the character in two. */
+void cursor_place(int cy, int cx) {
+  erow *r;
+  cursors_collapse();
+  CUR.sel_active = 0;
+  if (cy >= row_count()) cy = row_count() > 0 ? row_count() - 1 : 0;
+  if (cy < 0) cy = 0;
+  CUR.cy = cy;
+  if (cy >= row_count()) {
+    CUR.cx = 0;
+    return;
+  }
+  r = row_at(cy);
+  if (cx > r->size) cx = r->size;
+  if (cx < 0) cx = 0;
+  CUR.cx = cx < r->size ? utf8_boundary(r->chars, r->size, cx) : cx;
+}
+
 
 /* One display column's step along a row's stored bytes, for the walks that lay a
  * row out on the screen: the draw loop and the wrapper.

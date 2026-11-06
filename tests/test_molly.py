@@ -5031,6 +5031,18 @@ def test_lsp(tmpdir):
         check("Shift-F2 goes back, round the start to the last",
               scr.cy * 100 + scr.cx, 400)
 
+        # A problem's column is where the server put it, and the line can
+        # change before the server says anything new: here four bytes become
+        # three two-byte letters, all in one burst, so F2 goes by the old
+        # column, which is now inside the last letter. It must land at that
+        # letter's start, or the Z typed next splits the letter in two.
+        fresh("xxxx BAD;\n")
+        screen([WAIT, DEL * 4 + "ééé" + F2 + "Z", SAVE, 0.5])
+        with open(path, "rb") as fh:
+            check("F2 after an edit lands on a character, not inside one",
+                  fh.read(), "ééZé BAD;\n".encode())
+        fresh()
+
         # Moving onto a problem shows it on the message bar -- over the startup
         # message, which is still within its five seconds.
         scr = screen([WAIT, DOWN, RIGHT, RIGHT, RIGHT, RIGHT, RIGHT])
@@ -6181,7 +6193,7 @@ def test_nav(tmpdir):
         with open(path, "w") as fh:
             fh.write(text)
         run([MOLLY, path], keys + [SAVE])
-        with open(path) as fh:
+        with open(path, encoding="utf-8", errors="replace") as fh:
             return fh.read()
 
     RIGHT, DOWN = "\x1b[C", "\x1b[B"
@@ -6199,6 +6211,13 @@ def test_nav(tmpdir):
                 "\x1b[1;3C", "!"]), "f(a,\n  b) + 1;\n!x\ny\nz\n")
     check("Ctrl-G is a jump too",
           edit(["\x07", "5", "\r", "\x1b[1;3D", "!"]), "!f(a,\n  b) + 1;\nx\ny\nz\n")
+    # A bookmark keeps its byte column while the line changes under it: five
+    # bytes become three two-byte letters, which puts column 5 inside the
+    # last of them. Going back must land at its start, not split it.
+    check("a bookmark on an edited line lands on a character, not inside one",
+          edit([RIGHT * 5, "\x1bj", "1", "\x1b[H", "\x1b[3~" * 5,
+                "ééé", "\x1b1", "!"], text="xxxxx;\n"),
+          "éé!é;\n")
 
 
 def test_view_aids(tmpdir):

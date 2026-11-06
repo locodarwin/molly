@@ -152,10 +152,9 @@ int lspui_problem_jump(int dir) {
     }
   }
 
-  cursors_collapse();
-  CUR.sel_active = 0;
-  CUR.cy = to->y0 < row_count() ? to->y0 : (row_count() > 0 ? row_count() - 1 : 0);
-  CUR.cx = (CUR.cy < row_count() && to->x0 <= row_at(CUR.cy)->size) ? to->x0 : 0;
+  /* Columns are where the server put them; edits to the line since may have
+   * moved the text, which cursor_place() allows for. */
+  cursor_place(to->y0, to->x0);
   {
     char msg[100];
     snprintf(msg, sizeof(msg), "%s", to->msg);
@@ -616,17 +615,6 @@ void lsp_answer(int kind, struct buffer *b, unsigned edits, int cy, int cx,
 
 /* ---- going there and back ------------------------------------------------ */
 
-static void cursor_to(int cy, int cx) {
-  cursors_collapse();
-  CUR.sel_active = 0;
-  if (cy >= row_count()) cy = row_count() > 0 ? row_count() - 1 : 0;
-  if (cy < 0) cy = 0;
-  CUR.cy = cy;
-  if (cy >= row_count()) cx = 0;
-  else if (cx > row_at(cy)->size) cx = row_at(cy)->size;
-  CUR.cx = cx < 0 ? 0 : cx;
-}
-
 int lspui_can_back(void) { return nav_can_back(); }
 
 int lspui_back(void) { return nav_back(); }
@@ -671,7 +659,7 @@ static void deliver_definition(void) {
     erow *r = row_at(y);
     x = lsp_units_to_col(r->chars, r->size, box.ch, box.utf8);
   }
-  cursor_to(y, x);
+  cursor_place(y, x);
   editor_set_status_message("Definition: %s:%d", buf_name(V.buf), CUR.cy + 1);
 }
 
@@ -843,7 +831,7 @@ int lspui_problems_jump(void) {
       return 1;
     }
   }
-  cursor_to(ln - 1, col);
+  cursor_place(ln - 1, col);
   return 1;
 }
 
@@ -969,7 +957,7 @@ static void apply_workspace(int *changes, int *elsewhere, int *others) {
     if (V.buf != home) (*others)++;
   }
   if (V.buf != home) buf_show(buf_index_of(home));
-  cursor_to(hy, hx);
+  cursor_place(hy, hx);
   *elsewhere = *changes - home_changes;
 }
 
@@ -1327,7 +1315,7 @@ static void deliver_format(void) {
     return;
   }
   n = apply_edits(&box.files[0], box.utf8, &y, &x);
-  cursor_to(y, x);
+  cursor_place(y, x);
   if (n == 0)
     editor_set_status_message("Already formatted.");
   else
@@ -1369,7 +1357,7 @@ int lspui_format_before_save(void) {
     return 0;
   }
   n = apply_edits(&box.files[0], box.utf8, &y, &x);
-  cursor_to(y, x);
+  cursor_place(y, x);
   box_clear();
   return n;
 }

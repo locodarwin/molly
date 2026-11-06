@@ -62,11 +62,7 @@ static int go(struct place p) {
   for (i = 0; i < buf_count(); i++) {
     if (buf_at(i)->id != p.buf_id) continue;
     if (V.buf != buf_at(i)) buf_show(i);
-    cursors_collapse();
-    CUR.sel_active = 0;
-    if (p.cy >= row_count()) p.cy = row_count() > 0 ? row_count() - 1 : 0;
-    CUR.cy = p.cy < 0 ? 0 : p.cy;
-    CUR.cx = (CUR.cy < row_count() && p.cx <= row_at(CUR.cy)->size) ? p.cx : 0;
+    cursor_place(p.cy, p.cx);
     return 1;
   }
   return 0;

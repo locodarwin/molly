@@ -389,11 +389,21 @@ void tty_tidy(void) {
     int w, st;
     if (t == NULL || !t->exited) continue;
     st = t->status;
-    /* Its windows close first, while there are others to take the space. */
-    for (w = window_count() - 1; w >= 0 && window_count() > 1; w--) {
-      if (window_view_at(w)->buf != b) continue;
-      window_focus(w);
-      window_close_current();
+    /* Its windows close first, while there are others to take the space --
+     * and the keyboard goes back to the window that had it, when that was not
+     * one of them. Closing a window gives its neighbour the keyboard, and a
+     * terminal whose shell ended while you typed elsewhere would otherwise move
+     * what you type, and what Ctrl-S saves, into whatever file was beside it. */
+    {
+      /* Not one of those being closed: a closed window's view is freed. */
+      struct view *had = E.curview->buf != b ? E.curview : NULL;
+      for (w = window_count() - 1; w >= 0 && window_count() > 1; w--) {
+        if (window_view_at(w)->buf != b) continue;
+        window_focus(w);
+        window_close_current();
+      }
+      for (w = 0; had != NULL && w < window_count(); w++)
+        if (window_view_at(w) == had) window_focus(w);
     }
     buf_close(buf_index_of(b));
     if (WIFEXITED(st) && WEXITSTATUS(st) != 0)

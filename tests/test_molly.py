@@ -5512,6 +5512,21 @@ def test_terminal(tmpdir):
         scr, st = session([TERMINAL, WAIT, "\x11", 1.0], status=True)
         check("at a prompt there is nothing to ask about",
               os.WIFEXITED(st) and os.WEXITSTATUS(st) == 0, True)
+
+        # A terminal whose shell ends while the keyboard is in another window:
+        # its window closes, and the keyboard stays where it was. It used to go
+        # to the closed window's neighbour, so what was typed next, and saved,
+        # went into the file beside the terminal.
+        for name, text in (("a.txt", "aaa\n"), ("b.txt", "bbb\n")):
+            with open(name, "w") as fh:
+                fh.write(text)
+        run([MOLLY, "a.txt", "b.txt"],
+            ["\x1b[18~", 0.2, "\x1b[6;5~", 0.2, TERMINAL, WAIT, "sleep 2; exit\r", 0.3,
+             "\x1b[17~", 0.3, 3.0, "Z", "\x13", 0.3],
+            rows=24, cols=100, env={"SHELL": "/bin/sh", "PS1": "$ ", "ENV": ""})
+        with open("a.txt") as fa, open("b.txt") as fb:
+            check("a terminal closing elsewhere leaves the keyboard where it was",
+                  (fa.read(), fb.read()), ("Zaaa\n", "bbb\n"))
     finally:
         os.chdir(here)
 

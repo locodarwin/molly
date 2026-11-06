@@ -1387,8 +1387,13 @@ char *grep_command(const char *pat, int icase, int regex);
 int grep_parse_line(const char *s, int len, int *path0, int *pathlen, int *line);
 int grep_result_count(void);
 int grep_jump(int delta);
+/* Where a row of a list goes, for a finder that knows: see grep_show_list(). */
+struct grep_place {
+  const char *path;
+  int line, col;     /* line from 1; col a byte offset */
+};
 int grep_show_list(const char *title, const char *text, int len, const char *query,
-                   const int *cols, int ncols);
+                   const struct grep_place *places, int nplaces);
 void editor_grep(void);
 void grep_cleanup(void);
 void editor_set_status_message(const char *fmt, ...);

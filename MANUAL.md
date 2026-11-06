@@ -1826,7 +1826,9 @@ Back](#getting-back).
 included, and lists the answer the way [find in files](#finding-in-files)
 does: a `file:line:text` row each, sorted, in the same results buffer.
 `Enter` opens one, and `F4` and `Shift-F4` walk them from anywhere. Each lands
-on its own column, so two uses on one line are two stops.
+on its own column, so two uses on one line are two stops. Each row goes to
+the file and line the server named, even when the file's name has a `:12:` or
+a newline in it (shown as a `?`), which reading the row back would get wrong.
 
 ### What is under the cursor
 

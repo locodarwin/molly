@@ -5922,6 +5922,36 @@ def test_lsp_references(tmpdir):
     finally:
         os.chdir(here)
 
+    # File names the row's `path:line:` would misread: one with a ":7:" in it,
+    # taken for line 7 of a file "a", and one with a newline, which split its
+    # row in two. Each row goes where the server said, not where its text
+    # seems to point, and the newline shows as a '?'.
+    odd = os.path.join(work, "odd")
+    os.makedirs(odd, exist_ok=True)
+    os.chdir(odd)
+    try:
+        with open("main.c", "w") as fh:
+            fh.write("int widget = 1;\n")
+        with open("a:7:b.c", "w") as fh:
+            fh.write("\n\nint widget;\n")
+        with open("n\nl.c", "w") as fh:
+            fh.write("int q;\nint widget;\n")
+        refs = [WAIT, RIGHT * 4, REFS, 1.0]
+        scr = session(refs)
+        text = [r.rstrip() for r in scr.text()]
+        first = next(i for i, r in enumerate(text) if r.startswith("a:7:b.c:"))
+        check("a file name that would be misread is listed a row each",
+              text[first:first + 3], ["a:7:b.c:3:int widget;", "main.c:1:int widget = 1;",
+                                      "n?l.c:2:int widget;"])
+        scr = session(refs + ["\r", 0.5])
+        check("Enter opens the file with \":7:\" in its name, on its line",
+              any("a:7:b.c - 3 lines" in r and "Ln 3, Col 5" in r for r in scr.text()), True)
+        scr = session(refs + [F4, F4, F4, 0.5])
+        check("F4 reaches the file with a newline in its name, on its line",
+              any("l.c - 2 lines" in r and "Ln 2, Col 5" in r for r in scr.text()), True)
+    finally:
+        os.chdir(here)
+
 
 def test_lsp_signature(tmpdir):
     """Signature help: the call the cursor is in, above the line.
@@ -6043,6 +6073,16 @@ def test_lsp_problems(tmpdir):
         text = session([WAIT, LIST, 0.5, F6, LIST, 0.3])
         check("Ctrl-F2 again goes to the list rather than opening another",
               sum(1 for r in text if r.startswith("[") and "problems -" in r), 1)
+
+        # A file whose name holds a ":9:", which reading the row back would
+        # take for line 9 of a file "a". Enter goes where the problem is.
+        with open("a:9:b.c", "w") as fh:
+            fh.write("x\nx BAD\n")
+        scr = Screen(18, 72)
+        scr.feed(run([MOLLY, "a:9:b.c"], [WAIT, LIST, 0.5, "\r", 0.5], rows=18, cols=72,
+                     env={"MOLLY_CONFIG": rc, "MOLLY_LSP": "", "MOLLY_STATE": trust_all(tmpdir)}))
+        check("Enter in the list goes to a file with \":9:\" in its name, on its problem",
+              any(r.startswith("[1/2] a:9:b.c") and "Ln 2, Col 3" in r for r in scr.text()), True)
     finally:
         os.chdir(here)
 

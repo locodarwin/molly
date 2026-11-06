@@ -680,10 +680,15 @@ static void deliver_definition(void) {
  * problem -- and the status bar's counts, over this buffer, are the totals. */
 
 static int problems_stale;
-/* The column each row's problem starts at, for Enter; trusted only while the
- * list has as many rows as when it was written, as find-in-files' are. */
-static int *prob_cols;
-static int nprob_cols;
+/* Where each row's problem is, for Enter: the buffer, by id, and the row and
+ * column in it. Kept rather than read back from the row, whose file name may
+ * hold a ":12:" that would be taken for the line number, and is cut short
+ * when long. Trusted only while the list has as many rows as when it was
+ * written, as find-in-files' are. */
+static struct prob_place {
+  int buf_id, y, x;
+} *prob_places;
+static int nprob_places;
 
 void lspui_problems_changed(void) { problems_stale = 1; }
 
@@ -704,9 +709,9 @@ static void problems_fill(struct buffer *pb) {
 
   for (i = 0; i < buf_count(); i++)
     if (!buf_at(i)->problems) total += buf_at(i)->ndiag;
-  free(prob_cols);
-  prob_cols = xmalloc(sizeof(*prob_cols) * (size_t)(total > 0 ? total : 1));
-  nprob_cols = 0;
+  free(prob_places);
+  prob_places = xmalloc(sizeof(*prob_places) * (size_t)(total > 0 ? total : 1));
+  nprob_places = 0;
   if (total > 0) marks = xmalloc(sizeof(*marks) * (size_t)total);
 
   V.buf = pb;
@@ -738,7 +743,10 @@ static void problems_fill(struct buffer *pb) {
       marks[nmarks].severity = d->severity;
       marks[nmarks].msg = xstrdup(d->msg);
       nmarks++;
-      prob_cols[nprob_cols++] = d->x0;
+      prob_places[nprob_places].buf_id = b->id;
+      prob_places[nprob_places].y = d->y0;
+      prob_places[nprob_places].x = d->x0;
+      nprob_places++;
     }
   }
   editor_free_undo_redo();
@@ -812,12 +820,28 @@ int lspui_problems_jump(void) {
   erow *r;
   char *path;
   if (!pb->problems || at >= pb->numrows) return 1;
+  if (nprob_places == pb->numrows) {
+    const struct prob_place *p = &prob_places[at];
+    int i, found = -1;
+    for (i = 0; i < buf_count(); i++)
+      if (buf_at(i)->id == p->buf_id) found = i;
+    if (found < 0) {
+      editor_set_status_message("That file is no longer open.");
+      return 1;
+    }
+    if (window_count() > 1) window_move_focus(-1);
+    nav_push();
+    if (V.buf != buf_at(found)) buf_show(found);
+    cursor_place(p->y, p->x);
+    return 1;
+  }
+  /* An edited list: what the row says is all there is to go on. */
   r = row_at(at);
   if (!grep_parse_line(r->chars, r->size, &p0, &pl, &ln)) return 1;
   path = xmalloc((size_t)pl + 1);
   memcpy(path, r->chars + p0, (size_t)pl);
   path[pl] = '\0';
-  col = (nprob_cols == pb->numrows) ? prob_cols[at] : 0;
+  col = 0;
   if (window_count() > 1) window_move_focus(-1);
   nav_push();
   {
@@ -1253,8 +1277,9 @@ static void deliver_references(void) {
   struct abuf ab = ABUF_INIT;
   char cwd[4096], line[512], title[96];
   struct disk_reader reader = {NULL, NULL, 0};
+  struct grep_place *places;
   size_t cl = 0;
-  int i, files, n = box.nrefs, *cols;
+  int i, k, files, n = box.nrefs;
 
   if (n == 0) {
     editor_set_status_message("No references to %s found.", refs_of);
@@ -1262,7 +1287,7 @@ static void deliver_references(void) {
   }
   if (getcwd(cwd, sizeof(cwd)) != NULL) cl = strlen(cwd);
   qsort(box.refs, (size_t)n, sizeof(*box.refs), ref_cmp);
-  cols = xmalloc(sizeof(*cols) * (size_t)n);
+  places = xmalloc(sizeof(*places) * (size_t)n);
   for (i = 0; i < n; i++) {
     const struct fedit *r = &box.refs[i];
     const char *shown = r->text;
@@ -1279,15 +1304,25 @@ static void deliver_references(void) {
     } else {
       disk_line(&reader, r->text, r->sl, line, sizeof(line));
     }
-    cols[i] = lsp_units_to_col(line, (int)strlen(line), r->sc, box.utf8);
-    json_putf(&ab, "%.300s:%d:", shown, r->sl + 1);
+    places[i].path = shown;
+    places[i].line = r->sl + 1;
+    places[i].col = lsp_units_to_col(line, (int)strlen(line), r->sc, box.utf8);
+    /* The row is for reading; where it goes is in places[]. A newline in the
+     * name would make it two rows, so it is shown as a '?'. */
+    {
+      int at = ab.len;
+      json_putf(&ab, "%.300s", shown);
+      for (k = at; k < ab.len; k++)
+        if (ab.b[k] == '\n') ab.b[k] = '?';
+    }
+    json_putf(&ab, ":%d:", r->sl + 1);
     ab_append(&ab, line, (int)strlen(line));
     ab_append(&ab, "\n", 1);
   }
   disk_reader_close(&reader);
   snprintf(title, sizeof(title), "references: %s", refs_of);
-  files = grep_show_list(title, ab.b, ab.len, refs_of, cols, n);
-  free(cols);
+  files = grep_show_list(title, ab.b, ab.len, refs_of, places, n);
+  free(places);
   free(ab.b);
   editor_set_status_message("%d reference%s to %.40s in %d file%s -- Enter opens one, F4 the next",
                             n, n == 1 ? "" : "s", refs_of, files, files == 1 ? "" : "s");

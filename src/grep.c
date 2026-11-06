@@ -116,13 +116,29 @@ int grep_parse_line(const char *s, int len, int *path0, int *pathlen, int *line)
 static char *grep_query;
 static int grep_cur = -1;
 
-/* The column each row's match is at, when whoever filled the list knew it --
- * the language server's references do, and two on one line would otherwise
- * both land on the first. NULL for find in files, which searches the line for
- * the query instead. Only trusted while the list has as many rows as it was
+/* Where each row goes, when whoever filled the list knew it: the language
+ * server's references do. The file, line and column are kept here rather than
+ * read back from the row's text, because a path may hold a newline, which
+ * would split the row, or a ":12:", which would be read as the line number,
+ * and a long one is cut short on screen. The column matters too: two uses on
+ * one line would otherwise both land on the first. NULL for find in files,
+ * whose rows are grep's own output and are parsed, searching the line for the
+ * query for a column. Only trusted while the list has as many rows as it was
  * given, because a list the user has edited no longer lines up. */
-static int *result_cols;
-static int nresult_cols;
+struct result_place {
+  char *path;
+  int line, col;
+};
+static struct result_place *result_places;
+static int nresult_places;
+
+static void places_free(void) {
+  int i;
+  for (i = 0; i < nresult_places; i++) free(result_places[i].path);
+  free(result_places);
+  result_places = NULL;
+  nresult_places = 0;
+}
 
 static struct buffer *results_buffer(void) {
   int i;
@@ -166,6 +182,11 @@ static void fill(const char *out, int len) {
 static int count_files(void) {
   int i, files = 0, p0, pl, ln, lp0 = 0, lpl = -1;
   const char *last = NULL;
+  if (result_places != NULL) {
+    for (i = 0; i < nresult_places; i++)
+      if (i == 0 || strcmp(result_places[i].path, result_places[i - 1].path) != 0) files++;
+    return files;
+  }
   for (i = 0; i < row_count(); i++) {
     erow *r = row_at(i);
     if (!grep_parse_line(r->chars, r->size, &p0, &pl, &ln)) continue;
@@ -267,10 +288,11 @@ void editor_grep(void) {
 /* Put `path:line:text` rows in the results buffer, titled `title`, and show
  * it -- whoever found them. Find in files is one finder and the language
  * server's references are another; Enter and F4 do not care which. `query`
- * is what the cursor looks for on the line it lands on. Returns how many
- * files the rows name. */
+ * is what the cursor looks for on the line it lands on. `places`, when the
+ * finder has them, are where each row goes, one per row, the line counted
+ * from 1. Returns how many files the rows name. */
 int grep_show_list(const char *title, const char *text, int len, const char *query,
-                   const int *cols, int ncols) {
+                   const struct grep_place *places, int nplaces) {
   struct buffer *b = results_buffer();
   int files;
   if (b == NULL) {
@@ -282,13 +304,16 @@ int grep_show_list(const char *title, const char *text, int len, const char *que
   free(grep_query);
   grep_query = xstrdup(query);
   grep_cur = -1;
-  free(result_cols);
-  result_cols = NULL;
-  nresult_cols = 0;
-  if (cols != NULL && ncols > 0) {
-    result_cols = xmalloc(sizeof(*result_cols) * (size_t)ncols);
-    memcpy(result_cols, cols, sizeof(*result_cols) * (size_t)ncols);
-    nresult_cols = ncols;
+  places_free();
+  if (places != NULL && nplaces > 0) {
+    int i;
+    result_places = xmalloc(sizeof(*result_places) * (size_t)nplaces);
+    for (i = 0; i < nplaces; i++) {
+      result_places[i].path = xstrdup(places[i].path);
+      result_places[i].line = places[i].line;
+      result_places[i].col = places[i].col;
+    }
+    nresult_places = nplaces;
   }
 
   show_results(b);
@@ -308,8 +333,8 @@ int grep_show_list(const char *title, const char *text, int len, const char *que
  * the file takes it, and F4 still works from there. */
 int grep_jump(int delta) {
   struct buffer *b = results_buffer();
-  int i, at, p0, pl, ln, col, total;
-  char *path;
+  int i, at, p0, pl, ln, col, total, known;
+  char *path, shown[64];
   erow *r;
 
   if (b == NULL || b->numrows == 0) {
@@ -332,11 +357,14 @@ int grep_jump(int delta) {
     }
   }
 
+  /* Where the finder said the row goes, while the list is as it was made. */
+  known = result_places != NULL && nresult_places == total;
+
   /* A row that does not parse -- the user edited the list -- is skipped in the
    * direction of travel, and is a refusal for Enter. */
   for (;;) {
     r = buf_row(b, at);
-    if (grep_parse_line(r->chars, r->size, &p0, &pl, &ln)) break;
+    if (known || grep_parse_line(r->chars, r->size, &p0, &pl, &ln)) break;
     if (delta == 0) {
       editor_set_status_message("Not a match: this row names no file and line.");
       return 0;
@@ -349,9 +377,16 @@ int grep_jump(int delta) {
     }
   }
   grep_cur = at;
-  path = xmalloc((size_t)pl + 1);
-  memcpy(path, r->chars + p0, (size_t)pl);
-  path[pl] = '\0';
+  if (known) {
+    path = xstrdup(result_places[at].path);
+    ln = result_places[at].line;
+  } else {
+    path = xmalloc((size_t)pl + 1);
+    memcpy(path, r->chars + p0, (size_t)pl);
+    path[pl] = '\0';
+  }
+  /* For the message bar after the jump, which takes `path` over. */
+  snprintf(shown, sizeof(shown), "%.50s", path);
 
   /* Every window on the results follows, so the list shows where F4 is. */
   for (i = 0; i < window_count(); i++) {
@@ -375,23 +410,21 @@ int grep_jump(int delta) {
   if (!editor_open_in_new_buffer(path)) return 0;
 
   CUR.cy = (ln - 1 < row_count()) ? ln - 1 : (row_count() > 0 ? row_count() - 1 : 0);
-  if (result_cols != NULL && nresult_cols == total && CUR.cy < row_count())
-    col = result_cols[at] <= row_at(CUR.cy)->size ? result_cols[at] : -1;
+  if (CUR.cy < 0) CUR.cy = 0;
+  if (known && CUR.cy < row_count())
+    col = result_places[at].col <= row_at(CUR.cy)->size ? result_places[at].col : -1;
   else
     col = search_find_in_row(CUR.cy, grep_query);
   /* The column was found when the list was made; the file may have been
    * edited since, which cursor_place() allows for. */
   cursor_place(CUR.cy, col >= 0 ? col : 0);
-  editor_set_status_message("Match %d of %d: %.*s:%d", at + 1, total,
-                            pl > 50 ? 50 : pl, r->chars + p0, ln);
+  editor_set_status_message("Match %d of %d: %s:%d", at + 1, total, shown, ln);
   return 1;
 }
 
 void grep_cleanup(void) {
   free(grep_query);
   grep_query = NULL;
-  free(result_cols);
-  result_cols = NULL;
-  nresult_cols = 0;
+  places_free();
   grep_cur = -1;
 }

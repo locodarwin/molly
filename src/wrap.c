@@ -145,15 +145,19 @@ void wrap_row_invalidate(erow *row) {
  * one is O(1) -- see ROADMAP.md section 7 for what that measures at, and why
  * the next step belongs with the piece table rather than here.
  *
- * Four things make it stale and all four are in the key: another buffer, a
- * different width, a row count that has moved, and the generation the buffer
- * bumps whenever any row's measurement is dropped. The last two overlap on
- * purpose -- deleting a row changes the count without re-measuring anything,
- * and an edit re-measures without changing the count. */
+ * Five things make it stale and all five are in the key: another buffer, a
+ * different width, wrap turned on or off, a row count that has moved, and the
+ * generation the buffer bumps whenever any row's measurement is dropped. Wrap
+ * matters even off, because folded rows keep the map from being the identity:
+ * a frame after Alt-Z, or a window beside one wrapped on the same buffer, would
+ * otherwise go on from where the other setting left the walk. The last two
+ * overlap on purpose -- deleting a row changes the count without re-measuring
+ * anything, and an edit re-measures without changing the count. */
 static struct {
   const struct buffer *buf;
   unsigned gen;
   int cols;
+  int wrap;     /* the view's, which a fold can make matter with it off */
   int numrows;
   int index;    /* display index this row begins at */
   int filerow;
@@ -290,7 +294,7 @@ void drow_at(int index, struct drow *out) {
   i = 0;
   at = 0;
   if (memo.buf == V.buf && memo.gen == B.wrapgen && memo.cols == cols &&
-      memo.numrows == row_count() && index >= memo.index) {
+      memo.wrap == V.wrap && memo.numrows == row_count() && index >= memo.index) {
     i = memo.filerow;
     at = memo.index;
   }
@@ -300,6 +304,7 @@ void drow_at(int index, struct drow *out) {
       memo.buf = V.buf;
       memo.gen = B.wrapgen;
       memo.cols = cols;
+      memo.wrap = V.wrap;
       memo.numrows = row_count();
       memo.index = at;
       memo.filerow = i;

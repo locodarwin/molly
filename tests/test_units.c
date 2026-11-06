@@ -3598,6 +3598,24 @@ static void test_wrap(void) {
   V.wrap = 0;
   check("wrap off: a display row per file row", drow_total(), 3);
   check("wrap off: the mapping is the identity", slice_row(2), 2);
+
+  /* With a fold, the map is not the identity with wrap off either, so the walk
+   * keeps its place between questions then too -- and that place was counted
+   * with wrap on or off. Turning wrap off must not go on from where wrap on
+   * left it. Wrapped at 3 columns, row 0 is two display rows, rows 2 and 3 are
+   * folded away, and display row 3 is row 4; unwrapped, display row 3 is past
+   * the end. */
+  wrap_load("aaaaaa\nbb\n  cc\n  dd\nee\n", 3);
+  CUR.cy = 1;
+  fold_toggle();
+  check("folded and wrapped: display row 3 is row 4", slice_row(3), 4);
+  V.wrap = 0;
+  check("unwrapped, the walk starts again: display row 3 is past the end", slice_row(3), 5);
+  V.wrap = 1;
+  check("and wrapped again, row 4 again", slice_row(3), 4);
+  fold_none();
+  wrap_load("alpha\nbeta\ngamma\n", 10);
+  V.wrap = 0;
   check("wrap off: and a slice is the whole row", slice_rcols(0), DROW_ALL);
 
   /* On, with nothing long enough to wrap: the same answers. */

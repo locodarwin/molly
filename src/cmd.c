@@ -150,7 +150,7 @@ static int cmd_quit(void) {
   {
     int i;
     for (i = 0; i < buf_count(); i++)
-      recovery_file_remove(buf_at(i)->recovery_path);
+      recovery_files_remove(buf_at(i));
   }
   exit(0);
 }
@@ -209,7 +209,7 @@ static int cmd_close(void) {
   close_warned_id = -1;
   /* The recovery file goes with the buffer: keeping it would offer to recover
    * work on the next start that the user has just discarded. */
-  recovery_file_remove(B.recovery_path);
+  recovery_files_remove(V.buf);
   {
     int n = buf_count();
     buf_close(buf_current());

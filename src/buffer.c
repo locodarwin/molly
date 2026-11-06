@@ -223,6 +223,29 @@ void build_recovery_path(void) {
     snprintf(B.recovery_path, sizeof(B.recovery_path), "molly-recover.%ld-%d",
         (long)getpid(), B.id);
   }
+  snprintf(B.recovery_alt, sizeof(B.recovery_alt), "%s.%ld", B.recovery_path,
+           (long)geteuid());
+}
+
+/* Open a recovery file to write, at `path`, only if it is ours: a new file, or
+ * one this user left before, emptied first. Never another user's: in a shared
+ * directory anyone can leave a file of that name, and writing into it would
+ * give them the text, or truncating it lose their own recovery data. -1 when
+ * it cannot be. Safe in a signal handler: open, fstat, ftruncate and close. */
+static int open_recovery(const char *path) {
+  struct stat st;
+  int fd;
+  if (path[0] == '\0') return -1;
+  fd = open(path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
+  if (fd != -1 || errno != EEXIST) return fd;
+  fd = open(path, O_WRONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+  if (fd == -1) return -1;
+  if (fstat(fd, &st) == -1 || !S_ISREG(st.st_mode) || st.st_uid != geteuid() ||
+      ftruncate(fd, 0) == -1) {
+    close(fd);
+    return -1;
+  }
+  return fd;
 }
 
 /* Best effort, and safe to call from a signal handler: only open/write/fsync/
@@ -256,8 +279,9 @@ void write_recovery_file(void) {
    * sweep caught this as a SIGSEGV on the first two allocations molly makes. */
   if (V.buf == NULL) return;
   if (!B.dirty || B.recovery_path[0] == '\0') return;
-  int fd = open(B.recovery_path,
-      O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0600);
+  /* The usual name, or when someone else has a file there, this user's own. */
+  int fd = open_recovery(B.recovery_path);
+  if (fd == -1) fd = open_recovery(B.recovery_alt);
   if (fd == -1) return;
   int j;
   /* As a save would write it: each line with its own ending, and the last with
@@ -285,9 +309,11 @@ int recovery_file_ours(const char *path, struct stat *st) {
          st->st_uid == geteuid();
 }
 
-/* Remove the buffer's recovery file, if it is ours to remove. */
-void recovery_file_remove(const char *path) {
-  if (recovery_file_ours(path, NULL)) unlink(path);
+/* Remove the buffer's recovery files, under either name, where they are ours
+ * to remove. */
+void recovery_files_remove(const struct buffer *b) {
+  if (recovery_file_ours(b->recovery_path, NULL)) unlink(b->recovery_path);
+  if (recovery_file_ours(b->recovery_alt, NULL)) unlink(b->recovery_alt);
 }
 
 
@@ -856,7 +882,7 @@ void editor_save(void) {
   saved_snapshot_take();
   B.have_disk_mtime = have_after;
   if (have_after) B.on_disk_mtime = after.st_mtim;
-  recovery_file_remove(B.recovery_path);
+  recovery_files_remove(V.buf);
   if (typed != NULL) {
     free(B.filename);
     B.filename = typed;
@@ -1091,11 +1117,18 @@ void editor_open(char *filename, int fd) {
 void editor_check_recovery(void) {
   if (B.filename == NULL || B.recovery_path[0] == '\0') return;
   struct stat st;
-  if (lstat(B.recovery_path, &st) == -1) return;
-  if (!recovery_file_ours(B.recovery_path, &st)) {
+  const char *rp;
+  /* The usual name, or this user's own beside it, which is where the work went
+   * if the usual name was someone else's at the time. */
+  if (recovery_file_ours(B.recovery_path, &st)) {
+    rp = B.recovery_path;
+  } else if (recovery_file_ours(B.recovery_alt, &st)) {
+    rp = B.recovery_alt;
+  } else {
     const char *base = strrchr(B.recovery_path, '/');
-    editor_set_status_message("Not offered: %s is not your recovery file.",
-                              base != NULL ? base + 1 : B.recovery_path);
+    if (lstat(B.recovery_path, &st) == 0)
+      editor_set_status_message("Not offered: %s is not your recovery file.",
+                                base != NULL ? base + 1 : B.recovery_path);
     return;
   }
 
@@ -1112,7 +1145,7 @@ void editor_check_recovery(void) {
   }
 
   /* The file that was looked at, and not one put in its place since. */
-  int fd = open(B.recovery_path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+  int fd = open(rp, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
   struct stat now;
   FILE *fp = NULL;
   if (fd != -1 && fstat(fd, &now) == 0 && now.st_dev == st.st_dev &&

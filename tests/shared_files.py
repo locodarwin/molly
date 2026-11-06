@@ -11,12 +11,13 @@ that they can't quietly stop running there.
 
 import os
 import shutil
+import signal
 import stat
 import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from pty_harness import run
+from pty_harness import run, run_until_signal
 
 ROOT = "/mnt/molly"
 ALICE, BOB, BOB_GROUP, TEAM, OUTSIDERS = 1000, 1001, 1001, 2000, 3000
@@ -135,6 +136,26 @@ def scenarios(molly_source):
     check("its text does not reach the buffer", b"planted" in out, False)
     run(bob + [p], ["\x1b[B", WAIT, "\x11", WAIT], env=env)
     check("and quitting does not delete it", os.path.exists(rec), True)
+
+    print("someone else's writable recovery file, when we crash")
+    p = make(os.path.join(shared, "plans.txt"), ALICE, TEAM, 0o660)
+    rec = p + ".molly-recover"
+    with open(rec, "w") as fh:
+        fh.write("alice's\n")
+    os.chown(rec, ALICE, TEAM)
+    os.chmod(rec, 0o666)
+    run_until_signal(bob + [p], signal.SIGTERM, keys=["SECRET"])
+    check("our unsaved text is not written into it", read(rec), "alice's\n")
+    ours = "%s.%d" % (rec, BOB)
+    check("it goes to a recovery file of our own beside it",
+          os.path.exists(ours) and read(ours), "SECRETdata\n")
+    check("which only we can read", os.path.exists(ours) and owner(ours)[::2],
+          (BOB, 0o600))
+    out = run(bob + [p], ["r", WAIT, SAVE, WAIT], env=env)
+    check("it is offered the next time", b"crashed session" in out, True)
+    check("and restored", read(p), "SECRETdata\n")
+    check("saving removes ours", os.path.exists(ours), False)
+    check("and leaves theirs", read(rec), "alice's\n")
 
     print("our own file, in a group we don't belong to")
     p = make(os.path.join(shared, "theirs.txt"), BOB, OUTSIDERS, 0o640)

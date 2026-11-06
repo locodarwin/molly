@@ -2078,10 +2078,14 @@ Either way the recovery file is then removed by the first successful save or
 prompt only covers named files; for an unnamed buffer, inspect the
 `molly-recover.<pid>` file yourself and rename it over whatever it belongs to.)
 
-Only a recovery file of your own is offered or removed: a regular file, not a
-link, owned by you. In a shared directory anyone can leave a file with that
-name, and molly says `Not offered: … is not your recovery file.` and leaves it
-where it is, since it may be another user's real one.
+Only a recovery file of your own is offered, written or removed: a regular
+file, not a link, owned by you. In a shared directory anyone can leave a file
+with that name, and molly says `Not offered: … is not your recovery file.` and
+leaves it where it is, since it may be another user's real one. Molly never
+writes into it either, even if it is writable, because its owner could then
+read your text. Your work goes beside it instead, under the same name followed
+by your user ID (`notes.txt.molly-recover.1000`), which is offered and removed
+in the same way.
 
 After saving, the undo history is kept, but the dirty flag is cleared.
 

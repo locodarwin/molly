@@ -297,6 +297,9 @@ struct buffer {
   int have_disk_mtime;
 
   char recovery_path[4096];
+  /* Where the recovery file goes when recovery_path is someone else's file:
+   * the same name with this user's ID after it. See write_recovery_file(). */
+  char recovery_alt[4096 + 16];
 
   /* Small integer, unique among the buffers open at the time it was made. It is
    * what keeps two unnamed buffers from sharing one recovery file, and it is not
@@ -1054,7 +1057,7 @@ void saved_snapshot_take(void);
 void write_recovery_all(void);
 void write_recovery_file(void);
 int recovery_file_ours(const char *path, struct stat *st);
-void recovery_file_remove(const char *path);
+void recovery_files_remove(const struct buffer *b);
 
 /* cmd.c */
 const struct command *cmd_at(int i);

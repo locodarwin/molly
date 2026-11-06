@@ -5670,6 +5670,73 @@ def test_terminal_extras(tmpdir):
         os.chdir(here)
 
 
+def test_lsp_snippets(tmpdir):
+    """A completion that is a snippet: text with fields to Tab through.
+
+    The fake server offers its snip_... completions to a client that says it
+    takes snippets. What is checked is the text each one leaves, typed into
+    and tabbed through: the fields replaced by what is typed, Shift-Tab going
+    back, a field written twice changing in both places, a placeholder inside
+    another gone once its outer one is typed over, several lines under the
+    line's own indentation, a choice, an escaped dollar, and Tab being Tab
+    again once the fields are left.
+    """
+    print("\nlanguage server: snippets")
+
+    work = os.path.join(tmpdir, "lspsnip")
+    os.makedirs(work, exist_ok=True)
+    rc = os.path.join(work, "lsprc")
+    with open(rc, "w") as fh:
+        fh.write("[syntax c]\nlanguage server = python3 -I %s\n"
+                 "tab width = 4\ninsert spaces = on\n" % FAKE_LSP)
+    COMPLETE, DOWN, RIGHT, ESC = "\x1b/", "\x1b[B", "\x1b[C", "\x1b"
+    TAB, BACKTAB, UNDO = "\t", "\x1b[Z", "\x1a"
+    WAIT = 2.0
+
+    def edit(prefix, keys, line=""):
+        """Type `prefix` at the end of the second line, take the one
+        completion it has, then `keys`; returns that line and any after it."""
+        with open("s.c", "w") as fh:
+            fh.write("int v;\n%s\n" % line)
+        run([MOLLY, "s.c"], [WAIT, DOWN, "\x1b[F", prefix, COMPLETE, 1.0, "\r", 0.2]
+            + keys + [SAVE, 0.3],
+            env={"MOLLY_CONFIG": rc, "MOLLY_LSP": "", "MOLLY_STATE": trust_all(tmpdir),
+                 "FAKE_LSP_SNIPPETS": "1"})
+        with open("s.c") as fh:
+            return fh.read().split("\n", 1)[1]
+
+    here = os.getcwd()
+    os.chdir(work)
+    try:
+        check("a snippet goes in as its text, the first field selected for typing over",
+              edit("snip_ca", ["1", TAB, "2", TAB, ";"]), "snip_call(1, 2);\n")
+        check("Tab keeps a placeholder as it is, and the last Tab goes to the end",
+              edit("snip_ca", [TAB, TAB, ";"]), "snip_call(int a, int b);\n")
+        check("Shift-Tab goes back to a field, selected again",
+              edit("snip_ca", ["1", TAB, BACKTAB, "9"]), "snip_call(9, int b)\n")
+        check("a field written twice changes in both places",
+              edit("snip_tw", ["k", TAB, "!"]), "k * k;!\n")
+        check("a placeholder inside another is the next field",
+              edit("snip_ne", [TAB, "z", TAB, ";"]), "f(a, z);\n")
+        check("and is gone once the outer one is typed over",
+              edit("snip_ne", ["q", TAB, ";"]), "f(q);\n")
+        check("several lines go under the line's indentation, a tab as its indent",
+              edit("snip_bl", ["x", TAB, "y();"], line="  "),
+              "  if (x) {\n      y();\n  }\n")
+        check("a choice is its first option, an escaped dollar a dollar",
+              edit("snip_mo", ["gbp"]), "cost($5, gbp)\n")
+        # Tab is then an indent step, to the next stop of four columns. (Esc
+        # and Tab sent together would be read as Alt-Tab.)
+        check("Esc leaves the fields, and Tab is Tab again",
+              edit("snip_ca", [ESC, 0.2, TAB, "x"]), "snip_call(int a x, int b)\n")
+        check("so is moving out of the field",
+              edit("snip_ca", [RIGHT, RIGHT, TAB, "x"]), "snip_call(int a,    xint b)\n")
+        check("undoing the snippet leaves the fields too",
+              edit("snip_ca", [UNDO, TAB, "x"]), "snip_ca x\n")
+    finally:
+        os.chdir(here)
+
+
 def test_lsp_extras(tmpdir):
     """Code actions, format on save, completion as a word is typed, and the
     project a server is started for.
@@ -7097,6 +7164,7 @@ def main():
         test_lsp_trust(tmpdir)
         test_lsp_questions(tmpdir)
         test_lsp_complete(tmpdir)
+        test_lsp_snippets(tmpdir)
         test_terminal(tmpdir)
         test_terminal_extras(tmpdir)
         test_lsp_extras(tmpdir)

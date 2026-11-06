@@ -261,6 +261,7 @@ struct citem {
   char *sort;
   char *detail;
   int start;
+  int snippet;     /* insertTextFormat 2: `insert` has fields in it */
 };
 
 static void items_free(struct citem *it, int n) {
@@ -308,6 +309,7 @@ static void sig_close(void);
 static struct buffer *sig_buf;
 
 void lspui_forget(struct buffer *b) {
+  snippet_forget(b);
   if (box.buf == b) box_clear();
   if (comp_buf == b) comp_close();
   if (sig_buf == b) sig_close();
@@ -381,6 +383,7 @@ static void read_completions(const struct json *r) {
     it->detail = dup_or_null(json_str(json_get(k, "detail")));
     it->insert = dup_or_null(json_str(json_get(k, "insertText")));
     it->start = -1;
+    it->snippet = json_int(json_get(k, "insertTextFormat"), 1) == 2;
     /* A TextEdit has a range; an InsertReplaceEdit has two, and the insert
      * one is what replaces up to the cursor. */
     range = json_get(edit, "range");
@@ -1815,11 +1818,13 @@ static void comp_draw(const struct layer *self) {
 }
 
 /* Put the chosen item in, over the word typed so far: one undo step, and the
- * same path a paste takes, so it lands as text arriving and not as Enter. */
+ * same path a paste takes, so it lands as text arriving and not as Enter. A
+ * snippet goes in as its text, laid out under the line it is typed on, and
+ * its fields are then there to Tab through (see snippet.c). */
 static void comp_accept(void) {
   const struct citem *it;
   const char *text;
-  int from;
+  int from, y, is_snippet;
   if (csel < 0 || csel >= nshown) {
     comp_close();
     return;
@@ -1827,8 +1832,37 @@ static void comp_accept(void) {
   it = &items[shown[csel]];
   text = it->insert != NULL ? it->insert : it->label;
   from = (it->start >= 0 && it->start <= CUR.cx) ? it->start : comp_start;
+  is_snippet = it->snippet && it->insert != NULL;
+  y = CUR.cy;
   {
-    char *copy = xstrdup(text);
+    struct snippet sn;
+    memset(&sn, 0, sizeof(sn));
+    if (is_snippet) {
+      /* The line's indentation, for the snippet's later lines, and the
+       * file's own indent step for a tab in it. */
+      char indent[256], tab[17];
+      erow *r = row_at(y);
+      int n = 0, w;
+      while (n < r->size && n < from && n < (int)sizeof(indent) - 1 &&
+             (r->chars[n] == ' ' || r->chars[n] == '\t')) {
+        indent[n] = r->chars[n];
+        n++;
+      }
+      indent[n] = '\0';
+      w = tab_width();
+      if (w < 1) w = 1;
+      if (w > 16) w = 16;
+      if (indent_insert_spaces()) {
+        memset(tab, ' ', (size_t)w);
+        tab[w] = '\0';
+      } else {
+        strcpy(tab, "\t");
+      }
+      snippet_expand(text, indent, tab, &sn);
+    } else {
+      sn.text = xstrdup(text);
+      sn.len = (int)strlen(text);
+    }
     comp_close();
     /* The word typed so far is its own undo step, closed here so the
      * completion cannot coalesce into it; the completion -- the word out,
@@ -1841,9 +1875,10 @@ static void comp_accept(void) {
       CUR.sy = CUR.cy;
       CUR.sel_active = 1;
     }
-    editor_insert_text(copy, (int)strlen(copy));
+    editor_insert_text(sn.text, sn.len);
     undo_group_end();
-    free(copy);
+    if (is_snippet) snippet_begin(&sn, y, from);
+    snippet_free(&sn);
   }
 }
 
@@ -2028,7 +2063,7 @@ int lspui_key(int c) {
   if (c == WINCH_KEY) return 0;
   if (pop_layer >= 0) {
     hover_close();
-    return c == '\x1b';
+    if (c == '\x1b') return 1;
   }
   /* A list no longer about here is closed, and the key does what it does. */
   if (comp_open_p() && !comp_current()) comp_close();
@@ -2039,7 +2074,8 @@ int lspui_key(int c) {
       sig_close();
       return 1;
     }
-    return 0;
+    /* A snippet's fields have Tab while there is no list to take it. */
+    return snippet_key(c);
   }
   if (!mods) {
     switch (c) {
@@ -2084,6 +2120,7 @@ static void comp_ask(int trigger) {
  * nothing matches. Without one, a character the server named as a trigger
  * asks it what could come next. */
 void lspui_after_key(int c) {
+  snippet_after_key();
   sig_after_key(c);
   if (comp_open_p() && refilter_pending) {
     refilter_pending = 0;

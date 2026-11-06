@@ -1855,6 +1855,26 @@ Typing a character the server says starts a completion (`.` after a struct,
 one undo step, separate from the typing before it: `Ctrl-Z` takes the
 completion back and leaves the word as you typed it.
 
+**Snippets.** A server can offer a completion as a template with fields in
+it, such as a function call with a placeholder for each argument
+(`printf(fmt, ...)`). Taking one puts its text in with the first field
+selected, so what you type replaces it:
+
+- `Tab` goes to the next field and selects it; `Shift-Tab` goes back.
+- After the last field, `Tab` goes to where the snippet ends the cursor,
+  often after the closing parenthesis, and the fields are done with.
+- A field that appears more than once gets a cursor in each place, so typing
+  changes them all.
+- A placeholder holding another field (`f(a, b)` with `b` its own field)
+  loses that field once you type over the outer one.
+- A snippet of several lines is laid out under the line it was typed on, with
+  a tab in it made the file's own indent step.
+- `Esc`, or moving the cursor out of the field, leaves the fields, and `Tab`
+  indents again.
+
+A choice of values takes the first one; a variable takes its default, or
+nothing. Text in a snippet that is not a well-formed field goes in as it is.
+
 **`[editor] complete while typing = on`** opens it as you type a word, too:
 once the word has two letters, and from then on as long as there is anything
 to offer. It is off by default because, with it on, the `Enter` at the end of
@@ -1945,8 +1965,6 @@ delete a file is refused entirely; it is never applied in part.
 - **Completion does not open while you type a word** unless you turn on
   `[editor] complete while typing`, for the reason given under
   [Completion](#completion).
-- **No snippets.** Completion asks for plain text, so taking a function inserts
-  only its name, without placeholders for the arguments.
 - **One cursor.** Completion is offered at the main cursor only; with several,
   `Alt-/` says so.
 - **Problems only from open files.** A server reports on what it has been

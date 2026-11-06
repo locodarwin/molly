@@ -1285,6 +1285,28 @@ void lsp_set_enabled(int on);
 int lsp_setting(void);
 void lsp_stop_all(void);
 
+/* snippet.c */
+/* A field of a snippet: where its text is in the expanded text, and the
+ * placeholder it is inside, as an index into the same list (-1 for none). */
+struct snip_stop {
+  int num, off, len, parent;
+};
+struct snippet {
+  char *text;
+  int len;
+  struct snip_stop *stops;     /* in the order they appear */
+  int nstops;
+};
+void snippet_expand(const char *src, const char *indent, const char *tab,
+                    struct snippet *out);
+void snippet_free(struct snippet *s);
+void snippet_begin(struct snippet *sn, int y, int x);
+int snippet_key(int c);
+void snippet_after_key(void);
+int snippet_active(void);
+void snippet_end(void);
+void snippet_forget(struct buffer *b);
+
 /* lspui.c */
 int lspui_back(void);
 int lspui_can(int kind);

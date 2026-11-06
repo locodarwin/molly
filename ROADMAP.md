@@ -1248,7 +1248,20 @@ and is useful. Not core, and gated on panels.
   - **Project roots** - a server per command *and root*; the root is the
     nearest directory with a build file or compilation database, else the
     nearest `.git`/`.hg`, else the working directory.
-- **Still left:** snippets, range edits for very large files.
+- **Snippets, on 2026-11-06.** `snippetSupport` is on, and a snippet goes in
+  as its text with the first field selected; Tab and Shift-Tab walk the
+  fields, Tab past the last goes to `$0`. `src/snippet.c` has the two halves:
+  `snippet_expand()`, the syntax into text and fields with nothing about
+  buffers, unit-tested and fuzzed; and the session, which keeps the fields
+  as offsets into the snippet's text. That text starts at a fixed place and
+  ends at a place counted back from the end of the buffer, and nothing is
+  typed outside it while the fields are in use, so neither needs telling
+  about an edit; after every key its new length says how much the current
+  field changed, and a cursor outside the field ends the session. A field
+  written twice gets a cursor in each place, through the multi-cursor
+  machinery. Choices take their first value and variables their default:
+  servers send few of either.
+- **Still left:** range edits for very large files.
 
 ### Plugin runtime - **NO**
 

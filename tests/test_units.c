@@ -4088,6 +4088,70 @@ static char *jwrite(const char *s, int len) {
   return ab.b;
 }
 
+/* A snippet's fields, as "num@off+len^parent" for each, for comparing. */
+static void stops_str(const struct snippet *sn, char *dst, size_t n) {
+  size_t used = 0;
+  int i;
+  dst[0] = '\0';
+  for (i = 0; i < sn->nstops && used < n; i++)
+    used += (size_t)snprintf(dst + used, n - used, "%s%d@%d+%d^%d", i ? " " : "",
+                             sn->stops[i].num, sn->stops[i].off, sn->stops[i].len,
+                             sn->stops[i].parent);
+}
+
+static void snip_case(const char *label, const char *src, const char *text,
+                      const char *stops) {
+  struct snippet sn;
+  char got[256], what[160];
+  snippet_expand(src, "  ", "    ", &sn);
+  snprintf(what, sizeof(what), "%s: text", label);
+  check_str(what, sn.text, text);
+  snprintf(what, sizeof(what), "%s: the length is the text's", label);
+  check(what, sn.len, (long)strlen(sn.text));
+  stops_str(&sn, got, sizeof(got));
+  snprintf(what, sizeof(what), "%s: fields", label);
+  check_str(what, got, stops);
+  snippet_free(&sn);
+}
+
+static void test_snippets(void) {
+  printf("\nsnippets: the syntax\n");
+  snip_case("a bare field", "a$1b", "ab", "1@1+0^-1");
+  snip_case("a field in braces", "a${1}b", "ab", "1@1+0^-1");
+  snip_case("a placeholder", "${1:int x}", "int x", "1@0+5^-1");
+  snip_case("fields and an end", "f(${1:a}, ${2:b})$0", "f(a, b)",
+            "1@2+1^-1 2@5+1^-1 0@7+0^-1");
+  snip_case("a placeholder inside another", "f(${1:a, ${2:b}})$0", "f(a, b)",
+            "1@2+4^-1 2@5+1^0 0@7+0^-1");
+  snip_case("a field written again takes the placeholder's text",
+            "${1:n} * $1", "n * n", "1@0+1^-1 1@4+1^-1");
+  snip_case("a choice is its first option", "${1|one,two\\,three|}", "one", "1@0+3^-1");
+  snip_case("an escaped comma in a first option", "${1|a\\,b,c|}", "a,b", "1@0+3^-1");
+  snip_case("escapes", "\\$1 \\} \\\\ \\x", "$1 } \\ \\x", "");
+  snip_case("a lone dollar", "a$ $", "a$ $", "");
+  snip_case("an unclosed placeholder is text", "${1:abc", "${1:abc", "");
+  snip_case("and after a good field", "$1 ${2:x", " ${2:x", "1@0+0^-1");
+  snip_case("a brace that closes nothing is text", "a}b", "a}b", "");
+  snip_case("a variable is its default, or nothing", "[${TM_X:def}][$TM_Y][${Z}]",
+            "[def][][]", "");
+  snip_case("a transform is its field", "${1:ab} ${1/a/b/g}", "ab ab",
+            "1@0+2^-1 1@3+2^-1");
+  snip_case("a huge number is a big one", "$99999999999", "", "999999@0+0^-1");
+  snip_case("later lines take the indentation, a tab the indent step",
+            "a\n\tb${1:c\n}", "a\n      bc\n  ", "1@9+4^-1");
+  {
+    /* Nested past any sane depth: text, and no stack run out. */
+    char deep[4000];
+    int i, n = 0;
+    for (i = 0; i < 600; i++) n += snprintf(deep + n, sizeof(deep) - (size_t)n, "${1:");
+    deep[n] = '\0';
+    struct snippet sn;
+    snippet_expand(deep, "", "\t", &sn);
+    check("a placeholder nested 600 deep is text", strcmp(sn.text, deep), 0);
+    snippet_free(&sn);
+  }
+}
+
 static void test_json(void) {
   struct json_doc *d;
   const struct json *r, *v;
@@ -5603,6 +5667,7 @@ int main(void) {
   test_indent_convert();
   test_block();
   test_json();
+  test_snippets();
   test_vt();
   test_storage_load();
   test_storage_edit();

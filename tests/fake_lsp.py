@@ -33,6 +33,8 @@ server the same way it asks for a working one:
   FAKE_LSP_NORENAME=1     answer renames with an error
   FAKE_LSP_SIGOFFSETS=1   give signature parameters as offsets, not strings
   FAKE_LSP_NORANGE=1      format whole documents only
+  FAKE_LSP_SNIPPETS=1     also offer snippet completions, named snip_..., to a
+                          client that says it takes snippets
 
 Formatting: every line in scope loses its trailing blanks, and with
 insertSpaces its leading tabs become tabSize spaces each -- a line per edit.
@@ -340,12 +342,28 @@ def answer(msg):
         words += ["fake_alpha", "fake_beta"]
         items = [{"label": w, "kind": 6, "detail": "fake"}
                  for w in words if w.startswith(before) and w != before]
+        if snippets and os.environ.get("FAKE_LSP_SNIPPETS"):
+            items += [{"label": label, "kind": 15, "insertTextFormat": 2, "insertText": text}
+                      for label, text in SNIPPETS if label.startswith(before)]
         return {"isIncomplete": False, "items": items}
     return None
 
 
+# Snippet completions, by label: two fields and an end; one field twice; a
+# placeholder inside another; several lines with a tab; and text that only
+# looks like a field.
+SNIPPETS = [
+    ("snip_call", "snip_call(${1:int a}, ${2:int b})$0"),
+    ("snip_twice", "${1:n} * $1;$0"),
+    ("snip_nest", "f(${1:a, ${2:b}})$0"),
+    ("snip_block", "if (${1:cond}) {\n\t$0\n}"),
+    ("snip_money", "cost(\\$5, ${1|usd,eur|})"),
+]
+snippets = False
+
+
 def main():
-    global encoding, next_id
+    global encoding, next_id, snippets
     while True:
         msg = read()
         if msg is None:
@@ -373,6 +391,8 @@ def main():
                 time.sleep(5)
                 return
             caps = msg["params"]["capabilities"]
+            snippets = (caps.get("textDocument", {}).get("completion", {})
+                        .get("completionItem", {}).get("snippetSupport", False))
             offered = caps.get("general", {}).get("positionEncodings", ["utf-16"])
             encoding = os.environ.get("FAKE_LSP_ENCODING", offered[0])
             send({"jsonrpc": "2.0", "id": msg["id"], "result": {

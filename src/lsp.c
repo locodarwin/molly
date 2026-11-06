@@ -514,8 +514,7 @@ static void send_initialize(struct server *s) {
   ab_append(&ab, "}],", 3);
   /* What molly can take. UTF-8 positions first, so most servers never make it
    * convert; `offsetEncoding` is the same offer in the form clangd read before
-   * the protocol had one. No snippets: a completion that inserts `$1` into the
-   * text is worse than one that inserts the plain name. */
+   * the protocol had one. Snippets, whose fields snippet.c lets Tab walk. */
   json_putf(&ab,
       "\"capabilities\":{"
         "\"general\":{\"positionEncodings\":[\"utf-8\",\"utf-16\"]},"
@@ -525,7 +524,7 @@ static void send_initialize(struct server *s) {
           "\"publishDiagnostics\":{},"
           "\"hover\":{\"contentFormat\":[\"plaintext\",\"markdown\"]},"
           "\"definition\":{\"linkSupport\":true},"
-          "\"completion\":{\"completionItem\":{\"snippetSupport\":false},"
+          "\"completion\":{\"completionItem\":{\"snippetSupport\":true},"
                          "\"contextSupport\":true},"
           "\"rename\":{\"prepareSupport\":false},"
           "\"references\":{},"

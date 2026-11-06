@@ -99,10 +99,10 @@ molly --version       # print the version and exit
   It is table-driven, so a `[syntax <name>]` block in the config teaches it
   another language.
 - **Language servers**: with clangd, rust-analyzer or pylsp installed, Molly
-  gives you diagnostics, go to definition, hover, completion, signature help,
-  find references, rename, formatting and code actions. It asks once per
-  project before starting a server, since a server may run the project's code.
-  Any other server is one line in the config.
+  gives you diagnostics, go to definition, hover, completion with snippets,
+  signature help, find references, rename, formatting and code actions. It
+  asks once per project before starting a server, since a server may run the
+  project's code. Any other server is one line in the config.
 - **Git**: a sign column marks lines added, changed or deleted as you type;
   blame and file history are in the palette. Molly runs git with the
   repository's own programs (filters, fsmonitor, external diff) turned off.

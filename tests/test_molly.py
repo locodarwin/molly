@@ -4628,6 +4628,12 @@ def test_insert_output(tmpdir):
         check("and the command ran once, not once per cursor",
               fh.read(), "x\n")
 
+    # What is typed while the command runs is kept and arrives after it: only
+    # Esc is the command's. It used to be read and dropped, which lost the keys
+    # typed while git looked at a file after a save, Ctrl-Q among them.
+    check("keys typed while it runs come after its output",
+          ins("z\n", "sleep 1; echo X", extra=[0.2, "a", "b", 1.5]), "Xabz\n")
+
     # An empty buffer is a fine place to start from, unlike the filter's.
     check("an empty buffer takes output",
           "hi" in screen_rows(run(

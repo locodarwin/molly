@@ -1370,7 +1370,8 @@ ways to stop one:
 
 - **`Esc` cancels.** While a command runs the message bar says so, and `Esc`
   stops it. The process group is sent `SIGTERM`, then `SIGKILL` if it does not
-  exit, so a pipeline goes with its shell.
+  exit, so a pipeline goes with its shell. Any other key you press while it runs
+  is kept, and acts once the command is done.
 - **A timeout.** `[shell] timeout`, in seconds, default 10. A command still
   running after that is stopped the same way.
 - **An output cap.** `[shell] output limit`, in kilobytes, default 8192. The cap

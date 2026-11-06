@@ -372,14 +372,42 @@ static int decode_key(unsigned char c) {
  * It consumes the keystroke it finds, Esc or not. That is deliberate: keys
  * pressed while a command is running have nowhere to go, and queuing them to
  * be typed into the text afterwards would be worse than dropping them. */
+/* Keys read while a command ran, that were not the Esc being watched for: kept,
+ * in order, and handed out by ui_wait_key before anything new is read. They
+ * used to be dropped, so what was typed while git looked at a file -- after a
+ * save, or a pause in typing -- was lost, Ctrl-Q included. Each keeps the
+ * modifiers and the mouse event read with it. A paste keeps its text only until
+ * the next one is read, so a second paste behind the first gives its text to
+ * both; a burst longer than this many keys loses the rest, as all of it was
+ * lost before. */
+#define HELD_MAX 256
+
+static struct {
+  int key;
+  unsigned char shift, ctrl, alt;
+  struct mouse_event mouse;
+} held[HELD_MAX];
+static int nheld, held_next;
+
 int input_escape_pressed(void) {
   unsigned char c;
+  int k;
   if (!(loop_wait(0) & LOOP_STDIN)) return 0;
   /* One read, not editor_read_key's wait for a key: standard input at end of
    * file is readable for ever and reads nothing, and waiting there would hold
    * the command being canceled -- and its time limit -- for ever with it. */
   if (read(STDIN_FILENO, &c, 1) != 1) return 0;
-  return decode_key(c) == '\x1b';
+  k = decode_key(c);
+  if (k == '\x1b') return 1;
+  if (nheld < HELD_MAX) {
+    held[nheld].key = k;
+    held[nheld].shift = (unsigned char)last_key_shift;
+    held[nheld].ctrl = (unsigned char)last_key_ctrl;
+    held[nheld].alt = (unsigned char)last_key_alt;
+    held[nheld].mouse = last_mouse;
+    nheld++;
+  }
+  return 0;
 }
 
 /* Something that is not a keystroke has changed what is on screen -- a language
@@ -423,6 +451,16 @@ int macro_toggle(void) {
   return macro_len;
 }
 
+/* A key on its way to the caller, into the macro being recorded if there is one. */
+static void macro_note(int k) {
+  if (!recording || k == WINCH_KEY || k == MOUSE_KEY || macro_len >= MACRO_MAX) return;
+  macro[macro_len].key = k;
+  macro[macro_len].shift = (unsigned char)last_key_shift;
+  macro[macro_len].ctrl = (unsigned char)last_key_ctrl;
+  macro[macro_len].alt = (unsigned char)last_key_alt;
+  macro_len++;
+}
+
 /* Alt-): replay it. The keys come out of ui_wait_key() from here on, ahead of
  * the keyboard, until they run out. */
 int macro_play(void) {
@@ -443,18 +481,22 @@ int ui_wait_key(void) {
     }
     macro_pos = -1;
   }
+  if (held_next < nheld) {
+    int k = held[held_next].key;
+    last_key_shift = held[held_next].shift;
+    last_key_ctrl = held[held_next].ctrl;
+    last_key_alt = held[held_next].alt;
+    last_mouse = held[held_next].mouse;
+    if (++held_next == nheld) nheld = held_next = 0;
+    macro_note(k);
+    return k;
+  }
   for (;;) {
     int ready = loop_wait(LOOP_TICK_MS);
     if (term_take_winch()) return WINCH_KEY;
     if (ready & LOOP_STDIN) {
       int k = editor_read_key();
-      if (recording && k != WINCH_KEY && k != MOUSE_KEY && macro_len < MACRO_MAX) {
-        macro[macro_len].key = k;
-        macro[macro_len].shift = (unsigned char)last_key_shift;
-        macro[macro_len].ctrl = (unsigned char)last_key_ctrl;
-        macro[macro_len].alt = (unsigned char)last_key_alt;
-        macro_len++;
-      }
+      macro_note(k);
       return k;
     }
     /* A whole tick with no key in it: the user has paused, which is when the

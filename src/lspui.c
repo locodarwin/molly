@@ -1210,48 +1210,50 @@ static int ref_cmp(const void *a, const void *b) {
   return p->sl != q->sl ? (p->sl < q->sl ? -1 : 1) : 0;
 }
 
-/* Line `n` of a file on disk, into dst; "" when there is no such line. The
- * whole file is read for each distinct file, once: references come sorted by
- * file, so `cache` holds the one being read. */
-static void disk_line(const char *path, int n, char *dst, size_t dsz,
-                      char **cache, char **cached_path) {
-  const char *p;
-  int line = 0;
+/* Line `n` of a file on disk, into dst; "" when there is no such line. Read
+ * forward from where the last call left off, since references come sorted by
+ * file and then line, and back to the start only for a line before that: one
+ * pass over each file, holding no more of it than a line. It used to read each
+ * whole file into memory to show one line of it, however big the file was. */
+struct disk_reader {
+  FILE *fp;
+  char *path;
+  int line;        /* the line the next byte read belongs to */
+};
+
+static void disk_reader_close(struct disk_reader *r) {
+  if (r->fp != NULL) fclose(r->fp);
+  free(r->path);
+  memset(r, 0, sizeof(*r));
+}
+
+static void disk_line(struct disk_reader *r, const char *path, int n, char *dst,
+                      size_t dsz) {
+  size_t k = 0;
+  int c;
   dst[0] = '\0';
-  if (*cached_path == NULL || strcmp(*cached_path, path) != 0) {
+  if (r->path == NULL || strcmp(r->path, path) != 0) {
     /* The name came from a server, and could be a FIFO. */
     const char *why;
     int fd = file_open_read(path, &why);
-    FILE *fp = fd == -1 ? NULL : fdopen(fd, "r");
-    if (fp == NULL && fd != -1) close(fd);
-    free(*cache);
-    free(*cached_path);
-    *cache = NULL;
-    *cached_path = xstrdup(path);
-    if (fp != NULL) {
-      size_t len = 0, cap = 0, got;
-      char buf[8192];
-      while ((got = fread(buf, 1, sizeof(buf), fp)) > 0) {
-        if (len + got + 1 > cap) {
-          cap = (len + got + 1) * 2;
-          *cache = xrealloc(*cache, cap);
-        }
-        memcpy(*cache + len, buf, got);
-        len += got;
-      }
-      fclose(fp);
-      if (*cache != NULL) (*cache)[len] = '\0';
-    }
+    disk_reader_close(r);
+    r->path = xstrdup(path);
+    r->fp = fd == -1 ? NULL : fdopen(fd, "r");
+    if (r->fp == NULL && fd != -1) close(fd);
   }
-  if (*cache == NULL) return;
-  for (p = *cache; *p != '\0' && line < n; p++)
-    if (*p == '\n') line++;
-  if (line == n) {
-    size_t k = strcspn(p, "\r\n");
-    if (k >= dsz) k = dsz - 1;
-    memcpy(dst, p, k);
-    dst[k] = '\0';
+  if (r->fp == NULL || n < 0) return;
+  if (n < r->line) {
+    rewind(r->fp);
+    r->line = 0;
   }
+  while (r->line < n && (c = getc(r->fp)) != EOF)
+    if (c == '\n') r->line++;
+  if (r->line < n) return;
+  while ((c = getc(r->fp)) != EOF && c != '\n') {
+    if (c != '\r' && k + 1 < dsz) dst[k++] = (char)c;
+  }
+  dst[k] = '\0';
+  if (c == '\n') r->line++;
 }
 
 /* The references, as find-in-files results: a `path:line:text` row each,
@@ -1262,7 +1264,7 @@ static void disk_line(const char *path, int n, char *dst, size_t dsz,
 static void deliver_references(void) {
   struct abuf ab = ABUF_INIT;
   char cwd[4096], line[512], title[96];
-  char *cache = NULL, *cached = NULL;
+  struct disk_reader reader = {NULL, NULL, 0};
   size_t cl = 0;
   int i, files, n = box.nrefs, *cols;
 
@@ -1287,15 +1289,14 @@ static void deliver_references(void) {
         snprintf(line, sizeof(line), "%.*s", row->size, row->chars);
       }
     } else {
-      disk_line(r->text, r->sl, line, sizeof(line), &cache, &cached);
+      disk_line(&reader, r->text, r->sl, line, sizeof(line));
     }
     cols[i] = lsp_units_to_col(line, (int)strlen(line), r->sc, box.utf8);
     json_putf(&ab, "%.300s:%d:", shown, r->sl + 1);
     ab_append(&ab, line, (int)strlen(line));
     ab_append(&ab, "\n", 1);
   }
-  free(cache);
-  free(cached);
+  disk_reader_close(&reader);
   snprintf(title, sizeof(title), "references: %s", refs_of);
   files = grep_show_list(title, ab.b, ab.len, refs_of, cols, n);
   free(cols);

@@ -123,9 +123,10 @@ molly --version       # print the version and exit
   changed on disk since it was opened is not overwritten without asking.
 - **Crash recovery**: a signal or out-of-memory condition writes unsaved changes
   to a `.molly-recover` file, offered back the next time you open the file.
-- **Safe with untrusted files**: control characters and malformed UTF-8 show as
-  a reversed `?` and never reach your terminal, a paste is only ever text, and
-  the binary is built with the usual exploit mitigations.
+- **Safe with untrusted files**: control characters, malformed UTF-8 and the
+  invisible characters that reorder right-to-left text show as a reversed `?`
+  and never reach your terminal, a paste is only ever text, and the binary is
+  built with the usual exploit mitigations.
 - **Dirty-quit protection**: with unsaved changes, `Ctrl-Q` asks before it
   exits.
 

@@ -276,6 +276,11 @@ static void test_control_cells(void) {
     {"\xf0\x80\x80\x80", 4, 1, 0}, {"\xf0\x90\x80\x80", 4, 4, 1},
     {"\xf4\x8f\xbf\xbf", 4, 4, 1}, {"\xf4\x90\x80\x80", 4, 1, 0},
     {"\xf5\x80\x80\x80", 4, 1, 0},
+    /* The bidirectional embeddings, overrides and isolates, and their
+     * neighbors either side, which are left alone. */
+    {"\xe2\x80\xa9", 3, 3, 1}, {"\xe2\x80\xaa", 3, 3, 0}, {"\xe2\x80\xae", 3, 3, 0},
+    {"\xe2\x80\xaf", 3, 3, 1}, {"\xe2\x81\xa5", 3, 3, 1}, {"\xe2\x81\xa6", 3, 3, 0},
+    {"\xe2\x81\xa9", 3, 3, 0}, {"\xe2\x81\xaa", 3, 3, 1},
   };
   size_t i;
   for (i = 0; i < sizeof(t) / sizeof(t[0]); i++) {

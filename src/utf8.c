@@ -36,7 +36,16 @@ int utf8_char_bytes(const char *s, int size, int i) {
  * and well-formed UTF-8 other than the C1 controls. Everything else in a file is
  * somebody else's escape sequence. ESC can set the title or the clipboard, make the
  * terminal answer into molly's input, or repaint the screen; C1's CSI does the same
- * in one character, and a lone 0x9B is CSI itself on a terminal not in UTF-8 mode. */
+ * in one character, and a lone 0x9B is CSI itself on a terminal not in UTF-8 mode.
+ *
+ * The bidirectional embeddings, overrides and isolates (U+202A to U+202E and
+ * U+2066 to U+2069) are kept back too. They draw nothing themselves, but a
+ * terminal that lays out right-to-left text reorders what follows them, so a
+ * line can show its characters in an order other than the one they are stored
+ * in: code that reads as a comment and runs, or a string that ends somewhere
+ * other than where it appears to. Shown as a '?', the order on screen is the
+ * order in the file. They are a column wide for the cursor already, as the
+ * '?' is. */
 int utf8_safe(const char *s, int nbytes) {
   int i = 0;
   while (i < nbytes) {
@@ -44,6 +53,11 @@ int utf8_safe(const char *s, int nbytes) {
     int n = utf8_char_bytes(s, nbytes, i);
     if (n == 1 && (c < 0x20 || c >= 0x7F)) return 0;
     if (c == 0xC2 && (unsigned char)s[i + 1] < 0xA0) return 0;
+    if (n == 3 && c == 0xE2) {
+      unsigned char d = (unsigned char)s[i + 1], e = (unsigned char)s[i + 2];
+      if (d == 0x80 && e >= 0xAA && e <= 0xAE) return 0;   /* U+202A..202E */
+      if (d == 0x81 && e >= 0xA6 && e <= 0xA9) return 0;   /* U+2066..2069 */
+    }
     i += n;
   }
   return 1;

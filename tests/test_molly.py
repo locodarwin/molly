@@ -6510,6 +6510,23 @@ def test_control_bytes(tmpdir):
     out = run([MOLLY, path], [0.1])
     check("real text is drawn as it was", "日本 cafe\u0301".encode() in out, True)
 
+    # The bidirectional controls a "Trojan Source" line is made of: a terminal
+    # that honors them shows the text after them in another order than the
+    # file has it. Each is drawn as a reversed '?' instead, a column wide as
+    # the cursor already counts it, and saved as it was.
+    trojan = "if (ok) { /*‮ } ⁦if (admin)⁩ ⁦ */\n".encode()
+    with open(path, "wb") as fh:
+        fh.write(trojan)
+    out = run([MOLLY, path], [0.1])
+    check("no bidirectional control reaches the terminal",
+          any(c.encode() in out for c in "‪‫‬‭‮"
+              "⁦⁧⁨⁩"), False)
+    check("each shows as a reversed question mark",
+          b"/*\x1b[7m?\x1b[27m } \x1b[7m?\x1b[27mif (admin)\x1b[7m?\x1b[27m" in out, True)
+    run([MOLLY, path], ["Z", SAVE])
+    with open(path, "rb") as fh:
+        check("and is saved as it was", fh.read(), b"Z" + trojan)
+
     # File names: the status bar, the prompt after a save, and a dialog's list.
     name = "n\x1b]0;NAMED\x07.txt"
     named = os.path.join(tmpdir, "names")

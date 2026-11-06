@@ -2398,6 +2398,12 @@ comments back, explaining each setting and its default.
   repaint the screen. In the text each one draws as a reversed `?`, one column
   wide. In a file name or a message it is a plain `?`. The file keeps the real
   bytes.
+- The bidirectional embedding, override and isolate characters (U+202A to
+  U+202E and U+2066 to U+2069) are treated the same way. They are invisible,
+  but a terminal that lays out right-to-left text reorders what follows them,
+  so code could show in an order other than the one it is stored in (the
+  "Trojan Source" trick). As a reversed `?`, what you see is in the file's
+  order.
 - Only regular files open. A FIFO, a device or a directory named on the command
   line ends Molly with the reason. From the file browser, the current buffer stays
   and the message bar says why, as it does for a file you may not read.

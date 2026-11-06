@@ -260,12 +260,34 @@ void write_recovery_file(void) {
       O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0600);
   if (fd == -1) return;
   int j;
+  /* As a save would write it: each line with its own ending, and the last with
+   * one only if the file has one. A restore reads it back as it reads a file. */
   for (j = 0; j < row_count(); j++) {
-    if (write_all(fd, (*row_at(j)).chars, (size_t)(*row_at(j)).size) == -1) break;
-    if (write_all(fd, "\n", 1) == -1) break;
+    const erow *row = row_at(j);
+    if (write_all(fd, row->chars, (size_t)row->size) == -1) break;
+    if (j + 1 == row_count() && !B.final_newline) break;
+    if (write_all(fd, row->crlf ? "\r\n" : "\n", row->crlf ? 2 : 1) == -1) break;
   }
   fsync(fd);
   close(fd);
+}
+
+/* Is the recovery file at `path` one molly wrote for this user: a regular file,
+ * not a link, owned by us? In a shared directory anyone can leave a file of that
+ * name, and offering it as "your unsaved changes" would put their text in the
+ * buffer at one keypress -- or, a link to a file of our own, put that file's
+ * contents into this one, to be saved where they can read it. Deleting one that
+ * is not ours would lose another user's real recovery data. */
+int recovery_file_ours(const char *path, struct stat *st) {
+  struct stat own;
+  if (st == NULL) st = &own;
+  return path[0] != '\0' && lstat(path, st) == 0 && S_ISREG(st->st_mode) &&
+         st->st_uid == geteuid();
+}
+
+/* Remove the buffer's recovery file, if it is ours to remove. */
+void recovery_file_remove(const char *path) {
+  if (recovery_file_ours(path, NULL)) unlink(path);
 }
 
 
@@ -834,7 +856,7 @@ void editor_save(void) {
   saved_snapshot_take();
   B.have_disk_mtime = have_after;
   if (have_after) B.on_disk_mtime = after.st_mtim;
-  if (B.recovery_path[0] != '\0') unlink(B.recovery_path);
+  recovery_file_remove(B.recovery_path);
   if (typed != NULL) {
     free(B.filename);
     B.filename = typed;
@@ -1069,7 +1091,13 @@ void editor_open(char *filename, int fd) {
 void editor_check_recovery(void) {
   if (B.filename == NULL || B.recovery_path[0] == '\0') return;
   struct stat st;
-  if (stat(B.recovery_path, &st) == -1 || !S_ISREG(st.st_mode)) return;
+  if (lstat(B.recovery_path, &st) == -1) return;
+  if (!recovery_file_ours(B.recovery_path, &st)) {
+    const char *base = strrchr(B.recovery_path, '/');
+    editor_set_status_message("Not offered: %s is not your recovery file.",
+                              base != NULL ? base + 1 : B.recovery_path);
+    return;
+  }
 
   editor_set_status_message(
       "Unsaved changes from a crashed session. R = restore | any key = drop");
@@ -1083,9 +1111,18 @@ void editor_check_recovery(void) {
     return;
   }
 
-  FILE *fp = fopen(B.recovery_path, "r");
+  /* The file that was looked at, and not one put in its place since. */
+  int fd = open(B.recovery_path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+  struct stat now;
+  FILE *fp = NULL;
+  if (fd != -1 && fstat(fd, &now) == 0 && now.st_dev == st.st_dev &&
+      now.st_ino == st.st_ino && now.st_uid == geteuid())
+    fp = fdopen(fd, "r");
   if (fp == NULL) {
-    editor_set_status_message("Restore failed: %s", strerror(errno));
+    int err = errno;
+    if (fd != -1) close(fd);
+    editor_set_status_message("Restore failed: %s",
+                              fd == -1 ? strerror(err) : "the recovery file changed");
     return;
   }
   editor_clear_rows();

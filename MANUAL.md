@@ -2061,7 +2061,8 @@ were editing, named after it with a `.molly-recover` suffix (for an unnamed
 buffer it is `molly-recover.<pid>` in the current directory, and
 `molly-recover.<pid>-<n>` for any further unnamed buffers, so two scratch
 buffers cannot write over each other's data). Every buffer with unsaved changes
-gets one, not only the one that was on screen.
+gets one, not only the one that was on screen. It holds the buffer as a save
+would write it, each line with its own ending.
 
 The next time you open that file, Molly notices the recovery file and asks:
 
@@ -2074,6 +2075,11 @@ Either way the recovery file is then removed by the first successful save or
 `Ctrl-Q` quit, so decide at the prompt; after that the data is gone. (This
 prompt only covers named files; for an unnamed buffer, inspect the
 `molly-recover.<pid>` file yourself and rename it over whatever it belongs to.)
+
+Only a recovery file of your own is offered or removed: a regular file, not a
+link, owned by you. In a shared directory anyone can leave a file with that
+name, and molly says `Not offered: … is not your recovery file.` and leaves it
+where it is, since it may be another user's real one.
 
 After saving, the undo history is kept, but the dirty flag is cleared.
 

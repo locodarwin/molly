@@ -1053,6 +1053,8 @@ void saved_snapshot_free(void);
 void saved_snapshot_take(void);
 void write_recovery_all(void);
 void write_recovery_file(void);
+int recovery_file_ours(const char *path, struct stat *st);
+void recovery_file_remove(const char *path);
 
 /* cmd.c */
 const struct command *cmd_at(int i);

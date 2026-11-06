@@ -123,6 +123,19 @@ def scenarios(molly_source):
     check("the save is still atomic", os.stat(p).st_ino != ino, True)
     check("with no in-place warning", b"in place" in out, False)
 
+    print("someone else's recovery file beside a file we may edit")
+    p = make(os.path.join(shared, "notes.txt"), ALICE, TEAM, 0o660)
+    rec = p + ".molly-recover"
+    with open(rec, "w") as fh:
+        fh.write("planted\n")
+    os.chown(rec, ALICE, TEAM)
+    os.chmod(rec, 0o644)
+    out = run(bob + [p], ["r", WAIT, "\x11", WAIT, "\x11", WAIT], env=env)
+    check("it is not offered as ours", b"crashed session" in out, False)
+    check("its text does not reach the buffer", b"planted" in out, False)
+    run(bob + [p], ["\x1b[B", WAIT, "\x11", WAIT], env=env)
+    check("and quitting does not delete it", os.path.exists(rec), True)
+
     print("our own file, in a group we don't belong to")
     p = make(os.path.join(shared, "theirs.txt"), BOB, OUTSIDERS, 0o640)
     run(bob + [p], ["X", SAVE, WAIT], env=env)

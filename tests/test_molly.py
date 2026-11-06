@@ -1423,6 +1423,35 @@ def test_recovery(tmpdir):
     check("no recovery file when nothing is unsaved",
           os.path.exists(rec), False)
 
+    # Written as a save would write it: each line's own ending, and none after a
+    # last line that had none. It was a bare newline after every line.
+    with open(path, "wb") as fh:
+        fh.write(b"one\r\ntwo\nend")
+    run_until_signal([MOLLY, path], signal.SIGTERM, keys=["X"])
+    with open(rec, "rb") as fh:
+        check("a recovery file keeps each line's ending, and no final newline",
+              fh.read(), b"Xone\r\ntwo\nend")
+    os.remove(rec)
+    with open(path, "w") as fh:
+        fh.write("original\n")
+
+    # Only a recovery file of our own is offered: in a shared directory anyone
+    # can leave one, and a link to a file of ours would put that file into this
+    # one at a keypress, to be saved where its maker can read it.
+    secret = os.path.join(tmpdir, "secret")
+    with open(secret, "w") as fh:
+        fh.write("private\n")
+    os.symlink(secret, rec)
+    out = run([MOLLY, path], ["r", 0.2, "\x11", "\x11"])
+    check("a recovery file that is a link is not offered",
+          (b"crashed session" in out, b"private" in out), (False, False))
+    check("and says so", b"not your recovery file" in out, True)
+    run([MOLLY, path], [DOWN, "\x11"])
+    check("quitting leaves it, and what it points to",
+          (os.path.islink(rec), os.path.exists(secret)), (True, True))
+    os.remove(rec)
+    os.remove(secret)
+
 
 def test_recovery_prompt(tmpdir):
     print("\nrecovery: startup offers to restore data left by a crash")

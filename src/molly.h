@@ -1475,8 +1475,8 @@ void syntax_row(const struct syntax *s, const char *r, int rs, int state_in,
 /* term.c */
 _Noreturn void die(const char *s);
 _Noreturn void die_because(const char *s, const char *why);
-int get_cursor_position(int *rows, int *cols);
 int get_window_size(int *rows, int *cols);
+void term_guess_size(int *rows, int *cols);
 int read_byte(unsigned char *c);
 int term_mouse_is_on(void);
 int term_take_winch(void);

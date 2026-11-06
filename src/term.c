@@ -180,34 +180,76 @@ int read_byte(unsigned char *c) {
 }
 
 
-int get_cursor_position(int *rows, int *cols) {
-  char buf[32];
-  unsigned int i = 0;
-
-  if (write(STDOUT_FILENO, "\x1b[6n", 4) != 4) return -1;
-
-  while (i < sizeof(buf) - 1) {
-    if (read(STDIN_FILENO, &buf[i], 1) != 1) break;
-    if (buf[i] == 'R') break;
-    i++;
-  }
-  buf[i] = '\0';
-
-  if (buf[0] != '\x1b' || buf[1] != '[') return -1;
-  if (sscanf(&buf[2], "%d;%d", rows, cols) != 2) return -1;
+/* The terminal's size, as the kernel has it; -1 when it does not know. A pty
+ * that nobody sized, a serial line and some containers say 0x0, which is not a
+ * size. Called before every frame, so it asks nothing of the terminal: an
+ * answer has to be read from the keyboard's input, and a question each frame
+ * would read away whatever was typed. See term_guess_size for the first frame. */
+int get_window_size(int *rows, int *cols) {
+  struct winsize ws;
+  if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0 || ws.ws_row == 0)
+    return -1;
+  *cols = ws.ws_col;
+  *rows = ws.ws_row;
   return 0;
 }
 
-int get_window_size(int *rows, int *cols) {
-  struct winsize ws;
-  if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
-    if (write(STDOUT_FILENO, "\x1b[999C\x1b[999B", 12) != 12) return -1;
-    return get_cursor_position(rows, cols);
-  } else {
-    *cols = ws.ws_col;
-    *rows = ws.ws_row;
-    return 0;
+/* Ask the terminal where the cursor is, after sending it to the far corner:
+ * its position there is the size. Read for at most a second, since a terminal
+ * that does not answer must not hold molly up, and in raw mode each read waits
+ * only a tenth of that. Whatever came back that was not the answer is lost,
+ * which this early is nothing typed on purpose. */
+static int ask_size(int *rows, int *cols) {
+  char buf[32];
+  unsigned int i = 0;
+  long until;
+  struct timespec ts;
+  const char *p;
+  if (!isatty(STDIN_FILENO)) return -1;
+  if (write(STDOUT_FILENO, "\x1b[999C\x1b[999B\x1b[6n", 16) != 16) return -1;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  until = (long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000 + 1000;
+  while (i < sizeof(buf) - 1) {
+    ssize_t n = read(STDIN_FILENO, &buf[i], 1);
+    if (n == 1) {
+      if (buf[i++] == 'R') break;
+      continue;
+    }
+    if (n < 0 && errno != EINTR && errno != EAGAIN) break;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    if ((long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000 >= until) break;
   }
+  buf[i] = '\0';
+  p = strstr(buf, "\x1b[");
+  if (p == NULL || sscanf(p + 2, "%d;%dR", rows, cols) != 2 || *rows < 1 || *cols < 1)
+    return -1;
+  return 0;
+}
+
+/* A size from the environment's LINES or COLUMNS, or 0. */
+static int env_size(const char *name) {
+  const char *v = getenv(name);
+  long n;
+  char *end;
+  if (v == NULL || *v == '\0') return 0;
+  n = strtol(v, &end, 10);
+  return (*end == '\0' && n > 0 && n <= 10000) ? (int)n : 0;
+}
+
+/* The size for the first frame when the kernel does not know it: the
+ * terminal's own answer, else LINES and COLUMNS, else 24 by 80, the size a
+ * terminal is when nothing says otherwise. Never fails: an editor that will not
+ * start for want of a number is worse than one drawn a little too small. */
+void term_guess_size(int *rows, int *cols) {
+  int r, c;
+  if (get_window_size(rows, cols) == 0) return;
+  if (ask_size(&r, &c) == 0) {
+    *rows = r;
+    *cols = c;
+    return;
+  }
+  *rows = env_size("LINES") ? env_size("LINES") : 24;
+  *cols = env_size("COLUMNS") ? env_size("COLUMNS") : 80;
 }
 
 /* Suspend to the shell: the terminal handed back as it was found, molly

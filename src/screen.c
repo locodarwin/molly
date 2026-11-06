@@ -575,12 +575,12 @@ void screen_window_area(int *x, int *y, int *w, int *h) {
 }
 
 /* The size at startup. Unlike screen_poll_size there is no last known size to
- * fall back on, so a failed query is fatal. Ends with a layout pass, so that
+ * fall back on, so when the kernel does not know it the terminal is asked, and
+ * failing that it is a guess (term_guess_size). Ends with a layout pass, so that
  * the geometry every view reads is valid before the first frame -- and before
  * anything can ask whether there is room to split. */
 void screen_init_size(void) {
-  if (get_window_size(&last_wsrows, &last_wscols) == -1)
-    die("get_window_size");
+  term_guess_size(&last_wsrows, &last_wscols);
   force_full = 1;
   V.gutter_w = screen_gutter_width();
   window_layout();

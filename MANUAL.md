@@ -2364,6 +2364,7 @@ comments back, explaining each setting and its default.
 | `MOLLY_CONFIG` | Read configuration from this path instead of `~/.config/molly/mollyrc`. Set to the empty string to read none at all, which is what the test suite does so that its results do not depend on the configuration of the machine it runs on. |
 | `MOLLY_UNDO_STEPS` | Lower the undo history's step limit, which is how the test suite exercises its eviction. |
 | `MOLLY_STATE` | Keep molly's state (the [recent files](#recent-files) list and the projects a language server [may start in](#asked-first)) in this directory instead of `$XDG_STATE_HOME/molly`. Set to the empty string to keep none; the test suite does, so that running it leaves nothing behind and does not see what you opened. |
+| `LINES`, `COLUMNS` | The terminal's size, used only when the system does not know it (a serial line, or a terminal nothing has sized) and the terminal does not answer when molly asks it, within a second, at startup. Without them it is 24 by 80. |
 | `MOLLY_LSP` | Set to `off` to start no language server whatever the configuration says. The test suite sets it, so that a machine with clangd installed draws the same screens as one without; its own language-server tests set it back and name a fake server instead. |
 
 ## File Format Notes

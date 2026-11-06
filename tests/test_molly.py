@@ -846,6 +846,66 @@ def test_symlink_race(tmpdir):
 
 # ------------------------------------------------------------- signals ----
 
+def test_window_size(tmpdir):
+    """A terminal whose size the kernel does not know: a pty nobody sized, a
+    serial line. Molly asks it once, and failing an answer takes LINES and
+    COLUMNS, then 24 by 80 -- it used to exit -- and asks nothing again, since an
+    answer has to be read from what is typed. The size shows in the rows molly
+    draws on: the grid moves to each row as ESC [ row ;1H."""
+    print("\nwindow size: a terminal that does not say")
+    path = os.path.join(tmpdir, "ws.txt")
+    with open(path, "w") as fh:
+        fh.write("x\n")
+
+    def last_row(out):
+        rows = [int(m) for m in re.findall(rb"\x1b\[(\d+);1H", out)]
+        return max(rows) if rows else 0
+
+    out, st = run([MOLLY, path], ["hello", SAVE, "\x11"], rows=0, cols=0, status=True,
+                  exit_wait=5.0)
+    check("a 0x0 terminal that does not answer still opens, at 24 rows",
+          (os.WIFEXITED(st) and os.WEXITSTATUS(st), last_row(out)), (0, 24))
+    check("asked once", out.count(b"\x1b[6n"), 1)
+    with open(path) as fh:
+        check("and nothing typed is taken for an answer", fh.read(), "hellox\n")
+
+    out = run([MOLLY, path], [0.2], rows=0, cols=0, env={"LINES": "10", "COLUMNS": "40"})
+    check("LINES and COLUMNS come next", last_row(out), 10)
+
+    # A terminal that answers: the harness cannot, since it waits for a frame
+    # before typing, so this one is driven by hand.
+    pid, fd = pty.fork()
+    if pid == 0:
+        fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack("HHHH", 0, 0, 0, 0))
+        os.execve(MOLLY, [MOLLY, path], dict(os.environ, TERM="xterm", MOLLY_LSP="off",
+                                             MOLLY_STATE="", MOLLY_CONFIG=""))
+    out, end, answered = b"", time.time() + 5.0, False
+    while time.time() < end:
+        r, _, _ = select.select([fd], [], [], 0.1)
+        if not r:
+            if answered and b"H" in out.split(b"\x1b[6n")[-1]:
+                break
+            continue
+        try:
+            out += os.read(fd, 65536)
+        except OSError:
+            break
+        if not answered and b"\x1b[6n" in out:
+            os.write(fd, b"\x1b[30;100R")
+            answered = True
+    os.write(fd, b"\x11")
+    time.sleep(0.3)
+    try:
+        while select.select([fd], [], [], 0.2)[0]:
+            out += os.read(fd, 65536)
+    except OSError:
+        pass
+    os.kill(pid, signal.SIGKILL)
+    os.waitpid(pid, 0)
+    os.close(fd)
+    check("a terminal that answers is drawn at the size it gives", last_row(out), 30)
+
+
 def test_signals(tmpdir):
     print("\nsignals: a killed editor hands back a usable terminal")
     # Regression: a fatal signal skips atexit, so closing the terminal window
@@ -6835,6 +6895,7 @@ def main():
         test_paste(tmpdir)
         test_signal_in_a_prompt(tmpdir)
         test_symlink_race(tmpdir)
+        test_window_size(tmpdir)
         test_signals(tmpdir)
         test_recovery(tmpdir)
         test_recovery_prompt(tmpdir)

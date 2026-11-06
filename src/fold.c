@@ -66,6 +66,7 @@ static void fold_remove(int i) {
   memmove(&B.folds[i], &B.folds[i + 1], sizeof(B.folds[0]) * (size_t)(B.nfolds - i - 1));
   B.nfolds--;
   B.wrapgen++;
+  wrap_map_changed(V.buf);
 }
 
 static void fold_add(int start, int end) {
@@ -75,6 +76,7 @@ static void fold_add(int start, int end) {
   B.folds[B.nfolds].end = end;
   B.nfolds++;
   B.wrapgen++;
+  wrap_map_changed(V.buf);
 }
 
 /* Alt--: fold the block the cursor is in, or open the fold it is on. The
@@ -130,7 +132,10 @@ void fold_all(void) {
 void fold_none(void) {
   free(B.folds);
   B.folds = NULL;
-  if (B.nfolds) B.wrapgen++;
+  if (B.nfolds) {
+    B.wrapgen++;
+    wrap_map_changed(V.buf);
+  }
   B.nfolds = 0;
 }
 
@@ -153,7 +158,10 @@ void fold_rows_moved(struct buffer *b, int at, int delta) {
     }
     b->folds[o++] = f;
   }
-  if (o != b->nfolds) b->wrapgen++;
+  if (o != b->nfolds) {
+    b->wrapgen++;
+    wrap_map_changed(b);
+  }
   b->nfolds = o;
 }
 

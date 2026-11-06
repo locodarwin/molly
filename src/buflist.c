@@ -139,6 +139,7 @@ static void buf_free(struct buffer *b) {
   free(b->title);
   b->title = NULL;
   free(b->folds);
+  free(b->wblk);
   b->folds = NULL;
   free(b->gitmark);
   b->gitmark = NULL;

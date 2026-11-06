@@ -3647,6 +3647,84 @@ static void test_wrap_counts(void) {
   check("with rows of every kind among them", plain > 1000 && fit > 1000 && other > 1000, 1);
 }
 
+/* The walks step over blocks of rows by the display rows each holds, counts
+ * kept as the buffer changes rather than worked out each time. A count left
+ * stale by some edit would put a line on the wrong screen row, so every kind
+ * of change is made at random -- rows in and out, typing, lines split and
+ * joined, folds, the width, wrap itself -- and after each the answers are
+ * compared with the same questions asked with every count thrown away. */
+static unsigned blk_seed = 11;
+static int blk_rand(int n) {
+  blk_seed = blk_seed * 1103515245u + 12345u;
+  return n > 0 ? (int)((blk_seed >> 16) % (unsigned)n) : 0;
+}
+
+static void blk_pick(int *cy, int *cx) {
+  *cy = row_count() > 0 ? blk_rand(row_count()) : 0;
+  *cx = row_count() > 0 ? blk_rand(row_at(*cy)->size + 1) : 0;
+}
+
+static void test_wrap_blocks(void) {
+  int i, iter, bad = 0;
+  char text[80];
+  printf("\nwrap: the counts by block agree with counting afresh\n");
+  wrap_load("", 20);
+  for (i = 0; i < 3000; i++) {
+    int n = blk_rand(70), k, lead = blk_rand(3) * 2;
+    for (k = 0; k < n; k++) text[k] = k < lead ? ' ' : (blk_rand(5) ? 'a' + blk_rand(26) : ' ');
+    editor_insert_row(row_count(), text, (size_t)n);
+  }
+  for (iter = 0; iter < 3000; iter++) {
+    int op = blk_rand(9), total, total2, d1, d2, idx;
+    struct cursor c;
+    struct drow a, b;
+    memset(&c, 0, sizeof(c));
+    blk_pick(&CUR.cy, &CUR.cx);
+    CUR.sel_active = 0;
+    switch (op) {
+    case 0: {
+      int n = blk_rand(70), k;
+      for (k = 0; k < n; k++) text[k] = blk_rand(5) ? 'q' : ' ';
+      editor_insert_row(blk_rand(row_count() + 1), text, (size_t)n);
+      break;
+    }
+    case 1: if (row_count() > 1) editor_delete_row(blk_rand(row_count())); break;
+    case 2: editor_insert_char(blk_rand(4) ? 'x' : ' '); break;
+    case 3: editor_insert_newline(); break;
+    case 4: editor_delete_char(); break;
+    case 5: V.screencols = 5 + blk_rand(60); break;
+    case 6: V.wrap = !V.wrap; break;
+    case 7: fold_toggle(); break;
+    case 8: if (blk_rand(4) == 0) fold_none(); else editor_insert_char('y'); break;
+    }
+    if (B.nfolds > 0) fold_fix_cursor(CUR.cy);
+
+    blk_pick(&c.cy, &c.cx);
+    total = drow_total();
+    d1 = drow_of_cursor(&c);
+    idx = blk_rand(total + 2);
+    drow_at(idx, &a);
+    /* Every count thrown away, and the walk's memo with it. */
+    wrap_map_changed(V.buf);
+    B.wrapgen++;
+    total2 = drow_total();
+    d2 = drow_of_cursor(&c);
+    drow_at(idx, &b);
+    if (total != total2 || d1 != d2 || a.filerow != b.filerow || a.frag != b.frag ||
+        a.rcol0 != b.rcol0 || a.rcols != b.rcols) {
+      if (bad++ < 5) {
+        char label[160];
+        snprintf(label, sizeof(label), "after change %d (kind %d): total %d/%d, cursor %d/%d, "
+                 "row %d at %d/%d", iter, op, total, total2, d1, d2, idx, a.filerow, b.filerow);
+        check(label, 0, 1);
+      }
+    }
+  }
+  check("3000 random changes leave the counts as counting afresh gives", bad, 0);
+  check("over more than a couple of blocks", row_count() > 2500, 1);
+  fold_none();
+}
+
 static void test_wrap(void) {
   printf("\nsoft wrap: how many screen lines a row takes, and which is which\n");
 
@@ -5751,6 +5829,7 @@ int main(void) {
   test_syntax_roles();
   test_wrap();
   test_wrap_counts();
+  test_wrap_blocks();
   test_menu_band();
   test_menu_dropdown();
   test_buflist();

@@ -352,6 +352,7 @@ void tab_width_set(int n) {
 void editor_remeasure_all(void) {
   int i;
   for (i = 0; i < row_count(); i++) wrap_row_invalidate(row_at(i));
+  wrap_map_changed(V.buf);
 }
 
 /* The index of a row of the current buffer from where it sits, or -1. The
@@ -372,6 +373,7 @@ void editor_update_row(erow *row) {
   if (V.buf != NULL) {
     int at = row_index(row);
     if (at >= 0) syntax_invalidate_from(at);
+    wrap_row_changed(at);
   }
 
   /* Whatever this row wrapped to, it was measured from the text that just
@@ -437,6 +439,7 @@ void editor_insert_row(int at, char *s, size_t len) {
   lsp_rows_moved(V.buf, at, 1);
   nav_rows_moved(V.buf, at, 1);
   fold_rows_moved(V.buf, at, 1);
+  wrap_rows_moved(V.buf, at);
 
   B.dirty++;
 }
@@ -457,6 +460,7 @@ void editor_delete_row(int at) {
   lsp_rows_moved(V.buf, at, -1);
   nav_rows_moved(V.buf, at, -1);
   fold_rows_moved(V.buf, at, -1);
+  wrap_rows_moved(V.buf, at);
   /* Deleting shifts every row below up one, so their stored entry states belong
    * to the wrong rows now -- and the deleted row may have opened a comment. */
   syntax_invalidate_from(at);
@@ -469,6 +473,7 @@ void editor_clear_rows(void) {
   B.numrows = 0;
   B.gap = 0;
   B.edits++;
+  wrap_map_changed(V.buf);
   syntax_invalidate_from(0);
   lsp_diag_clear(V.buf);
 }
@@ -1003,6 +1008,7 @@ static void rows_from_text(char *text, size_t n, int adopt) {
     B.text = text;
     B.textlen = n + 1;
     B.wrapgen++;
+    wrap_map_changed(V.buf);
     syntax_invalidate_from(0);
   } else {
     free(text);

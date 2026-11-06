@@ -1345,12 +1345,21 @@ the only route to Fresh's multi-gigabyte claim.
   at the far end after that 13 ms; a thousand characters typed mid-file too
   quick to measure; a save's snapshot 0.10 s, peaking at 1.23 GB. In molly
   itself, open, edit and save of the same file took 1.9 s at a 1.12 GB peak.
-- **What is left.** Soft wrap's walk is still over the rows: 13 ms a frame at
-  ten million lines, which is fine, but *measuring* them (the first frame with
-  wrap on, and again on every change of width) takes 2.3 s at that size. A count
-  per block of rows, kept as rows change, is the next step if anyone wraps files
-  that size. And a file is still read whole, so a file larger than memory does
-  not open; only paging the block from disk would change that.
+- **Soft wrap at that size, on 2026-11-06.** Measuring the rows, the first
+  frame with wrap on and again on every change of width, took 2.6 s at ten
+  million lines, and each keystroke with wrap on cost 37 ms, three walks of
+  every row because an edit made the walk's memo stale. Now a row that cannot
+  wrap (its bytes, plus what its tabs could add, fit the window: no character
+  is wider than its bytes but a tab) is one display row without being laid
+  out, a row of plain ASCII is counted by searching for spaces, and the counts
+  are kept per block of 1,024 rows, a block going stale when one of its rows
+  changes or rows are inserted or deleted before it. Measuring takes 0.05 s
+  when the lines fit and 0.19 s when they all wrap; a keystroke and its frame
+  take under a tenth of a millisecond. Unit tests compare each shortcut with
+  the full walk, and the block counts with counting afresh after random
+  edits, folds and width changes; making either drop a case fails them.
+- **What is left.** A file is still read whole, so a file larger than memory
+  does not open; only paging the block from disk would change that.
 
 ---
 

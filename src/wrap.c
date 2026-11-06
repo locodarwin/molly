@@ -18,9 +18,9 @@
  * row a cursor is on sums the rows above it, and the row at a display index
  * counts up to it. A row's own slice count is cached on the row and recomputed
  * only when editor_update_row() sees the row change, or the window changes width,
- * so a walk is one addition per file row rather than a re-measure of the file.
- * A frame is therefore O(rows) with wrap on where it was O(1) with wrap off;
- * ROADMAP.md section 7 has what that measures at.
+ * and the counts are summed again by blocks of rows (see "counts by block"), so
+ * a walk steps over a thousand rows at a time and a frame costs about the same
+ * at ten million rows as at ten thousand.
  *
  * The exception is wrap_step(), which is vertical movement and is local to the
  * row the cursor is on and the one it is going to. It is here rather than in
@@ -185,15 +185,85 @@ void wrap_row_invalidate(erow *row) {
   if (V.buf != NULL) B.wrapgen++;
 }
 
+/* ---- counts by block --------------------------------------------------------
+ *
+ * The walks below were a step per file row: a frame with wrap on asks where
+ * the cursor's display row is, how many there are, and which row is at the top
+ * of the window, and an edit made each of those a walk of the whole file again.
+ * At ten million rows that was 37 ms a keystroke. So the buffer keeps the
+ * display rows of each block of WRAP_BLOCK rows, and a walk steps over whole
+ * blocks to the one it wants and then over rows only inside it.
+ *
+ * A count goes stale three ways, and each has its hook: a row of the block
+ * changed (wrap_row_changed, from editor_update_row), rows were inserted or
+ * deleted (wrap_rows_moved: every block from there on now holds different
+ * rows), or something changed every row at once (wrap_map_changed: a load, a
+ * fold, a new tab width). A stale count is recounted from the rows' own
+ * cached measurements when a walk next needs it, so typing on a line recounts
+ * one block. The counts are for one width, and with wrap on or off, which is a
+ * view's and not the buffer's: two windows at two widths take turns
+ * recounting, as their rows already take turns being measured. */
+
+#define WRAP_BLOCK 1024
+
+static int disp_rows(int i, int cols);
+
+void wrap_row_changed(int at) {
+  if (V.buf == NULL || B.wblk == NULL) return;
+  /* A row the buffer cannot place: count everything again to be sure. A row
+   * past the blocks counted so far is in a block that starts stale. */
+  if (at < 0) B.wrapall++;
+  else if (at / WRAP_BLOCK < B.nwblk) B.wblk[at / WRAP_BLOCK] = -1;
+}
+
+void wrap_rows_moved(struct buffer *b, int at) {
+  int k;
+  if (b == NULL || b->wblk == NULL) return;
+  for (k = at < 0 ? 0 : at / WRAP_BLOCK; k < b->nwblk; k++) b->wblk[k] = -1;
+}
+
+void wrap_map_changed(struct buffer *b) {
+  if (b != NULL) b->wrapall++;
+}
+
+/* The counts, made to fit the buffer as it is and the width asked about: as
+ * many blocks as the rows fill, and every one stale if they were counted for
+ * something else. */
+static void blocks_fit(int cols) {
+  int need = (row_count() + WRAP_BLOCK - 1) / WRAP_BLOCK, k, key = V.wrap ? cols : 0;
+  if (need == 0) need = 1;
+  if (B.wblk == NULL || need > B.nwblk) {
+    B.wblk = xrealloc(B.wblk, sizeof(*B.wblk) * (size_t)need);
+    for (k = B.nwblk; k < need; k++) B.wblk[k] = -1;
+  }
+  /* Fewer blocks when the rows shrink: the array keeps its room, and a block
+   * the end has moved into is stale, which wrap_rows_moved() saw to. */
+  B.nwblk = need;
+  if (B.wblk_cols != key || B.wblk_all != B.wrapall) {
+    for (k = 0; k < B.nwblk; k++) B.wblk[k] = -1;
+    B.wblk_cols = key;
+    B.wblk_all = B.wrapall;
+  }
+}
+
+/* Display rows block `k` holds, counted now if it is stale. */
+static int block_rows(int k, int cols) {
+  if (B.wblk[k] < 0) {
+    int i, end = (k + 1) * WRAP_BLOCK, n = 0;
+    if (end > row_count()) end = row_count();
+    for (i = k * WRAP_BLOCK; i < end; i++) n += disp_rows(i, cols);
+    B.wblk[k] = n;
+  }
+  return B.wblk[k];
+}
+
 /* Where the last drow_at() got to: the file row it answered with, and the
  * display index that row starts at.
  *
- * Without this the draw loop costs a walk of the file per screen line, because
- * it asks for drowoff, drowoff+1, ... in turn and each answer counts up from
- * row zero. With it a frame is one walk: the first ask walks, the rest step on
- * from here. A wrapped frame is then O(rows in the buffer) where an unwrapped
- * one is O(1) -- see ROADMAP.md section 7 for what that measures at, and why
- * the next step belongs with the piece table rather than here.
+ * Without this the draw loop costs a walk per screen line, because it asks for
+ * drowoff, drowoff+1, ... in turn and each answer counts up from row zero. With
+ * it a frame is one walk: the first ask walks, by blocks, and the rest step on
+ * from here.
  *
  * Five things make it stale and all five are in the key: another buffer, a
  * different width, wrap turned on or off, a row count that has moved, and the
@@ -215,10 +285,11 @@ static struct {
 
 /* Display rows the buffer occupies. */
 int drow_total(void) {
-  int i, cols, n = 0;
+  int k, cols, n = 0;
   if (identity()) return row_count();
   cols = wrap_cols();
-  for (i = 0; i < row_count(); i++) n += disp_rows(i, cols);
+  blocks_fit(cols);
+  for (k = 0; k * WRAP_BLOCK < row_count(); k++) n += block_rows(k, cols);
   return n;
 }
 
@@ -229,7 +300,11 @@ int drow_of_cursor(const struct cursor *c) {
 
   if (identity()) return c->cy;
   cols = wrap_cols();
-  for (i = 0; i < c->cy && i < row_count(); i++) n += disp_rows(i, cols);
+  blocks_fit(cols);
+  /* Whole blocks up to the cursor's, then its rows one at a time. */
+  for (i = 0; i + WRAP_BLOCK <= c->cy && i + WRAP_BLOCK <= row_count(); i += WRAP_BLOCK)
+    n += block_rows(i / WRAP_BLOCK, cols);
+  for (; i < c->cy && i < row_count(); i++) n += disp_rows(i, cols);
   /* Past the last row the cursor is on a phantom row, one display row each. */
   if (c->cy >= row_count()) return n + (c->cy - row_count());
   if (!V.wrap) return n;
@@ -347,6 +422,15 @@ void drow_at(int index, struct drow *out) {
       memo.wrap == V.wrap && memo.numrows == row_count() && index >= memo.index) {
     i = memo.filerow;
     at = memo.index;
+  } else {
+    /* Whole blocks that end before the index, then rows. */
+    blocks_fit(cols);
+    while (i + WRAP_BLOCK <= row_count()) {
+      int k = block_rows(i / WRAP_BLOCK, cols);
+      if (index < at + k) break;
+      at += k;
+      i += WRAP_BLOCK;
+    }
   }
   for (; i < row_count(); i++) {
     int k = disp_rows(i, cols);

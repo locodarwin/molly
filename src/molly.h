@@ -321,6 +321,16 @@ struct buffer {
    * one step of a walk and this is how it knows the walk is still valid. */
   unsigned wrapgen;
 
+  /* Display rows in each block of WRAP_BLOCK rows, -1 for a block not counted
+   * since one of its rows changed, so that the walks in wrap.c step over a
+   * block at a time. Counted for one width (0 with wrap off), and all stale
+   * when `wrapall` has moved on from `wblk_all`: a load, folding, a new tab
+   * width. See wrap.c. */
+  int *wblk;
+  int nwblk;
+  int wblk_cols;
+  unsigned wblk_all, wrapall;
+
   /* What the buffer is called where a file name would go, when it has none.
    * Only the find-in-files results set it: a list of matches is not a file, and
    * "[No Name]" on its status bar and tab would say nothing about what it is. */
@@ -1631,6 +1641,9 @@ int drow_of_cursor(const struct cursor *c);
 int drow_total(void);
 void drow_at(int index, struct drow *out);
 void wrap_row_invalidate(erow *row);
+void wrap_row_changed(int at);
+void wrap_rows_moved(struct buffer *b, int at);
+void wrap_map_changed(struct buffer *b);
 void wrap_step(struct cursor *c, int dir);
 
 /* view.c */

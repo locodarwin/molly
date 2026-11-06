@@ -1689,6 +1689,18 @@ static void comp_close(void) {
 
 static int comp_open_p(void) { return comp_layer >= 0; }
 
+/* Is the open list still about where the keyboard is: the same buffer, the same
+ * row, which still exists, with the cursor in or after the word it began at?
+ * Something other than a key can change that -- the keyboard moving to another
+ * window, an edit a server sends -- and a list drawn from a row number in some
+ * other buffer is a row that may not exist, and Enter on it puts a word from
+ * one file into another. */
+static int comp_current(void) {
+  return comp_open_p() && V.buf == comp_buf && V.ncursors == 1 && CUR.cy == comp_cy &&
+         comp_cy < row_count() && comp_start <= row_at(comp_cy)->size &&
+         CUR.cx >= comp_start && CUR.cx <= row_at(comp_cy)->size;
+}
+
 static const char *item_key(const struct citem *it) {
   return it->filter != NULL ? it->filter : it->label;
 }
@@ -1736,6 +1748,7 @@ static void comp_draw(const struct layer *self) {
   int i, w = 12, h, x, y, back;
   int cx = V.screenx + (drow_cursor_col(&CUR) - V.coloff) + V.gutter_w;
   (void)self;
+  if (!comp_current()) return;   /* closed by the next key (lspui_key) */
 
   for (i = 0; i < nshown; i++) {
     const struct citem *it = &items[shown[i]];
@@ -1855,7 +1868,7 @@ static void sig_draw(const struct layer *self) {
   int cols = grid_cols(), w, h, x, y, off = 0, inner, used, len, i;
   char head[32] = "";
   (void)self;
-  if (sig_label == NULL) return;
+  if (sig_label == NULL || V.buf != sig_buf) return;
 
   len = (int)strlen(sig_label);
   if (sig_n > 1) snprintf(head, sizeof(head), "%d/%d ", sig_i + 1, sig_n);
@@ -1993,6 +2006,8 @@ int lspui_key(int c) {
     hover_close();
     return c == '\x1b';
   }
+  /* A list no longer about here is closed, and the key does what it does. */
+  if (comp_open_p() && !comp_current()) comp_close();
   /* Esc closes the completion list first when both are open, and the
    * signature after; any other key leaves the signature where it is. */
   if (!comp_open_p()) {

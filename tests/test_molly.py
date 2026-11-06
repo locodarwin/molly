@@ -5385,6 +5385,24 @@ def test_lsp_complete(tmpdir):
                      env={"MOLLY_CONFIG": rc, "MOLLY_LSP": "", "MOLLY_STATE": trust_all(tmpdir)}))
         check("Alt-/ without a server says why",
               "No language server for this file." in scr.text()[15], True)
+
+        # A list open in one file while the keyboard is taken elsewhere without
+        # a key -- here a terminal beside it whose shell ends -- is not carried
+        # into the other file: Enter there must not put this file's word in it.
+        with open("a.c", "w") as fh:
+            fh.write("int x;\n" * 60 + "fak\n")
+        with open("b.c", "w") as fh:
+            fh.write("int y;\n")
+        run([MOLLY, "a.c", "b.c"],
+            [WAIT, "\x1b[18~", 0.2, "\x1b[6;5~", 0.2, "\x1bt", 0.8, "sleep 4; exit\r", 0.3,
+             "\x1b[17~", 0.3, "\x1b[1;5F", UP, "\x1b[F", COMPLETE, 1.0, 4.0, DOWN, "\r",
+             0.3, "\x13", "\x1b[17~", "\x13", 0.3],
+            rows=24, cols=100, env={"MOLLY_CONFIG": rc, "MOLLY_LSP": "",
+                                    "MOLLY_STATE": trust_all(tmpdir), "SHELL": "/bin/sh",
+                                    "PS1": "$ ", "ENV": ""})
+        with open("b.c") as fh:
+            check("a completion list does not follow the keyboard into another file",
+                  fh.read(), "int y;\n")
     finally:
         os.chdir(here)
 

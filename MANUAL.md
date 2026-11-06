@@ -2439,5 +2439,7 @@ comments back, explaining each setting and its default.
   that. A file larger than the memory you have will not open.
 - With [soft wrap](#soft-wrap) on, the first time a window lays out a very long
   file it measures every line, and does it again whenever the window's width
-  changes: about two seconds for ten million lines. Unwrapped, nothing walks
-  the file.
+  changes. For ten million lines that takes about a twentieth of a second when
+  they fit the window, and about a fifth when every one of them wraps; lines
+  with characters beyond ASCII and tabs in them are measured a character at a
+  time, and take longer. Unwrapped, nothing walks the file.

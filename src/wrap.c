@@ -70,7 +70,16 @@ static int wrap_walk(erow *row, int cols, int want, int rx, struct drow *out) {
   int n = 0;        /* slices finished */
 
   while (i < rs) {
-    int nb, w = text_cell(r, rs, i, col, tabw, &nb);
+    int nb, w;
+    /* An ASCII byte other than a tab is one column, printable or not (a
+     * control character draws as a one-column '?'), so the decoding and the
+     * width tables are only for the rest. Most text is all this case. */
+    if ((unsigned char)r[i] < 0x80 && r[i] != '\t') {
+      w = 1;
+      nb = 1;
+    } else {
+      w = text_cell(r, rs, i, col, tabw, &nb);
+    }
     /* `col > start` is what keeps a single glyph wider than the whole window
      * from stopping the walk: at the start of a slice the glyph is taken
      * whatever its width, and the draw loop drops what does not fit. */
@@ -104,6 +113,46 @@ static int wrap_walk(erow *row, int cols, int want, int rx, struct drow *out) {
   return n + 1;
 }
 
+/* Whether a row fits on one display row without being laid out: true only
+ * when it certainly does. No character is wider than its bytes -- one column
+ * for every ASCII byte, a stray byte or a control character, at most one for
+ * the two-byte characters and at most two for the longer ones -- except a tab,
+ * which can be as wide as a tab stop. So bytes plus what the tabs could add
+ * is the most the row can be, and when that fits so does the row: one slice,
+ * which is what wrap_walk() would have said after decoding every character.
+ * Measuring a file of ten million short lines was that walk ten million
+ * times, 2.6 seconds whenever wrap was turned on or the window changed width;
+ * this is a count of the tabs in each. */
+static int fits(const erow *row, int cols) {
+  const char *p = row->chars, *end = row->chars + row->size;
+  int extra = 0, per = tab_width() - 1;
+  if (row->size > cols) return 0;
+  while ((p = memchr(p, '\t', (size_t)(end - p))) != NULL) {
+    extra += per;
+    if (row->size + extra > cols) return 0;
+    p++;
+  }
+  return 1;
+}
+
+/* wrap_walk()'s count for a row of plain ASCII with no tab in it, where
+ * every byte is a column: a slice ends after the last space within its
+ * width, or at the width when there is none, and the next starts there. One
+ * search back per slice rather than a step per byte. -1 when the row is not
+ * that kind, for the full walk. */
+static int plain_rows(const erow *row, int cols) {
+  const unsigned char *p = (const unsigned char *)row->chars;
+  int i, start = 0, n = 1;
+  for (i = 0; i < row->size; i++)
+    if (p[i] >= 0x80 || p[i] == '\t') return -1;
+  while (row->size - start > cols) {
+    const unsigned char *sp = memrchr(p + start, ' ', (size_t)cols);
+    start = sp != NULL ? (int)(sp - p) + 1 : start + cols;
+    n++;
+  }
+  return n;
+}
+
 /* How many display rows a row occupies at this width.
  *
  * Cached on the row, keyed by the width it was measured at, so a resize
@@ -113,7 +162,8 @@ static int wrap_walk(erow *row, int cols, int want, int rx, struct drow *out) {
  * ways the answer can change without the window's width changing. */
 static int row_rows(erow *row, int cols) {
   if (row->wcols != cols) {
-    row->wrows = wrap_walk(row, cols, -1, -1, NULL);
+    int n = fits(row, cols) ? 1 : plain_rows(row, cols);
+    row->wrows = n > 0 ? n : wrap_walk(row, cols, -1, -1, NULL);
     row->wcols = cols;
   }
   return row->wrows;

@@ -3589,6 +3589,64 @@ static void test_syntax_roles(void) {
   V.syntax = 1;
 }
 
+/* The count of a row's display rows is answered three ways: a row that
+ * certainly fits is one without being looked at, a row of plain ASCII is
+ * counted by searching for spaces, and anything else is laid out a character
+ * at a time. The first two are shortcuts for the third and must agree with it
+ * exactly, or the screen and the scroll disagree about where a line is. The
+ * full walk is still what puts a cursor on its display row, so a cursor at the
+ * end of a one-row buffer is on the row's last display row by the walk, and
+ * drow_total() is the count by whichever way applies. Random rows, made of
+ * every kind of character the walk treats differently, at many widths. */
+static void test_wrap_counts(void) {
+  static const char *const pieces[] = {
+    "a", "b", " ", " ", "\t", "\xc3\xa9", "\xe6\x97\xa5", "\xcc\x81", "\x01",
+    "\x7f", "\xff", "wordy", "  ",
+  };
+  unsigned seed = 7;
+  int iter, bad = 0, plain = 0, fit = 0, other = 0;
+  char row[200], label[200];
+  printf("\nwrap: the shortcuts count as the full walk does\n");
+  for (iter = 0; iter < 20000; iter++) {
+    int len = 0, cols, kind, k, n;
+    seed = seed * 1103515245u + 12345u;
+    kind = (int)((seed >> 16) % 3);   /* plain ASCII, mixed, or one long word */
+    seed = seed * 1103515245u + 12345u;
+    n = (int)((seed >> 16) % 40);
+    for (k = 0; k < n; k++) {
+      const char *p;
+      seed = seed * 1103515245u + 12345u;
+      if (kind == 0) p = pieces[(seed >> 16) % 4];
+      else if (kind == 1) p = pieces[(seed >> 16) % (sizeof(pieces) / sizeof(pieces[0]))];
+      else p = "x";
+      if (len + (int)strlen(p) >= (int)sizeof(row)) break;
+      memcpy(row + len, p, strlen(p));
+      len += (int)strlen(p);
+    }
+    row[len] = '\0';
+    seed = seed * 1103515245u + 12345u;
+    cols = 1 + (int)((seed >> 16) % 30);
+    tab_width_set(iter % 2 ? 4 : 8);
+    wrap_load(row, cols);
+    if (row_count() == 0) continue;   /* nothing loads as no rows */
+    CUR.cy = 0;
+    CUR.cx = row_at(0)->size;
+    if (drow_total() != drow_of_cursor(&CUR) + 1) {
+      if (bad++ < 5) {
+        snprintf(label, sizeof(label), "a row of %d bytes at %d columns counts %d, walks %d",
+                 len, cols, drow_total(), drow_of_cursor(&CUR) + 1);
+        check(label, 0, 1);
+      }
+    }
+    if (kind == 0 && len > cols) plain++;
+    else if (len <= cols) fit++;
+    else other++;
+  }
+  tab_width_set(8);
+  check("20000 random rows count the same by the shortcuts as by the walk", bad, 0);
+  check("with rows of every kind among them", plain > 1000 && fit > 1000 && other > 1000, 1);
+}
+
 static void test_wrap(void) {
   printf("\nsoft wrap: how many screen lines a row takes, and which is which\n");
 
@@ -5692,6 +5750,7 @@ int main(void) {
   test_storage_gap();
   test_syntax_roles();
   test_wrap();
+  test_wrap_counts();
   test_menu_band();
   test_menu_dropdown();
   test_buflist();

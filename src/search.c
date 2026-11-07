@@ -521,9 +521,11 @@ void editor_goto_line(void) {
    * row (CUR.cy == row_count()) that an unclamped high value would otherwise
    * be allowed to land on for an empty request like "line 999999". */
   int max_cy = (row_count() > 0) ? row_count() - 1 : 0;
+  /* Clamped while it is still a long: past INT_MAX it used to wrap negative
+   * on the way to an int, and line 3000000000 went to line 1. */
+  if (line > max_cy + 1) line = max_cy + 1;
+  if (line < 1) line = 1;
   int target = (int)line - 1;
-  if (target < 0) target = 0;
-  if (target > max_cy) target = max_cy;
   nav_push();
   CUR.cy = target;
   CUR.cx = 0;

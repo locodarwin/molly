@@ -325,6 +325,14 @@ def test_goto_line(tmpdir):
     check("out-of-range input clamps to the last line",
           edit(tmpdir, body, [GOTO, "999", "\r", "X", SAVE]),
           "one\ntwo\nthree\nfour\nXfive\n")
+    # Past INT_MAX the number wrapped negative on its way to an int, and went
+    # to line 1; it is clamped while it is still the long strtol gave.
+    check("and so does a number too big for an int",
+          edit(tmpdir, body, [GOTO, "3000000000", "\r", "X", SAVE]),
+          "one\ntwo\nthree\nfour\nXfive\n")
+    check("or for a long",
+          edit(tmpdir, body, [GOTO, "99999999999999999999", "\r", "X", SAVE]),
+          "one\ntwo\nthree\nfour\nXfive\n")
     check("line 0 clamps to the first line",
           edit(tmpdir, body, [GOTO, "0", "\r", "X", SAVE]),
           "Xone\ntwo\nthree\nfour\nfive\n")

@@ -1154,11 +1154,14 @@ grouped into a single change, so undoing a whole typed word is one press.
 Undoing a change puts it back onto the redo stack, so `Ctrl-Y` replays it.
 
 The history is bounded: once a stack holds more than 32,768 entries or
-16 MB of stored text, Molly forgets its oldest entries. A long session
+16 MB of stored text, Molly forgets its oldest steps. A long session
 therefore limits how far back `Ctrl-Z` reaches but cannot exhaust memory
-through history. (The step limit can be lowered through the
-`MOLLY_UNDO_STEPS` environment variable, which the test suite uses to
-exercise eviction.)
+through history. A step is forgotten whole or not at all, and the newest one
+is always kept, however big: deleting or pasting a hundred thousand lines can
+be undone right after, all of it. Once you make another change, a step that
+big is the first to go, and it goes whole, along with anything older. (The
+step limit can be lowered through the `MOLLY_UNDO_STEPS` environment variable,
+which the test suite uses to exercise eviction.)
 
 Changes are aggregated this way:
 

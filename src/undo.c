@@ -22,9 +22,10 @@ struct uchange *uc_new(int kind, int row, int at, const char *text, size_t len) 
 }
 
 /* --- history caps ----------------------------------------------------------
- * Both stacks evict their oldest entries past the caps, so an editing bug
- * (or a pathological session) that pushes forever can degrade undo depth
- * but never consume unbounded memory. The step cap can be lowered through
+ * Both stacks evict their oldest steps past the caps, so an editing bug (or a
+ * pathological session) that pushes forever can degrade undo depth but never
+ * consume unbounded memory. A step goes whole or not at all, and the newest is
+ * kept however big: see undo_stack_trim(). The cap can be lowered through
  * MOLLY_UNDO_STEPS for testing. */
 #define UNDO_MAX_STEPS 32768
 #define UNDO_MAX_BYTES (16 * 1024 * 1024)
@@ -146,17 +147,45 @@ void uc_free(struct uchange *u) {
   free(u);
 }
 
-/* Evict oldest entries until both caps hold again. Dropping the bottom of
- * the stack can only truncate the oldest undo step (possibly the tail of a
- * group); the group walk on undo already stops at the stack bottom, so a
- * truncated group simply undoes fewer changes and stays consistent. */
+/* Evict the oldest steps until both caps hold again, a whole step at a time:
+ * a record of its own, or a group's whole run, which is contiguous because a
+ * group's records are pushed one after another.
+ *
+ * It used to evict a record at a time, which split a step: an operation of
+ * more records than the cap -- deleting a selection of 20,000 lines is
+ * 40,000, and so is pasting that many, or a big replace-all, sort or filter --
+ * lost its first records while it was still being made, and Ctrl-Z then put
+ * back only the rest. Undoing a deletion brought back 16,385 of 20,000 lines
+ * and said nothing about the others.
+ *
+ * The newest step is never evicted, so the operation just made can always be
+ * undone whole; memory is then the caps plus that one step, which is in
+ * proportion to the edit itself. Once a later edit makes it an older step it
+ * goes the way the others do, whole. Eviction runs down to seven eighths of
+ * the caps so that it is not a shift of the whole stack on every push, and
+ * returns at once when the stack is all one step, which a big operation is
+ * for every one of its records after the first few. */
 static void undo_stack_trim(struct uchange **s, int *n, size_t *bytes) {
-  while (*n > 1 && (*n > undo_max_steps_v || *bytes > UNDO_MAX_BYTES)) {
-    *bytes -= s[0]->len + sizeof(struct uchange);
-    uc_free(s[0]);
-    memmove(s, s + 1, sizeof(struct uchange *) * (size_t)(*n - 1));
-    (*n)--;
+  int drop = 0, low_steps = undo_max_steps_v - undo_max_steps_v / 8;
+  size_t gone = 0, low_bytes = UNDO_MAX_BYTES - UNDO_MAX_BYTES / 8;
+  if (*n <= undo_max_steps_v && *bytes <= UNDO_MAX_BYTES) return;
+  if (s[0]->group != 0 && s[0]->group == s[*n - 1]->group) return;
+  while (drop < *n) {
+    int k = 1, i;
+    if (s[drop]->group != 0)
+      while (drop + k < *n && s[drop + k]->group == s[drop]->group) k++;
+    if (drop + k >= *n) break;                      /* the newest step */
+    if (*n - drop <= low_steps && *bytes - gone <= low_bytes) break;
+    for (i = drop; i < drop + k; i++) {
+      gone += s[i]->len + sizeof(struct uchange);
+      uc_free(s[i]);
+    }
+    drop += k;
   }
+  if (drop == 0) return;
+  memmove(s, s + drop, sizeof(struct uchange *) * (size_t)(*n - drop));
+  *n -= drop;
+  *bytes -= gone;
 }
 
 void uc_do_insert(struct uchange *u) {

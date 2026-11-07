@@ -1731,6 +1731,26 @@ def test_undo_cap(tmpdir):
     check("uncapped, the same session undoes every step",
           play(once * 3 + [UNDO, UNDO, UNDO, SAVE]), b"x x x\n")
 
+    # One step of more records than the cap: deleting 20 lines is 40 records
+    # against a cap of 10. It used to lose its first records while it was
+    # being made, so Ctrl-Z put back only the last few lines. The newest step
+    # is kept whole however big; once another edit makes it older it goes, and
+    # it goes whole, never in part.
+    lines = b"".join(b"line %d\n" % i for i in range(20))
+    small = {"MOLLY_UNDO_STEPS": "10"}
+
+    def big(keys):
+        with open(path, "wb") as fh:
+            fh.write(lines)
+        run([MOLLY, path], ["\x01", "\x1b[3~"] + keys + [SAVE], env=small)
+        with open(path, "rb") as fh:
+            return fh.read()
+
+    check("a step bigger than the cap undoes whole", big([UNDO]), lines)
+    after = big(["z", UNDO, UNDO])
+    check("and once older, goes whole: none of it comes back, not part",
+          after in (b"", b"\n"), True)
+
 
 def test_input_decoding(tmpdir):
     print("\ninput: Esc, Alt and function keys")

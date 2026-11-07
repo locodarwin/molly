@@ -107,6 +107,12 @@ void undo_group_begin(void) {
   if (B.undo.group_depth++ > 0) return;
   B.undo.group_seq++;
   B.undo.active_group = B.undo.group_seq;
+  /* The group's first record is its own, as undo_group_end() makes the next
+   * one after it. Without this, text a group inserts right after typing --
+   * a paste, say -- joined the typing's record, which is outside the group:
+   * Ctrl-Z then took back the rest of the paste and left its first line,
+   * merged into what was typed before it. */
+  B.undo.locked = 1;
 }
 
 void undo_group_end(void) {

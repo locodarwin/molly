@@ -7053,6 +7053,11 @@ def test_paste(tmpdir):
 
     # One undo step, replacing a selection, no auto-indent or closing of pairs.
     check("one undo step", e("x\n", [paste("a\rb\rc"), UNDO]), "x\n")
+    # Right after typing, too. The paste's first characters used to join the
+    # typing's undo record, which is not part of the paste, so Ctrl-Z took
+    # back its later lines and left the first, merged into what was typed.
+    check("one undo step right after typing, which stays",
+          e("x\n", ["abc", paste("XY\rZ"), UNDO]), "abcx\n")
     check("and redo", e("x\n", [paste("a\rb"), UNDO, REDO]), "a\nbx\n")
     check("it replaces a selection", e("abc\n", [SH_RIGHT, SH_RIGHT, paste("Z")]), "Zc\n")
     check("it is not auto-indented", e("  x\n", [END, paste("\ry")]), "  x\ny\n")

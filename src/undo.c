@@ -254,7 +254,6 @@ void uc_apply(struct uchange *u, int redo) {
     CUR.cx = u->cx0;
     CUR.cy = u->cy0;
   }
-  editor_recompute_dirty();
 }
 
 /* Off the top of a stack, taking its size with it. Moving a record between the
@@ -282,6 +281,10 @@ void editor_undo(void) {
     uc_apply(u, 0);
     redo_push(u);
   }
+  /* Once for the step, not per record: whether the text is what was saved is
+   * a walk of the rows up to the first that differs, and per record that was
+   * 2 seconds to undo 20,000 edits near the end of a 200,000-line file. */
+  editor_recompute_dirty();
   B.undo.locked = 1;
   /* Back to one cursor. A record restores one position, so after undoing an
    * edit that happened at several the extra cursors are pointing at wherever
@@ -306,6 +309,7 @@ void editor_redo(void) {
     uc_apply(u, 1);
     undo_push(u);
   }
+  editor_recompute_dirty();
   B.undo.locked = 1;
   cursors_collapse();
   editor_set_status_message("Redo");

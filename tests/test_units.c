@@ -3337,6 +3337,41 @@ static int store_all_borrowed(void) {
   return 1;
 }
 
+/* Undoing a step of many records at the end of a long file. Whether the text
+ * is what was saved is a walk of the rows to the first that differs, and it
+ * was taken after every record: 20,000 edits near the end of 200,000 rows took
+ * two seconds to undo, and ten times the rows would take ten times that. It is
+ * taken once per step now, and the step still leaves the flag right. */
+static void test_undo_big_step(void) {
+  static char text[200000 * 13];
+  struct timespec t0, t1;
+  double secs;
+  int i, n = 0;
+  printf("\nundo: a step of many records at the end of a long file\n");
+  for (i = 0; i < 200000; i++) n += sprintf(text + n, "line %d\n", i);
+  store_load(text, (size_t)n);
+  B.undo.locked = 1;
+  undo_group_begin();
+  for (i = 180000; i < 200000; i++) {
+    CUR.cy = i;
+    CUR.cx = 0;
+    editor_insert_char('x');
+  }
+  undo_group_end();
+  B.dirty = 1;
+  clock_gettime(CLOCK_MONOTONIC, &t0);
+  editor_undo();
+  clock_gettime(CLOCK_MONOTONIC, &t1);
+  secs = (double)(t1.tv_sec - t0.tv_sec) + (double)(t1.tv_nsec - t0.tv_nsec) / 1e9;
+  check("undoing 20,000 edits near the end of 200,000 rows takes well under a second",
+        secs < 1.0, 1);
+  check("and puts the text back", row_at(199999)->size == 11 && row_at(199999)->chars[0] == 'l', 1);
+  check("which is what was saved, so it is not modified", B.dirty, 0);
+  editor_redo();
+  check("redone, it is modified again", B.dirty, 1);
+  check("with the edits back", row_at(199999)->chars[0], 'x');
+}
+
 static void test_storage_load(void) {
   printf("\nstorage: a file is read in one piece and its rows point into it\n");
 
@@ -5824,6 +5859,7 @@ int main(void) {
   test_snippets();
   test_vt();
   test_storage_load();
+  test_undo_big_step();
   test_storage_edit();
   test_storage_gap();
   test_syntax_roles();

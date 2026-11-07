@@ -795,10 +795,11 @@ agree on every one. Its termination witness is unchanged: molly runs under
   then below is a node whose second child is a node, and the layout code never
   needs to know the depth. Splits store a *fraction* instead of a column count,
   so a resize keeps the proportion without remembering the previous size.
-- **Not done:** dragging a split to resize it, and a grow/shrink command. Either
-  would set the existing fraction field; neither the gesture nor the chord
-  exists yet. Named windows, window-local filetypes and a window list are not
-  planned.
+- **Resizing done, on 2026-10-11:** `Ctrl-Shift` and an arrow moves the border
+  beside the window you are in, `Window ▸ Move border` does the same from the
+  menu, and a border can be dragged with the mouse. All three set the existing
+  fraction field. Named windows, window-local filetypes and a window list are
+  not planned.
 
 ### Syntax highlighting - **done**
 

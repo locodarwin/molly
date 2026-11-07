@@ -193,6 +193,27 @@ def test_keys(tmpdir):
         check(label + " inserts nothing",
               edit(tmpdir, "ab\n", [seq, SAVE]), "ab\n")
 
+    # Regression: a whole sequence molly has no key for was reported as Esc, so
+    # Insert -- or Ctrl-Insert, F13, a key from an extended keyboard mode --
+    # canceled a prompt, closed a dialog or dropped a selection.
+    print("\ninput: a key molly does not know does nothing, not Esc")
+    for label, seq in [("Insert", "\x1b[2~"), ("Ctrl-Insert", "\x1b[2;5~"),
+                       ("F13", "\x1b[25~"), ("a CSI u key", "\x1b[97;5u"),
+                       ("an SS3 keypad key", "\x1bOj"),
+                       ("a horizontal scroll", "\x1b[<66;5;1M")]:
+        check(label + " keeps a selection",
+              edit(tmpdir, "hello\n", [SH_RIGHT, SH_RIGHT, seq, "X", SAVE]),
+              "Xllo\n")
+    work = tempfile.mkdtemp(dir=tmpdir)
+    run([MOLLY], ["abc", SAVE, "\x1b[2~", os.path.join(work, "n.txt"), "\r"])
+    check("Insert does not cancel a prompt",
+          os.path.exists(os.path.join(work, "n.txt")), True)
+    # Cut off before its end, a sequence is still Esc: Esc and '[' in quick
+    # succession are a press of Esc as much as they are anything.
+    out = run([MOLLY], ["abc", SAVE, "\x1b[", 0.6])
+    check("a sequence cut short still cancels",
+          any("Save aborted" in m for m in status_lines(out)), True)
+
     # Regression: the cursor can move down onto the phantom row past the
     # last line (typing there starts a new line), but Backspace did nothing
     # at all from that spot.

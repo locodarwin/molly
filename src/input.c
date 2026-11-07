@@ -3,6 +3,14 @@
 
 #include "molly.h"
 
+/* A whole sequence that is no key molly has: Insert, F13, a key from a keyboard
+ * mode molly did not ask for, a mouse report it does not use. Reported as a
+ * redraw, which every key loop treats as "nothing pressed". It used to be Esc,
+ * so pressing Insert canceled a prompt, closed a dialog or dropped a selection.
+ * A sequence cut off before its end is still Esc: Esc and '[' typed in quick
+ * succession are a press of Esc as much as they are anything. */
+#define NO_KEY WINCH_KEY
+
 /* Escape sequences are consumed in full, to their terminating byte, even when
  * the result is a key we do not map. A sequence that was only partly consumed
  * used to leave its tail in the input stream, where it arrived as ordinary
@@ -49,16 +57,17 @@ void input_last_mouse(struct mouse_event *out) {
 
 /* Decode an SGR mouse report: "<b;x;yM" for a press or drag, "<b;x;ym" for a
  * release. The button byte packs the button in its low two bits, the modifiers
- * above that, motion at 32 and the wheel at 64. Returns MOUSE_KEY, or Esc if the
- * report makes no sense -- the sequence has already been consumed either way, so a
- * malformed one cannot leak into the buffer. */
+ * above that, motion at 32 and the wheel at 64. Returns MOUSE_KEY, or NO_KEY if
+ * the report makes no sense or is one molly does not use -- the sequence has
+ * already been consumed either way, so a malformed one cannot leak into the
+ * buffer. */
 static int decode_mouse(const char *params) {
   int b, x, y;
   const char *p = params;
 
-  if (*p != '<') return '\x1b';
+  if (*p != '<') return NO_KEY;
   p++;
-  if (sscanf(p, "%d;%d;%d", &b, &x, &y) != 3) return '\x1b';
+  if (sscanf(p, "%d;%d;%d", &b, &x, &y) != 3) return NO_KEY;
 
   last_mouse.mods = 0;
   if (b & 4) last_mouse.mods |= MOUSE_MOD_SHIFT;
@@ -75,7 +84,7 @@ static int decode_mouse(const char *params) {
      * terminals that report it, and are ignored rather than mistaken for a click. */
     if ((b & 0x03) == 0) last_mouse.type = MOUSE_WHEEL_UP;
     else if ((b & 0x03) == 1) last_mouse.type = MOUSE_WHEEL_DOWN;
-    else return '\x1b';
+    else return NO_KEY;
     last_mouse.button = MOUSE_BUTTON_LEFT;
     return MOUSE_KEY;
   }
@@ -302,7 +311,7 @@ static int decode_key(unsigned char c) {
         }
         break;
     }
-    return '\x1b';
+    return NO_KEY;
   }
 
   if (b == 'O') {
@@ -320,7 +329,7 @@ static int decode_key(unsigned char c) {
       case 'R': return F3_KEY;
       case 'S': return F4_KEY;
     }
-    return '\x1b';
+    return NO_KEY;
   }
 
   /* The same bytes as Alt and one of these, told apart the way Esc and Alt are: a

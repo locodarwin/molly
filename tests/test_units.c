@@ -1419,7 +1419,10 @@ static void test_config_write(void) {
   config_parse_text(
       "[editor]\ntab width = 3\n"
       "[view]\nline numbers = on\n"
-      "[keys]\nf9 = file.save\nctrl-s = none\n",
+      "[keys]\nf9 = file.save\nctrl-s = none\n"
+      "[syntax c]\nkeywords = frob\n"
+      "[syntax toml]\nextensions = toml\nline comment = #\n"
+      "language server =\n",
       "<test>");
   config_apply_keys();
 
@@ -1474,6 +1477,27 @@ static void test_config_write(void) {
           keymap_lookup(F1_KEY + 8) == cmd_find_by_name("file.save"), 1);
     check("and an unbound chord stays unbound",
           keymap_lookup(CTRL_KEY('S')) == NULL, 1);
+
+    /* The [syntax] blocks are the user's own definitions, which nothing in the
+     * editor can recreate: a save that dropped them would delete a language. */
+    {
+      char *dump = NULL;
+      size_t dlen = 0;
+      FILE *mf = open_memstream(&dump, &dlen);
+      if (mf != NULL) {
+        config_dump(mf);
+        fclose(mf);
+      }
+      check("a [syntax] keyword list survives a save",
+            dump != NULL && strstr(dump, "syntax\tc\tkeywords\tfrob\n") != NULL, 1);
+      check("and so does a language the file defined",
+            dump != NULL &&
+                strstr(dump, "syntax\ttoml\textensions\ttoml\n"
+                             "syntax\ttoml\tline comment\t#\n"
+                             "syntax\ttoml\tlanguage server\t\n") != NULL,
+            1);
+      free(dump);
+    }
   }
 
   /* The surprising half, stated on its own: a setting changed since the file was

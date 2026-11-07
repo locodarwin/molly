@@ -2378,7 +2378,9 @@ above to `mollyrc`, creating `~/.config/molly/` if it is not there. To keep a
 setting, change it the usual way (`Ctrl-U` for the gutter, `View ▸ Menu Bar`
 for the bar, the Find dialog's checkboxes) and then save.
 Key bindings you put in the file by hand are written back too; molly's own
-defaults are not, so a later version can move a key you never changed.
+defaults are not, so a later version can move a key you never changed. Your
+`[syntax <name>]` sections are written back line for line, in the order you
+wrote them.
 
 The write is atomic: molly writes a temporary file beside the target and renames
 it, so an interrupted save cannot leave a half-written file that fails to parse

@@ -928,6 +928,22 @@ int config_write(const char *path, const char **err) {
           "# every command name.\n");
   keymap_write_changes(fp);
 
+  /* The `[syntax ...]` blocks, line for line as they were read. Nothing in the
+   * editor changes them, and nothing could recreate them, so a save that left
+   * them out deleted every language the user had defined. Kept in their order,
+   * with a new header wherever the language changes, so that rules which add to
+   * each other are applied in the same order on the next start. */
+  {
+    const char *lang = NULL;
+    for (i = 0; i < syns_n; i++) {
+      if (lang == NULL || strcmp(lang, syns[i].lang) != 0) {
+        lang = syns[i].lang;
+        fprintf(fp, "\n[syntax %s]\n", lang);
+      }
+      fprintf(fp, "%s = %s\n", syns[i].key, syns[i].val);
+    }
+  }
+
   if (fflush(fp) != 0 || fsync(fileno(fp)) != 0) {
     msgf(reason, sizeof(reason), "%s: %s", tmp, strerror(errno));
     if (err) *err = reason;

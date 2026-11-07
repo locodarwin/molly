@@ -2057,7 +2057,9 @@ it points at, leaving the link itself alone.
 
 If another process has changed the file on disk since Molly opened it (or
 since the last save), `Ctrl-S` asks before overwriting that change. Answering
-`n` aborts the save; `y` overwrites it.
+`n` aborts the save; `y` overwrites it. The same goes for a new file: if the
+name did not exist when you opened it and another process has created it since,
+`Ctrl-S` asks before replacing it.
 
 When there are unsaved changes, the first `Ctrl-Q` lists the unsaved buffers and
 offers Save All, Discard or Cancel. A clean session quits on the first `Ctrl-Q`.

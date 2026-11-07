@@ -801,6 +801,29 @@ def test_external_change(tmpdir):
     result = edit(tmpdir, "orig\n", ["X", SAVE], name="ext.txt")
     check("no external change means no warning at all", result, "Xorig\n")
 
+    # A name that did not exist when molly opened it has no mtime to compare
+    # with, and the check used to be skipped: a file someone else made there in
+    # the meantime -- another molly starting the same new file -- was replaced
+    # without a word.
+    os.unlink(path)
+    out = run_interleaved([MOLLY, path], ["X"], touched("theirs\n"),
+                          [SAVE, "n", "\r"])
+    check("a file created since a new name was opened is asked about",
+          any(m.startswith("Save aborted: file created on disk")
+              for m in status_lines(out)), True)
+    with open(path) as fh:
+        check("and declining leaves it alone", fh.read(), "theirs\n")
+    os.unlink(path)
+    out = run_interleaved([MOLLY, path], ["X"], touched("theirs\n"),
+                          [SAVE, "y", "\r"])
+    with open(path) as fh:
+        check("confirming writes over it", fh.read(), "X\n")
+    os.unlink(path)
+    result = run_interleaved([MOLLY, path], ["X"], lambda: None, [SAVE])
+    with open(path) as fh:
+        check("and a new file nobody else made is saved without a question",
+              fh.read(), "X\n")
+
 
 # ------------------------------------------------------------ security ----
 

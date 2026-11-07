@@ -662,12 +662,20 @@ static int save_to(const char *name, int typed, const char *fmsg, const char **w
   }
 
   /* Someone else may have written the file since it was opened (or last
-   * saved). Ask before overwriting their change -- only meaningful when
-   * there's a prior on-disk version to compare against and to lose. */
+   * saved). Ask before overwriting their change. A buffer with no mtime is one
+   * whose name did not exist when it was opened, so a file there now is one
+   * somebody else made -- another molly starting the same new file -- and is
+   * asked about the same way rather than replaced without a word. */
   if (!typed && B.have_disk_mtime && target_exists &&
       !mtime_eq(st.st_mtim, B.on_disk_mtime) &&
       !save_confirm("File changed on disk since opened. Save anyway? (y/N): %s")) {
     editor_set_status_message("Save aborted: file changed on disk");
+    free(resolved);
+    return SAVE_STOPPED;
+  }
+  if (!typed && !B.have_disk_mtime && target_exists &&
+      !save_confirm("File created on disk since opened. Save anyway? (y/N): %s")) {
+    editor_set_status_message("Save aborted: file created on disk");
     free(resolved);
     return SAVE_STOPPED;
   }

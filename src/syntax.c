@@ -341,12 +341,18 @@ int syntax_set_line(const char *lang, const char *key, const char *value,
    * rather than shared, which is two lines against a header constant for a
    * range that is a property of the renderer either way. */
   if (strcmp(key, "tab width") == 0) {
-    int w = atoi(value);
-    if (w < 1 || w > 16) {
+    /* strtol and a check of what is left, not atoi: atoi took `2x` as 2, and a
+     * number past an int's range is undefined behavior there (in practice it
+     * wrapped, so 4294967300 became 4). */
+    char *end;
+    long w;
+    errno = 0;
+    w = strtol(value, &end, 10);
+    if (errno != 0 || end == value || *end != '\0' || w < 1 || w > 16) {
       if (err) *err = "tab width wants 1 to 16";
       return 0;
     }
-    s->tab_width = w;
+    s->tab_width = (int)w;
     return 1;
   }
   if (strcmp(key, "insert spaces") == 0) {

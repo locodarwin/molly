@@ -2702,6 +2702,17 @@ static void test_syntax_misc(void) {
     check("and a flag that is not a flag",
           syntax_set_line("c", "numbers", "maybe", &err), 0);
     check_str("with its own message", err, "numbers wants on or off");
+
+    /* Held to what [editor] tab width accepts: a whole number, nothing after
+     * it, and nothing that wraps around into range on the way to an int. */
+    check("a tab width in range is taken",
+          syntax_set_line("c", "tab width", "4", &err), 1);
+    check("one past an int's range is refused, not wrapped to 4",
+          syntax_set_line("c", "tab width", "4294967300", &err), 0);
+    check("and so is a number with something after it",
+          syntax_set_line("c", "tab width", "2x", &err), 0);
+    check("leaving the width as it was",
+          syntax_tab_width(syn_lang("x.c")), 4);
   }
 
   /* A line-leading rule asks "is everything before this blank?", and asked

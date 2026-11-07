@@ -214,6 +214,19 @@ def test_keys(tmpdir):
     check("a sequence cut short still cancels",
           any("Save aborted" in m for m in status_lines(out)), True)
 
+    # Regression: Alt with a letter outside ASCII arrives as Esc and the
+    # letter's UTF-8 bytes. The first byte was taken for the Alt chord and the
+    # rest typed, so Alt-e-acute wrote a lone continuation byte into the file.
+    print("\ninput: Alt with a letter outside ASCII")
+    for label, ch in [("two bytes", "é"), ("three bytes", "€"),
+                      ("four bytes", "\U0001f600")]:
+        check("Alt and a letter of %s types nothing" % label,
+              edit_bytes(tmpdir, b"hello\n", ["\x1b" + ch, 0.3, SAVE]),
+              b"hello\n")
+    check("and Esc, then the letter a moment later, types the letter",
+          edit_bytes(tmpdir, b"hello\n", ["\x1b", 0.4, b"\xc3\xa9", SAVE]),
+          b"\xc3\xa9hello\n")
+
     # Regression: the cursor can move down onto the phantom row past the
     # last line (typing there starts a new line), but Backspace did nothing
     # at all from that spot.

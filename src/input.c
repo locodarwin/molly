@@ -346,6 +346,16 @@ static int decode_key(unsigned char c) {
   /* Alt + a printable character. Anything else following Esc -- a control byte,
    * say -- is consumed and reported as a plain Esc, as it always was. */
   if (b >= 0x20 && b <= 0x7e) return ALT_KEY(b);
+  /* Alt and a letter outside ASCII: Esc and the letter's UTF-8 bytes. No chord
+   * is bound to one, so the whole letter is read and nothing is done. Taking
+   * only its first byte typed the rest, which wrote a lone continuation byte
+   * into the file. */
+  if (b >= 0x80) {
+    int more = (b >= 0xf0) ? 3 : (b >= 0xe0) ? 2 : (b >= 0xc0) ? 1 : 0;
+    while (more-- > 0 && read_byte(&b) && b >= 0x80 && b <= 0xbf)
+      ;
+    return NO_KEY;
+  }
   /* Alt-Backspace, which a terminal sends as Esc and DEL: the one Alt chord on
    * a key that is not printable, and the one readline and every shell already
    * use for deleting a word. */

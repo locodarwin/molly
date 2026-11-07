@@ -2654,6 +2654,36 @@ static void test_syntax_misc(void) {
     check_str("with its own message", err, "numbers wants on or off");
   }
 
+  /* A line-leading rule asks "is everything before this blank?", and asked
+   * afresh at every byte that walked the row so far each time: a row of a few
+   * hundred thousand spaces took seconds to color, on every redraw. */
+  printf("\nsyntax: a long run of indentation\n");
+  {
+    enum { N = 200000 };
+    static char row[N + 2];
+    static unsigned char out[N + 2];
+    const char *files[] = {"x.c", "x.md"};
+    int f;
+    memset(row, ' ', N);
+    row[N] = '#';
+    row[N + 1] = 'x';
+    for (f = 0; f < 2; f++) {
+      struct timespec t0, t1;
+      double secs;
+      int so;
+      clock_gettime(CLOCK_MONOTONIC, &t0);
+      syntax_row(syn_lang(files[f]), row, N + 2, 0, out, &so);
+      clock_gettime(CLOCK_MONOTONIC, &t1);
+      secs = (double)(t1.tv_sec - t0.tv_sec) +
+             (double)(t1.tv_nsec - t0.tv_nsec) / 1e9;
+      check(f == 0 ? "200,000 spaces of indentation lex in well under a second"
+                   : "and in Markdown too",
+            secs < 1.0, 1);
+      check("and the marker after them still counts as line-leading",
+            out[N] != ROLE_TEXT && out[N] == out[N + 1], 1);
+    }
+  }
+
   /* Leave the definitions as the rest of the suite expects to find them: the
    * refusals above are harmless, but a test that adds a rule should not leak it.
    */

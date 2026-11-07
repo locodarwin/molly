@@ -679,14 +679,15 @@ static void fill(unsigned char *out, int from, int to, unsigned char role) {
   for (i = from; i < to; i++) out[i] = role;
 }
 
-/* Is everything before `i` on this row blank? Line-leading rules -- a heading, a
- * preprocessor directive -- apply after indentation and nowhere else, so that a
- * `#` inside a string is not a directive. */
-static int only_blanks_before(const char *r, int i) {
-  int j;
-  for (j = 0; j < i; j++)
-    if (r[j] != ' ' && r[j] != '\t') return 0;
-  return 1;
+/* Where the row's indentation ends. Line-leading rules -- a heading, a
+ * preprocessor directive -- apply there and nowhere else, so that a `#` inside a
+ * string is not a directive. Found once per row: asking "is everything before
+ * `i` blank?" afresh at every byte walked the row again each time, and a row of
+ * a few hundred thousand spaces took seconds to color on every redraw. */
+static int indent_end(const char *r, int rs) {
+  int j = 0;
+  while (j < rs && (r[j] == ' ' || r[j] == '\t')) j++;
+  return j;
 }
 
 /* Color one row.
@@ -705,6 +706,7 @@ void syntax_row(const struct syntax *s, const char *r, int rs, int state_in,
                 unsigned char *out, int *state_out) {
   int i = 0;
   int state = state_in;
+  int lead;
 
   if (s == NULL) {
     fill(out, 0, rs, ROLE_TEXT);
@@ -750,17 +752,18 @@ void syntax_row(const struct syntax *s, const char *r, int rs, int state_in,
     }
   }
 
+  lead = indent_end(r, rs);
   while (i < rs) {
     int k, n;
 
     /* A line-leading marker claims the whole rest of the row. */
-    if (s->heading[0] != '\0' && only_blanks_before(r, i) &&
+    if (s->heading[0] != '\0' && i <= lead &&
         match_at(r, rs, i, s->heading)) {
       fill(out, i, rs, ROLE_SYN_HEADING);
       i = rs;
       break;
     }
-    if (s->preproc[0] != '\0' && only_blanks_before(r, i) &&
+    if (s->preproc[0] != '\0' && i <= lead &&
         match_at(r, rs, i, s->preproc)) {
       /* Not for AutoIt's #cs, which is a comment opener and is checked first
        * below -- so this runs only when no block opener matched here. */

@@ -6842,6 +6842,26 @@ def test_control_bytes(tmpdir):
           b"\x1b]0;NAMED" not in out and b"d?]0;NAMED?" in out, True)
 
 
+def test_malformed_input(tmpdir):
+    print("\ninput: numbers no terminal sends, in mouse reports and keys")
+    # Regression: the numbers in a mouse report were read with sscanf and had
+    # one taken off, so a coordinate of -2147483648 overflowed (undefined
+    # behavior, which the sanitizer run turns into a crash), and the numbers in
+    # a key's parameters were read with atoi, which has no answer for one too
+    # big for an int. A report or key with such a number is now no key at all.
+    for label, seq in [("a coordinate at the bottom of an int",
+                        "\x1b[<0;-2147483648;1M"),
+                       ("a row at the bottom of an int", "\x1b[<0;1;-2147483648M"),
+                       ("a wheel report likewise", "\x1b[<64;-2147483648;1M"),
+                       ("a coordinate too big for an int", "\x1b[<0;99999999999;1M"),
+                       ("a coordinate of zero", "\x1b[<0;0;0M"),
+                       ("a button too big for an int", "\x1b[<99999999999;1;1M"),
+                       ("a modifier too big for an int", "\x1b[1;99999999999C"),
+                       ("a key number too big for an int", "\x1b[99999999999~")]:
+        check(label + " is ignored",
+              edit(tmpdir, "hello\n", [seq, "X", SAVE]), "Xhello\n")
+
+
 def test_stray_bytes(tmpdir):
     """A byte that is not part of a whole character is one character by itself,
     going either way, and a selection can start or end on one."""
@@ -7376,6 +7396,7 @@ def main():
         test_git(tmpdir)
         test_control_bytes(tmpdir)
         test_stray_bytes(tmpdir)
+        test_malformed_input(tmpdir)
         test_only_regular_files(tmpdir)
         test_save_keeps_the_file(tmpdir)
         test_line_endings_per_line(tmpdir)

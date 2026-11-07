@@ -55,6 +55,24 @@ void input_last_mouse(struct mouse_event *out) {
   *out = last_mouse;
 }
 
+/* A number in a sequence's parameters, advancing *p past it: one to five
+ * digits, which is every number a terminal sends -- a coordinate, a button, a
+ * modifier or a key's code. 0 for anything else, the sequence then being no
+ * key. sscanf and atoi had no answer for a number too big for an int, and a
+ * coordinate of -2147483648 overflowed when one was taken off it. */
+static int seq_num(const char **p, int *out) {
+  const char *q = *p;
+  int v = 0, n = 0;
+  while (*q >= '0' && *q <= '9') {
+    if (++n > 5) return 0;
+    v = v * 10 + (*q++ - '0');
+  }
+  if (n == 0) return 0;
+  *out = v;
+  *p = q;
+  return 1;
+}
+
 /* Decode an SGR mouse report: "<b;x;yM" for a press or drag, "<b;x;ym" for a
  * release. The button byte packs the button in its low two bits, the modifiers
  * above that, motion at 32 and the wheel at 64. Returns MOUSE_KEY, or NO_KEY if
@@ -67,7 +85,9 @@ static int decode_mouse(const char *params) {
 
   if (*p != '<') return NO_KEY;
   p++;
-  if (sscanf(p, "%d;%d;%d", &b, &x, &y) != 3) return NO_KEY;
+  if (!seq_num(&p, &b) || *p++ != ';' || !seq_num(&p, &x) || *p++ != ';' ||
+      !seq_num(&p, &y) || *p != '\0' || x < 1 || y < 1)
+    return NO_KEY;
 
   last_mouse.mods = 0;
   if (b & 4) last_mouse.mods |= MOUSE_MOD_SHIFT;
@@ -254,7 +274,9 @@ static int decode_key(unsigned char c) {
      * buffer regardless. */
     char *semi = strchr(params, ';');
     if (semi != NULL) {
-      int mod = atoi(semi + 1);
+      const char *mp = semi + 1;
+      int mod = 0;
+      if (*mp != '\0' && !seq_num(&mp, &mod)) return NO_KEY;
       if (mod >= 2) {
         last_key_shift = ((mod - 1) & 0x01) ? 1 : 0;
         last_key_ctrl = ((mod - 1) & 0x04) ? 1 : 0;
@@ -280,8 +302,11 @@ static int decode_key(unsigned char c) {
       case 'Q': return F2_KEY;
       case 'R': return F3_KEY;
       case 'S': return F4_KEY;
-      case '~':
-        switch (atoi(params)) {
+      case '~': {
+        const char *kp = params;
+        int code = -1;
+        if (*kp != '\0' && !seq_num(&kp, &code)) return NO_KEY;
+        switch (code) {
           case 200:
             read_paste();
             return PASTE_KEY;
@@ -310,6 +335,7 @@ static int decode_key(unsigned char c) {
           case 24: return F12_KEY;
         }
         break;
+      }
     }
     return NO_KEY;
   }

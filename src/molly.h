@@ -1049,7 +1049,15 @@ void editor_free_rows(void);
 void editor_row_truncate(erow *row, int at);
 void editor_insert_row(int at, char *s, size_t len);
 int file_open_read(const char *path, const char **why);
-void editor_open(char *filename, int fd);
+/* A file read whole, before it has a buffer: see file_read_fd(). */
+struct file_text {
+  char *text;          /* len bytes and one to spare; the buffer's once opened */
+  size_t len;
+  struct stat st;
+  int have_st;
+};
+int file_read_fd(int fd, struct file_text *ft);
+void editor_open(char *filename, struct file_text *ft);
 void editor_recompute_dirty(void);
 void editor_row_append_string(erow *row, char *s, size_t len);
 void editor_row_delete_char(erow *row, int at);
@@ -1558,6 +1566,7 @@ int editor_quit_dialog(void);
 char *editor_prompt(char *prompt, void (*callback)(char *, int));
 void editor_help(void);
 int editor_open_in_new_buffer(char *path);
+const char *editor_open_failure(void);
 
 /* undo.c */
 int undo_can_redo(void);

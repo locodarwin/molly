@@ -1687,6 +1687,53 @@ def test_open_dialog(tmpdir):
         os.chdir(cwd)
 
 
+def test_open_unreadable(tmpdir):
+    print("\nopen: a file that cannot be read is refused, and the session goes on")
+    OPEN = "\x0f"
+    cwd = os.getcwd()
+    d = tempfile.mkdtemp(dir=tmpdir)
+    try:
+        os.chdir(d)
+        # /proc/self/mem is a regular file whose first read fails with EIO: the
+        # same as a failing disk or a dropped network mount, on demand. It is
+        # listed first ("..", then mem, then work.txt).
+        os.symlink("/proc/self/mem", os.path.join(d, "mem"))
+        with open("work.txt", "w") as fh:
+            fh.write("work\n")
+        out = run([MOLLY, "work.txt"], ["X", OPEN, DOWN, "\r", SAVE, "\x11"],
+                  status=True)
+        out, st = out
+        check("a read that fails says why",
+              any("Can't open mem: Input/output error" in m
+                  for m in status_lines(out)), True)
+        with open("work.txt") as fh:
+            check("and molly is still running, with the edit there to save",
+                  fh.read(), "Xwork\n")
+        check("and no recovery file was left by a fatal exit",
+              os.path.exists("work.txt.molly-recover"), False)
+
+        # Too big for memory. Only where an allocation that big is refused:
+        # with overcommit set to always, malloc agrees and the read would run.
+        with open("/proc/sys/vm/overcommit_memory") as fh:
+            always = fh.read().strip() == "1"
+        if not always:
+            os.unlink("mem")
+            with open("big", "wb") as fh:
+                fh.truncate(1 << 43)
+            try:
+                out = run([MOLLY, "work.txt"],
+                          ["Y", OPEN, DOWN, "\r", SAVE, "\x11"])
+                check("a file too big for memory says so",
+                      any("Can't open big: Cannot allocate memory" in m
+                          for m in status_lines(out)), True)
+                with open("work.txt") as fh:
+                    check("and the session goes on", fh.read(), "YXwork\n")
+            finally:
+                os.unlink("big")
+    finally:
+        os.chdir(cwd)
+
+
 # --------------------------------------------------------- robustness ----
 
 def test_directory_refused(tmpdir):
@@ -7189,6 +7236,7 @@ def main():
         test_recovery_prompt(tmpdir)
         test_cli_args(tmpdir)
         test_open_dialog(tmpdir)
+        test_open_unreadable(tmpdir)
         test_directory_refused(tmpdir)
         test_undo(tmpdir)
         test_undo_cap(tmpdir)

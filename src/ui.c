@@ -628,9 +628,18 @@ char *editor_open_dialog(void) {
  * The empty unnamed buffer molly starts with is reused rather than left behind,
  * so `molly` then Ctrl-O gives one tab and not two. Anything the user has typed
  * into it makes it not empty, and then it stays. */
+/* Why the last editor_open_in_new_buffer() that returned 0 could not open its
+ * file, for startup, which ends there rather than carrying on without it. */
+static const char *open_failure;
+
+const char *editor_open_failure(void) {
+  return open_failure != NULL ? open_failure : "cannot be opened";
+}
+
 int editor_open_in_new_buffer(char *path) {
   int already = buf_find_path(path);
   struct buffer *cur = V.buf;
+  struct file_text ft;
   const char *why;
   int fd;
 
@@ -642,9 +651,14 @@ int editor_open_in_new_buffer(char *path) {
     return 1;
   }
 
-  /* Before a buffer is made for it, so a refusal leaves the one in use showing. */
+  /* Opened and read whole before a buffer is made for it, so a refusal leaves
+   * the one in use showing -- a read that fails part way, or a file too big
+   * for memory, included. Those used to be found with the new buffer already
+   * made, and ended the session there, unsaved work in other buffers and all. */
   fd = file_open_read(path, &why);
-  if (fd == -1 && why != NULL) {
+  if (fd != -1 && file_read_fd(fd, &ft) == -1) why = strerror(errno);
+  open_failure = why;
+  if (why != NULL) {
     /* The last part only: the dialog gives a whole path, and the reason is what
      * must not fall off the end of the message bar. */
     const char *slash = strrchr(path, '/');
@@ -657,7 +671,7 @@ int editor_open_in_new_buffer(char *path) {
         !cur->grep_results && !cur->problems && cur->tty == NULL))
     buf_show(buf_index_of(buf_new()));
 
-  editor_open(path, fd);
+  editor_open(path, fd != -1 ? &ft : NULL);
   recent_note(path);
   git_refresh(V.buf);
   cursors_collapse();

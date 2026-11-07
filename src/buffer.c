@@ -897,14 +897,18 @@ void editor_save(void) {
   git_refresh(V.buf);
 }
 
-/* All of fp, in one allocation with a byte to spare past the end. NULL if the
- * stream ended in a read error rather than at end of file -- which includes a
- * directory, so that refusal comes from here as well.
+/* All of fp, in one allocation with a byte to spare past the end. NULL with
+ * errno set if the stream ended in a read error rather than at end of file --
+ * which includes a directory, so that refusal comes from here as well -- or if
+ * there is not the memory to hold it.
  *
  * Sized from fstat where there is a size to be had, so a file is read into a
  * block exactly big enough with no reallocation; a pipe or anything else that
  * grows is read in increasing steps. The byte past the end is what lets the last
- * line be terminated where it lies when the file has no final newline. */
+ * line be terminated where it lies when the file has no final newline.
+ *
+ * malloc and not xmalloc: a file too big for memory is a file that cannot be
+ * opened, not a reason to end the session with other files unsaved in it. */
 static char *read_all(FILE *fp, size_t *len) {
   struct stat st;
   size_t cap = 4096, n = 0;
@@ -913,20 +917,31 @@ static char *read_all(FILE *fp, size_t *len) {
   if (fstat(fileno(fp), &st) == 0 && S_ISREG(st.st_mode) &&
       (size_t)st.st_size + 1 > cap)
     cap = (size_t)st.st_size + 1;
-  b = xmalloc(cap);
+  if (cap == 0 || (b = malloc(cap)) == NULL) {
+    errno = ENOMEM;
+    return NULL;
+  }
   for (;;) {
     int c;
+    char *nb;
     n += fread(b + n, 1, cap - 1 - n, fp);
     if (n < cap - 1) break;              /* short: the end, or an error */
     /* Exactly full, which is the ordinary case for a regular file. Only grow
      * if there turns out to be more. */
     if ((c = getc(fp)) == EOF) break;
+    if (cap > SIZE_MAX / 3 * 2 || (nb = realloc(b, cap + cap / 2)) == NULL) {
+      free(b);
+      errno = ENOMEM;
+      return NULL;
+    }
+    b = nb;
     cap += cap / 2;
-    b = xrealloc(b, cap);
     b[n++] = (char)c;
   }
   if (ferror(fp)) {
+    int err = errno;
     free(b);
+    errno = err != 0 ? err : EIO;
     return NULL;
   }
   *len = n;
@@ -1031,7 +1046,8 @@ static void rows_from_text(char *text, size_t n, int adopt) {
 
 /* Read every line of fp into the (already empty) buffer. With `adopt` the text
  * becomes the buffer's block and its saved snapshot; see rows_from_text().
- * Returns -1 if the stream ended in a read error rather than at end of file. */
+ * Returns -1, with errno set and the buffer untouched, if the stream ended in a
+ * read error rather than at end of file or there was not the memory for it. */
 int editor_fill_rows(FILE *fp, int adopt) {
   size_t n;
   char *text = read_all(fp, &n);
@@ -1039,6 +1055,33 @@ int editor_fill_rows(FILE *fp, int adopt) {
    * file, and the next save would truncate the file on disk. */
   if (text == NULL) return -1;
   rows_from_text(text, n, adopt);
+  return 0;
+}
+
+/* All of the file open on `fd`, which this closes: the text, with a byte to
+ * spare, its length, and the file's stat taken while it was open. Returns 0, or
+ * -1 with errno set, having read nothing into any buffer -- which is what lets
+ * a file that cannot be read be refused before a buffer is made for it. */
+int file_read_fd(int fd, struct file_text *ft) {
+  FILE *fp = fdopen(fd, "r");
+  if (fp == NULL) {
+    int err = errno;
+    close(fd);
+    errno = err;
+    return -1;
+  }
+  ft->text = read_all(fp, &ft->len);
+  if (ft->text == NULL) {
+    int err = errno;
+    fclose(fp);
+    errno = err;
+    return -1;
+  }
+  /* fstat on the still-open descriptor, not a path-based stat after close: the
+   * file could otherwise be replaced between the two calls, baselining the
+   * wrong content's mtime. */
+  ft->have_st = (fstat(fileno(fp), &ft->st) == 0);
+  fclose(fp);
   return 0;
 }
 
@@ -1071,9 +1114,9 @@ int file_open_read(const char *path, const char **why) {
   return fd;
 }
 
-/* Into the current buffer. `fd` is from file_open_read(), and -1 for a file that
- * does not exist yet. */
-void editor_open(char *filename, int fd) {
+/* Into the current buffer. `ft` is the file as file_read_fd() read it, and NULL
+ * for a file that does not exist yet. The text becomes the buffer's. */
+void editor_open(char *filename, struct file_text *ft) {
   free(B.filename);
   B.filename = xstrdup(filename);
   build_recovery_path();
@@ -1085,23 +1128,17 @@ void editor_open(char *filename, int fd) {
   /* A missing file opens as an empty clean buffer. The dirty/snapshot
    * reset matters from mid-session too: after switching files the stale
    * snapshot of the previous buffer must not leak into this one. */
-  if (fd == -1) {
+  if (ft == NULL) {
     B.dirty = 0;
     saved_snapshot_take();
     return;
   }
-  FILE *fp = fdopen(fd, "r");
-  if (!fp) die("fdopen");
-  if (editor_fill_rows(fp, 1) == -1) die(filename);
-  /* fstat on the still-open descriptor, not a path-based stat after close:
-   * the file could otherwise be replaced between the two calls, baselining
-   * the wrong content's mtime. */
-  struct stat ost;
-  if (fstat(fileno(fp), &ost) == 0) {
-    B.on_disk_mtime = ost.st_mtim;
+  rows_from_text(ft->text, ft->len, 1);
+  ft->text = NULL;
+  if (ft->have_st) {
+    B.on_disk_mtime = ft->st.st_mtim;
     B.have_disk_mtime = 1;
   }
-  fclose(fp);
   /* The rows are the snapshot already: they were read into it. */
   B.dirty = 0;
   /* A file molly could not write back is opened read-only, so the edits

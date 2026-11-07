@@ -193,12 +193,10 @@ int main(int argc, char *argv[]) {
    * left behind, which is what editor_open_in_new_buffer does. */
   for (i = 0; i < nfiles; i++) {
     /* Named on the command line, a file that cannot be edited ends here with the
-     * reason, rather than leaving an editor open on something else. */
-    const char *why;
-    int fd = file_open_read(argv[files[i]], &why);
-    if (fd != -1) close(fd);
-    else if (why != NULL) die_because(argv[files[i]], why);
-    editor_open_in_new_buffer(xstrdup(argv[files[i]]));
+     * reason, rather than leaving an editor open on something else. Mid-session
+     * the same refusal is a message, since there is other work open to keep. */
+    if (!editor_open_in_new_buffer(xstrdup(argv[files[i]])))
+      die_because(argv[files[i]], editor_open_failure());
   }
   if (nfiles > 0) buf_show(0);
 

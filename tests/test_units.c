@@ -4748,7 +4748,10 @@ static void lsp_open_file(const char *name) {
   snprintf(path, sizeof(path), "%s", name);
   {
     const char *why;
-    editor_open(path, file_open_read(path, &why));
+    struct file_text ft;
+    int fd = file_open_read(path, &why);
+    if (fd != -1 && file_read_fd(fd, &ft) == 0) editor_open(path, &ft);
+    else editor_open(path, NULL);
   }
   lsp_buf = V.buf;
 }

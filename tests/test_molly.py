@@ -825,6 +825,41 @@ def test_external_change(tmpdir):
               fh.read(), "X\n")
 
 
+def test_save_dangling_link(tmpdir):
+    print("\nsave: through a symlink to a file that does not exist yet")
+    # realpath() fails on a link whose target is missing, and that stopped the
+    # save outright: the buffer already had a name, so no other was offered and
+    # the work could not be written anywhere. A dotfiles link set up before its
+    # file is the usual way to have one.
+    d = tempfile.mkdtemp(dir=tmpdir)
+    os.mkdir(os.path.join(d, "dotfiles"))
+    link = os.path.join(d, "rc")
+    os.symlink("dotfiles/rc", link)
+    run([MOLLY, link], ["X", SAVE, "\x11"])
+    target = os.path.join(d, "dotfiles", "rc")
+    check("the save creates the file the link points to",
+          open(target).read() if os.path.exists(target) else None, "X\n")
+    check("and the link is still a link", os.path.islink(link), True)
+
+    # A chain of links, the last one dangling, each relative to its own place.
+    os.mkdir(os.path.join(d, "sub"))
+    os.symlink("sub/b", os.path.join(d, "a"))
+    os.symlink("../dotfiles/rc2", os.path.join(d, "sub", "b"))
+    run([MOLLY, os.path.join(d, "a")], ["Y", SAVE, "\x11"])
+    target = os.path.join(d, "dotfiles", "rc2")
+    check("a chain of links is followed to its end",
+          open(target).read() if os.path.exists(target) else None, "Y\n")
+
+    # Nowhere to create it: another name is asked for rather than the buffer
+    # being stranded.
+    os.symlink("gone/rc", os.path.join(d, "lost"))
+    other = os.path.join(d, "other.txt")
+    out = run([MOLLY, os.path.join(d, "lost")],
+              ["Z", SAVE, other, "\r", "\x11"])
+    check("a link into a missing directory offers another name",
+          open(other).read() if os.path.exists(other) else None, "Z\n")
+
+
 # ------------------------------------------------------------ security ----
 
 def _attacker(stop, link_path, victim):
@@ -7251,6 +7286,7 @@ def main():
         test_regex_replace(tmpdir)
         test_save(tmpdir)
         test_external_change(tmpdir)
+        test_save_dangling_link(tmpdir)
         test_line_endings(tmpdir)
         test_symlink_race(tmpdir)
         test_window_size(tmpdir)

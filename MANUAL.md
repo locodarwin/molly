@@ -2053,7 +2053,9 @@ If there is no room on the disk for the temporary file, the save fails and your
 file is left as it was. The mode is kept, including setuid and setgid.
 
 When the file name is a symbolic link, Molly follows it and replaces the file
-it points at, leaving the link itself alone.
+it points at, leaving the link itself alone. A link to a file that does not
+exist yet is followed too, and the save creates that file. If it cannot be
+created there, Molly asks for another name.
 
 If another process has changed the file on disk since Molly opened it (or
 since the last save), `Ctrl-S` asks before overwriting that change. Answering

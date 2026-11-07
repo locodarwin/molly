@@ -617,6 +617,49 @@ static int save_confirm(char *question) {
   return yes;
 }
 
+/* Where a chain of symlinks ends when the last one names a file that does not
+ * exist: the path a save would create, each link read relative to the
+ * directory it is in. Malloc'd, or NULL with errno set -- ELOOP for a chain
+ * that does not end. Only for a link realpath() could not resolve; the save
+ * then creates the file there through the usual temp file and rename, which
+ * replaces whatever is at that name rather than following it. */
+static char *link_end(const char *name) {
+  char *cur = xstrdup(name);
+  int hops;
+  for (hops = 0; hops < 40; hops++) {
+    struct stat st;
+    char to[PATH_MAX];
+    ssize_t n;
+    if (lstat(cur, &st) != 0) {
+      if (errno == ENOENT) return cur;
+      free(cur);
+      return NULL;
+    }
+    if (!S_ISLNK(st.st_mode)) return cur;
+    n = readlink(cur, to, sizeof(to) - 1);
+    if (n == -1) {
+      free(cur);
+      return NULL;
+    }
+    to[n] = '\0';
+    if (to[0] == '/') {
+      free(cur);
+      cur = xstrdup(to);
+    } else {
+      const char *slash = strrchr(cur, '/');
+      size_t dlen = (slash != NULL) ? (size_t)(slash - cur) + 1 : 0;
+      char *next = xmalloc(dlen + (size_t)n + 1);
+      memcpy(next, cur, dlen);
+      memcpy(next + dlen, to, (size_t)n + 1);
+      free(cur);
+      cur = next;
+    }
+  }
+  free(cur);
+  errno = ELOOP;
+  return NULL;
+}
+
 /* Write the buffer to `name`.
  *
  * Writing a temp file and renaming it over the target is what makes a save atomic,
@@ -639,9 +682,14 @@ static int save_to(const char *name, int typed, const char *fmsg, const char **w
   struct stat st;
   if (lstat(name, &st) == 0 && S_ISLNK(st.st_mode)) {
     resolved = realpath(name, NULL);
+    /* A link to a file that is not there yet: realpath() has nothing to
+     * resolve, but the link still says where the file belongs. */
+    if (resolved == NULL && errno == ENOENT) resolved = link_end(name);
+    /* Refused rather than stopped, so another name is offered: the buffer
+     * already has this one, and stopping left the work with nowhere to go. */
     if (resolved == NULL) {
-      editor_set_status_message("Save failed: %s", strerror(errno));
-      return SAVE_STOPPED;
+      *why = strerror(errno);
+      return SAVE_REFUSED;
     }
     target = resolved;
   }

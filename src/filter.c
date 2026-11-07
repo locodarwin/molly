@@ -517,6 +517,10 @@ void editor_filter(void) {
 
   if (!ask_command("Filter through: %s (ESC to cancel)", last, cmd, sizeof(cmd)))
     return;
+  /* One cursor, keeping its selection: the output replaces text the others
+   * are in, and they would be left at offsets into what is gone. See
+   * editor_replace(). */
+  cursors_collapse();
 
   if (!CUR.sel_active) {
     CUR.sy = 0;

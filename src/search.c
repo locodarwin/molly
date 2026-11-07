@@ -576,6 +576,12 @@ void editor_replace(void) {
   int all = (mode[0] == 'a' || mode[0] == 'A');
   free(mode);
 
+  /* One cursor from here: replacing moves this one and changes the length of
+   * what the others are in, so they would be left at byte offsets into text
+   * that is no longer there -- inside a character, as often as not, where the
+   * next thing typed splits it. The line commands and undo do the same. */
+  cursors_collapse();
+
   int qlen = (int)strlen(query);
   size_t rlen = strlen(repl);
   int count = 0;

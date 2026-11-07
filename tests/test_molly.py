@@ -3724,6 +3724,24 @@ def test_multicursor(tmpdir):
           edit(tmpdir, "red\nred\nred\n", [CD, CD, CD, "X", SAVE]),
           "X\nX\nX\n")
 
+    # Replace and the shell filter change text through one cursor. The others
+    # were left at their byte offsets in text that had changed length: here
+    # the second sits at the end of "zé", which after z becomes zz is inside
+    # the é, and the X typed there split it, saving a file that is not UTF-8.
+    # Both go down to one cursor first now.
+    def two_then(keys):
+        path = write_file("abc\nz\u00e9\n")
+        run([MOLLY, path], ["\x1b[F", CDOWN, 0.2] + keys + ["X", SAVE, 0.3])
+        with open(path, "rb") as fh:
+            return fh.read()
+
+    check("replace-all with a second cursor splits no character",
+          two_then(["\x12", "z", "\r", "zz", "\r", "a", "\r", 0.3]),
+          "abc\nzzX\u00e9\n".encode())
+    check("nor does a filter of the whole file",
+          two_then(["\x1b|", "sed s/z/zz/", "\r", 0.5]),
+          "abc\nzz\u00e9X\n".encode())
+
     # The whole replacement is one undo step. Two would mean the first Ctrl-Z
     # putting back one occurrence and leaving the others replaced.
     check("the replacement at every cursor undoes at once",

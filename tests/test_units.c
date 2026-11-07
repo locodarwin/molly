@@ -1534,6 +1534,56 @@ static void test_config_write(void) {
     rmdir(dir);
   }
 
+  /* A mollyrc kept in a dotfiles repository is a symlink to it, and a save has
+   * to write the file the link points at: renaming over the link replaced it
+   * with a regular file and cut the tie to the repository. The file's mode is
+   * kept, and a file that happens to be called mollyrc.tmp is not the
+   * temporary. */
+  {
+    char dir[256], real[300], link_[300], stray[300], text[64];
+    struct stat st;
+    const char *err = NULL;
+    FILE *fp;
+    size_t n;
+    snprintf(dir, sizeof(dir), "/tmp/molly_cfgl_%d", (int)getpid());
+    snprintf(real, sizeof(real), "%s/real", dir);
+    snprintf(link_, sizeof(link_), "%s/mollyrc", dir);
+    snprintf(stray, sizeof(stray), "%s/mollyrc.tmp", dir);
+    mkdir(dir, 0700);
+    fp = fopen(real, "w");
+    if (fp != NULL) fclose(fp);
+    chmod(real, 0600);
+    check("a symlinked config can be set up", symlink("real", link_), 0);
+    fp = fopen(stray, "w");
+    if (fp != NULL) {
+      fputs("keep\n", fp);
+      fclose(fp);
+    }
+
+    check("writing through a symlink succeeds", config_write(link_, &err), 0);
+    check("and the link is still a link",
+          lstat(link_, &st) == 0 && S_ISLNK(st.st_mode), 1);
+    check("the file it points at has the settings",
+          stat(real, &st) == 0 && st.st_size > 100, 1);
+    check("and keeps its mode", (int)(st.st_mode & 07777), 0600);
+    check("written by its own name too", config_write(real, &err), 0);
+    check("it still keeps its mode",
+          stat(real, &st) == 0 ? (int)(st.st_mode & 07777) : -1, 0600);
+    n = 0;
+    fp = fopen(stray, "r");
+    if (fp != NULL) {
+      n = fread(text, 1, sizeof(text) - 1, fp);
+      fclose(fp);
+    }
+    text[n] = '\0';
+    check_str("and a file named mollyrc.tmp is left alone", text, "keep\n");
+
+    unlink(stray);
+    unlink(link_);
+    unlink(real);
+    rmdir(dir);
+  }
+
   config_fresh();
   keymap_init();
   V.linenum = 0;

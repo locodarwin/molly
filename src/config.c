@@ -858,21 +858,45 @@ static void write_value(FILE *fp, const struct setting *s, int v) {
  *
  * Atomic: a temporary beside the target, then rename, so an interrupted write
  * cannot leave a half-written config that fails to parse on the next start --
- * the same reason editor_save does it for a file. Returns 0 on success, or a
- * negative errno-ish -1 with the reason left in *err. */
+ * the same reason editor_save does it for a file, and done the way it does it.
+ * A symlink is written through to the file it names, because renaming over the
+ * link would replace it (and a mollyrc kept in a dotfiles repository is one).
+ * The temporary is made by mkstemp, so a file that happens to be called
+ * `mollyrc.tmp` is not clobbered, and it takes the old file's mode, so a
+ * private one stays private. Returns 0 on success, or -1 with the reason left
+ * in *err. */
 int config_write(const char *path, const char **err) {
   static char reason[256];
+  static char target[4096];
   char tmp[4096];
-  int i;
+  struct stat st;
+  mode_t mode;
+  int i, fd;
 
   if (path == NULL) {
     if (err) *err = "no configuration path (set HOME or MOLLY_CONFIG)";
     return -1;
   }
 
+  snprintf(target, sizeof(target), "%s", path);
+  if (lstat(path, &st) == 0 && S_ISLNK(st.st_mode)) {
+    char *real = realpath(path, NULL);
+    if (real == NULL) {
+      msgf(reason, sizeof(reason), "%s: %s", path, strerror(errno));
+      if (err) *err = reason;
+      return -1;
+    }
+    int fits = snprintf(target, sizeof(target), "%s", real) < (int)sizeof(target);
+    free(real);
+    if (!fits) {
+      if (err) *err = "path too long";
+      return -1;
+    }
+  }
+
   /* The directory may not exist yet; a fresh install has no ~/.config/molly. */
   char dir[4096];
-  snprintf(dir, sizeof(dir), "%s", path);
+  snprintf(dir, sizeof(dir), "%s", target);
   char *slash = strrchr(dir, '/');
   if (slash != NULL) {
     *slash = '\0';
@@ -883,15 +907,25 @@ int config_write(const char *path, const char **err) {
     }
   }
 
-  if (snprintf(tmp, sizeof(tmp), "%s.tmp", path) >= (int)sizeof(tmp)) {
+  mode = (stat(target, &st) == 0) ? (st.st_mode & 07777) : default_file_mode();
+
+  if (snprintf(tmp, sizeof(tmp), "%s.XXXXXX", target) >= (int)sizeof(tmp)) {
     if (err) *err = "path too long";
     return -1;
   }
 
-  FILE *fp = fopen(tmp, "w");
+  fd = mkstemp(tmp);
+  if (fd == -1) {
+    msgf(reason, sizeof(reason), "%s: %s", target, strerror(errno));
+    if (err) *err = reason;
+    return -1;
+  }
+  FILE *fp = (fchmod(fd, mode) == 0) ? fdopen(fd, "w") : NULL;
   if (fp == NULL) {
     msgf(reason, sizeof(reason), "%s: %s", tmp, strerror(errno));
     if (err) *err = reason;
+    close(fd);
+    unlink(tmp);
     return -1;
   }
 
@@ -957,13 +991,13 @@ int config_write(const char *path, const char **err) {
     unlink(tmp);
     return -1;
   }
-  if (rename(tmp, path) != 0) {
-    msgf(reason, sizeof(reason), "%s: %s", path, strerror(errno));
+  if (rename(tmp, target) != 0) {
+    msgf(reason, sizeof(reason), "%s: %s", target, strerror(errno));
     if (err) *err = reason;
     unlink(tmp);
     return -1;
   }
-  fsync_parent_dir(path);
+  fsync_parent_dir(target);
   return 0;
 }
 

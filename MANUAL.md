@@ -2384,7 +2384,9 @@ wrote them.
 
 The write is atomic: molly writes a temporary file beside the target and renames
 it, so an interrupted save cannot leave a half-written file that fails to parse
-the next time molly starts.
+the next time molly starts. If `mollyrc` is a symlink, as it is when a dotfiles
+repository manages it, molly writes the file the link points to and leaves the
+link in place. The file keeps its permissions.
 
 A save rewrites the whole file. Your comments, blank lines and any setting this
 version of molly does not recognize are gone afterwards. Molly puts its own

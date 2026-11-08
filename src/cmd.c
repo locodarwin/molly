@@ -242,11 +242,12 @@ static int cmd_undo(void) { editor_undo(); return 0; }
 static int cmd_redo(void) { editor_redo(); return 0; }
 
 /* A block's rows, a line each, onto the clipboard -- marked as a block, so
- * that pasting it can put it back down as one. */
+ * that pasting it can put it back down as one. -1 when there is no block, and
+ * -2 when it is too big to copy. */
 static int copy_block(void) {
   int n = 0;
   char *s = block_text(&n);
-  if (s == NULL) return -1;
+  if (s == NULL) return n < 0 ? -2 : -1;
   clipboard_set(s, n);
   E.clip_block = 1;
   free(s);
@@ -254,14 +255,25 @@ static int copy_block(void) {
   return n;
 }
 
+/* Said instead of copying: the clipboard is left as it was. */
+static void too_large(void) {
+  editor_set_status_message("Selection too large to copy (over 2 GB)");
+}
+
 static int cmd_copy(void) {
   int n;
   /* Copy keeps the selection; everything else drops it. */
   if ((n = copy_block()) >= 0) {
     editor_set_status_message("Copied a block of %d rows", V.ncursors);
+  } else if (n == -2) {
+    too_large();
   } else if (CUR.sel_active) {
     int n = 0;
     char *s = selection_dup(&n);
+    if (n < 0) {
+      too_large();
+      return CMD_KEEP_SELECTION;
+    }
     clipboard_set(s, n);
     free(s);
     clipboard_sync_system();
@@ -274,12 +286,21 @@ static int cmd_cut(void) {
   int rows = V.ncursors;
   /* Copy then delete the selection, as one undo step. A block's slices go
    * through the multi-cursor delete, which removes each row's and stops. */
-  if (copy_block() >= 0) {
+  int b = copy_block();
+  if (b >= 0) {
     cursors_edit(MC_DELETE_BACK, 0);
     editor_set_status_message("Cut a block of %d rows", rows);
+  } else if (b == -2) {
+    /* Nothing deleted that could not be copied. */
+    too_large();
+    return CMD_KEEP_SELECTION;
   } else if (CUR.sel_active) {
     int n = 0;
     char *s = selection_dup(&n);
+    if (n < 0) {
+      too_large();
+      return CMD_KEEP_SELECTION;
+    }
     clipboard_set(s, n);
     free(s);
     clipboard_sync_system();

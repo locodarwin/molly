@@ -3215,6 +3215,65 @@ static void test_block(void) {
             mc_text(), "aX\nYb");
 }
 
+/* A selection bigger than the clipboard can hold. Its size was counted in an
+ * int: past 2 GB it went negative and the copy died asking for memory, and past
+ * 4 GB it wrapped to something small and the copy wrote far past its buffer.
+ *
+ * 2,100 rows of a megabyte each, without the memory: every row is a span of
+ * the same block, which is all a row read from a file is, and a block of
+ * zeros from calloc is pages nobody has touched. */
+static void test_copy_too_big(void) {
+  enum { ROW = 1 << 20, N = 2100 };
+  const struct command *copy = cmd_find_by_name("edit.copy");
+  const struct command *cut = cmd_find_by_name("edit.cut");
+  char *big = calloc(1, (size_t)ROW + 1);
+  int i, n = 7;
+  printf("\nclipboard: a selection too big to copy\n");
+  if (big == NULL || copy == NULL || cut == NULL) {
+    check("the test can be set up", 0, 1);
+    free(big);
+    return;
+  }
+  mc_load("");
+  for (i = 0; i < N; i++) editor_insert_row(i, "", 0);
+  free(B.text);
+  B.text = big;
+  B.textlen = (size_t)ROW + 1;
+  for (i = 0; i < N; i++) {
+    erow *r = row_at(i);
+    free(r->chars);
+    r->chars = big;
+    r->size = ROW;
+  }
+  clipboard_set("keep", 4);
+  CUR.sy = 0;
+  CUR.sx = 0;
+  CUR.cy = N - 1;
+  CUR.cx = ROW;
+  CUR.sel_active = 1;
+
+  check("selection_dup refuses it", selection_dup(&n) == NULL, 1);
+  check("and says it was too big rather than empty", n, -1);
+  copy->run();
+  check("Copy leaves the clipboard as it was",
+        E.clipsize == 4 && memcmp(E.clipboard, "keep", 4) == 0, 1);
+  check("and says why", strstr(E.statusmsg, "too large") != NULL, 1);
+  CUR.sel_active = 1;
+  cut->run();
+  check("Cut deletes nothing it could not copy", row_count(), N);
+
+  /* Back to rows of their own before the block goes. */
+  for (i = 0; i < N; i++) {
+    row_at(i)->chars = big + ROW;
+    row_at(i)->size = 0;
+  }
+  mc_load("");
+  free(B.text);
+  B.text = NULL;
+  B.textlen = 0;
+  clipboard_set(NULL, 0);
+}
+
 static void test_indent_convert(void) {
   printf("\nindentation: converting what is there\n");
 
@@ -5984,6 +6043,7 @@ int main(void) {
   test_indent_block();
   test_indent_convert();
   test_block();
+  test_copy_too_big();
   test_json();
   test_snippets();
   test_vt();

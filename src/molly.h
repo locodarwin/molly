@@ -1475,6 +1475,9 @@ void search_cleanup(void);
 int search_find_in_row(int cy, const char *query);
 
 /* select.c */
+/* The most a copy may hold: the clipboard's length is an int. A selection or
+ * block bigger than this is refused, with *outlen -1 rather than 0. */
+#define CLIP_MAX (INT_MAX - 1)
 char *selection_dup(int *outlen);
 int selection_bytes(void);
 int selection_span(int *ax, int *ay, int *bx, int *by);

@@ -175,14 +175,22 @@ void block_extend(int dy, int drx) {
 /* The block's text, a line per row with no newline after the last. NULL when
  * no block is live. */
 char *block_text(int *outlen) {
-  int i, pos = 0, cap = 1;
+  int i, pos = 0;
+  size_t cap = 1;
   char *buf;
+  *outlen = 0;
   if (!block_is_live()) return NULL;
+  /* In a size_t, and refused past CLIP_MAX, for the reason selection_dup()
+   * gives: 512 rows of long lines are more than an int can count. */
   for (i = 0; i < V.ncursors; i++) {
     const struct cursor *c = &V.cursors[i];
-    cap += (c->cx > c->sx ? c->cx - c->sx : c->sx - c->cx) + 1;
+    cap += (size_t)(c->cx > c->sx ? c->cx - c->sx : c->sx - c->cx) + 1;
   }
-  buf = xmalloc((size_t)cap);
+  if (cap - 1 > CLIP_MAX) {
+    *outlen = -1;
+    return NULL;
+  }
+  buf = xmalloc(cap);
   for (i = 0; i < V.ncursors; i++) {
     const struct cursor *c = &V.cursors[i];
     int a = c->sx < c->cx ? c->sx : c->cx;

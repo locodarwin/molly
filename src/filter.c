@@ -532,7 +532,8 @@ void editor_filter(void) {
   text = selection_dup(&len);
   if (text == NULL) {
     CUR = saved;
-    editor_set_status_message("Nothing to filter");
+    editor_set_status_message(len < 0 ? "Too much text to filter (over 2 GB)"
+                                      : "Nothing to filter");
     return;
   }
   had_newline = (len > 0 && text[len - 1] == '\n');

@@ -114,23 +114,34 @@ void selection_row_rx(int filerow, int *out0, int *out1) {
 
 /* Copy the selected bytes into a freshly allocated, NUL-terminated buffer
  * (internal line breaks become '\n'), matching selection_bytes()'s count. The
- * caller frees it. Returns NULL with *outlen 0 when the selection is empty. */
+ * caller frees it. Returns NULL with *outlen 0 when the selection is empty, and
+ * NULL with *outlen -1 when it is bigger than CLIP_MAX.
+ *
+ * Counted in a size_t: in an int, a selection past 2 GB went negative and the
+ * copy died asking for memory, and one past 4 GB wrapped to something small
+ * and was copied far past the end of its buffer. */
 char *selection_dup(int *outlen) {
   int ax, ay, bx, by;
   *outlen = 0;
   if (!selection_range(&ax, &ay, &bx, &by)) return NULL;
   if (ay == by && ax == bx) return NULL;
 
-  int size;
+  size_t size;
   if (ay == by) {
-    size = bx - ax;
+    size = (size_t)(bx - ax);
   } else {
-    size = ((*row_at(ay)).size - ax) + 1;   /* tail of the top row + its newline */
+    /* tail of the top row + its newline */
+    size = (size_t)((*row_at(ay)).size - ax) + 1;
     int i;
-    for (i = ay + 1; i < by && i < row_count(); i++) size += (*row_at(i)).size + 1;
-    size += bx;                          /* head of the bottom row */
+    for (i = ay + 1; i < by && i < row_count() && size <= CLIP_MAX; i++)
+      size += (size_t)(*row_at(i)).size + 1;
+    size += (size_t)bx;                  /* head of the bottom row */
   }
-  char *buf = xmalloc((size_t)size + 1);
+  if (size > CLIP_MAX) {
+    *outlen = -1;
+    return NULL;
+  }
+  char *buf = xmalloc(size + 1);
   int pos = 0;
   if (ay == by) {
     memcpy(buf + pos, (*row_at(ay)).chars + ax, (size_t)(bx - ax));

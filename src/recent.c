@@ -82,6 +82,12 @@ void recent_note(const char *filename) {
   load();
   abs = realpath(filename, NULL);
   if (abs == NULL) return;
+  /* The list is a path a line, so a name with a line break in it would be
+   * read back as two entries, the second naming a file nobody opened. */
+  if (strchr(abs, '\n') != NULL) {
+    free(abs);
+    return;
+  }
   for (i = 0; i < nrecent; i++) {
     if (strcmp(recent[i], abs) != 0) continue;
     free(recent[i]);

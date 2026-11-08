@@ -5997,6 +5997,23 @@ static void test_recent(void) {
   recent_note("no-such-file");
   check("a file that does not exist is not listed",
         strstr(recent_at(0), "no-such") == NULL, 1);
+
+  /* The list is a path a line, and a file's name can hold a line break: one
+   * named "x\n/etc/hostname" was written as two entries, the second naming a
+   * file nobody opened. It is now left off the list. */
+  mkdir("x\n", 0700);
+  mkdir("x\n/etc", 0700);
+  fp = fopen("x\n/etc/hostname", "w");
+  if (fp != NULL) fclose(fp);
+  recent_note("x\n/etc/hostname");
+  recent_cleanup();
+  {
+    int bogus = 0;
+    for (i = 0; i < recent_count(); i++)
+      if (strcmp(recent_at(i), "/etc/hostname") == 0) bogus = 1;
+    check("a name with a line break is not listed, nor half of it", bogus, 0);
+    check("and the list is as it was", strstr(recent_at(0), "/f10.txt") != NULL, 1);
+  }
   setenv("MOLLY_STATE", "", 1);
   recent_cleanup();
   check("MOLLY_STATE empty is no list at all", recent_count(), 0);

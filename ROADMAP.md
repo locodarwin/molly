@@ -1183,6 +1183,8 @@ and is useful. Not core, and gated on panels.
     have meant recording every change in the server's position encoding at
     the row primitives, and missing one would leave the server silently out of step. A
     source file goes down a pipe in microseconds; past 16 MB nothing is sent.
+    (Range edits came later, by comparison rather than recording: see the
+    end of this section.)
   - **Positions are offered as UTF-8 first**, which clangd and rust-analyzer
     take, and converted when a server insists on UTF-16.
   - **Answers go through a mailbox the main loop opens.** An answer arrives inside
@@ -1262,7 +1264,24 @@ and is useful. Not core, and gated on panels.
   written twice gets a cursor in each place, through the multi-cursor
   machinery. Choices take their first value and variables their default:
   servers send few of either.
-- **Still left:** range edits for very large files.
+- **Range edits, on 2026-11-08.** A server that takes them is sent only what
+  changed, and the 16 MB ceiling is gone for it: a file up to 64 MB is
+  opened once and then sent a range a change. The range is not recorded at
+  the row primitives, which was the reason for sending whole documents (one
+  missed edit and the server is silently out of step). It is found by
+  comparison: each buffer keeps a copy of exactly what its server has, and a
+  sync matches whole rows against it from the top and from the bottom and
+  sends what is between as one range. Whatever the edits were, that range
+  takes the server's text to the buffer's. Both ends sit at the start of a
+  line, so a column is only ever counted for the end of a last line with no
+  newline, and then the way the server counts the text it was sent (a byte
+  that is not UTF-8 went as U+FFFD). After a carriage return on its own,
+  which the protocol calls a line break and not every server does, the
+  whole text goes instead. A server that takes only whole documents gets
+  them as before, up to 16 MB. `tests/fake_lsp.py` now takes range edits by
+  default and applies them strictly, so every language server test runs
+  through them, and a unit test checks the fake's copy after every kind of
+  change and after 150 rounds of random ones.
 
 ### Plugin runtime - **NO**
 

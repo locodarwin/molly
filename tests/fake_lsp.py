@@ -35,6 +35,15 @@ server the same way it asks for a working one:
   FAKE_LSP_NORANGE=1      format whole documents only
   FAKE_LSP_SNIPPETS=1     also offer snippet completions, named snip_..., to a
                           client that says it takes snippets
+  FAKE_LSP_SYNC=n         textDocumentSync change kind: 2, range edits, by
+                          default; 1 for the whole document every time
+  FAKE_LSP_MIRROR=path    write the document as it now stands to `path`, as
+                          UTF-8, after every open and change
+
+Range edits are applied strictly: a line past the end, a column past the end
+of its line or inside a character is an error, logged and fatal, so a client
+out of step shows up as a server that died rather than as quietly wrong text.
+Lines end at "\r\n", "\r" or "\n", as the protocol says.
 
 Formatting: every line in scope loses its trailing blanks, and with
 insertSpaces its leading tabs become tabSize spaces each -- a line per edit.
@@ -59,6 +68,8 @@ import sys
 import time
 
 LOG = os.environ.get("FAKE_LSP_LOG")
+MIRROR = os.environ.get("FAKE_LSP_MIRROR")
+SYNC = int(os.environ.get("FAKE_LSP_SYNC", "2"))
 docs = {}      # uri -> text
 encoding = "utf-16"
 next_id = 1000
@@ -99,6 +110,41 @@ def units(s):
     if encoding == "utf-32":
         return len(s)
     return len(s.encode("utf-16-le")) // 2
+
+
+LINE_BREAK = re.compile(r"\r\n|\r|\n")
+
+
+def offset_of(text, pos):
+    """The str index of a position in `text`, strictly."""
+    line, ch = pos["line"], pos["character"]
+    start = 0
+    for _ in range(line):
+        m = LINE_BREAK.search(text, start)
+        if m is None:
+            raise ValueError("line %d is past the end" % line)
+        start = m.end()
+    m = LINE_BREAK.search(text, start)
+    end = m.start() if m else len(text)
+    i, u = start, 0
+    while u < ch:
+        if i >= end:
+            raise ValueError("column %d is past the end of line %d" % (ch, line))
+        u += units(text[i])
+        i += 1
+    if u != ch:
+        raise ValueError("column %d is inside a character on line %d" % (ch, line))
+    return i
+
+
+def apply_change(text, change):
+    if "range" not in change:
+        return change["text"]
+    a = offset_of(text, change["range"]["start"])
+    b = offset_of(text, change["range"]["end"])
+    if b < a:
+        raise ValueError("a range that ends before it starts")
+    return text[:a] + change["text"] + text[b:]
 
 
 def col_of(line, n):
@@ -372,8 +418,22 @@ def main():
         entry = {"method": method} if method else {"response": msg.get("id")}
         if method in ("textDocument/didOpen", "textDocument/didChange"):
             td = msg["params"]["textDocument"]
-            text = (td.get("text") if method.endswith("didOpen")
-                    else msg["params"]["contentChanges"][-1]["text"])
+            if method.endswith("didOpen"):
+                text = td.get("text")
+            else:
+                text = docs.get(td["uri"], "")
+                changes = msg["params"]["contentChanges"]
+                entry.update(ranged=["range" in c for c in changes])
+                try:
+                    for change in changes:
+                        text = apply_change(text, change)
+                except (ValueError, KeyError, TypeError) as e:
+                    entry.update(error=str(e))
+                    log(entry)
+                    raise
+            docs[td["uri"]] = text
+            # The document as it now stands, which for a range edit is not
+            # what was sent: the checks are of what the server has.
             entry.update(uri=td["uri"], version=td.get("version"), text=text,
                          languageId=td.get("languageId"))
         elif method in ("textDocument/didSave", "textDocument/didClose"):
@@ -383,6 +443,11 @@ def main():
         else:
             entry.update(result=msg.get("result"))
         log(entry)
+        # After the log, so that a test which waits for the mirror finds the
+        # log line already written.
+        if MIRROR and method in ("textDocument/didOpen", "textDocument/didChange"):
+            with open(MIRROR, "wb") as f:
+                f.write(entry["text"].encode("utf-8"))
 
         if method == "initialize":
             if os.environ.get("FAKE_LSP_GARBAGE"):
@@ -398,7 +463,7 @@ def main():
             send({"jsonrpc": "2.0", "id": msg["id"], "result": {
                 "capabilities": {
                     "positionEncoding": encoding,
-                    "textDocumentSync": {"openClose": True, "change": 1, "save": True},
+                    "textDocumentSync": {"openClose": True, "change": SYNC, "save": True},
                     "hoverProvider": True,
                     "definitionProvider": True,
                     "completionProvider": {"triggerCharacters": [".", "->"]},
@@ -426,13 +491,8 @@ def main():
                       "params": {"type": 3, "message": "hello"}})
         elif method == "exit":
             return
-        elif method == "textDocument/didOpen":
-            docs[msg["params"]["textDocument"]["uri"]] = msg["params"]["textDocument"]["text"]
+        elif method in ("textDocument/didOpen", "textDocument/didChange"):
             diagnostics(msg["params"]["textDocument"]["uri"])
-        elif method == "textDocument/didChange":
-            uri = msg["params"]["textDocument"]["uri"]
-            docs[uri] = msg["params"]["contentChanges"][-1]["text"]
-            diagnostics(uri)
         elif method == "textDocument/didClose":
             docs.pop(msg["params"]["textDocument"]["uri"], None)
         elif "id" in msg and method:

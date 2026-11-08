@@ -372,6 +372,17 @@ int json_bool(const struct json *v, int dflt) {
 
 /* ---- writing ------------------------------------------------------------- */
 
+/* The bytes of the character at s[i], at or above 0x80, as json_put_str()
+ * sends it: the length of a valid UTF-8 sequence, or 0 for a byte that goes
+ * out as U+FFFD. One rule for both functions below, because a server counts
+ * columns in the text it received, and json_str_units() has to count the same
+ * characters json_put_str() wrote. */
+static int str_char_bytes(const char *s, int len, int i) {
+  unsigned char c = (unsigned char)s[i];
+  int n = utf8_char_bytes(s, len, i);
+  return (n == 1 || c == 0xC0 || c == 0xC1 || c > 0xF4) ? 0 : n;
+}
+
 /* A JSON string of `len` bytes, quotes included.
  *
  * The text is a buffer's, which is bytes and not necessarily UTF-8, and JSON
@@ -397,8 +408,8 @@ void json_put_str(struct abuf *ab, const char *s, int len) {
       snprintf(esc, sizeof(esc), "\\u%04x", c);
       rep = esc;
     } else if (c >= 0x80) {
-      int n = utf8_char_bytes(s, len, i);
-      if (n == 1 || (c == 0xC0 || c == 0xC1 || c > 0xF4)) {
+      int n = str_char_bytes(s, len, i);
+      if (n == 0) {
         rep = "\xEF\xBF\xBD";
         replen = 3;
       } else {
@@ -418,6 +429,25 @@ void json_put_str(struct abuf *ab, const char *s, int len) {
   }
   if (run > 0) ab_append(ab, s + i - run, run);
   ab_append(ab, "\"", 1);
+}
+
+/* How long `len` bytes are once json_put_str() has sent them, in a language
+ * server's columns: bytes of UTF-8 when `utf8`, UTF-16 units otherwise. A
+ * byte sent as U+FFFD is three bytes of UTF-8 to the server, or one unit. */
+long json_str_units(const char *s, int len, int utf8) {
+  long units = 0;
+  int i = 0;
+  while (i < len) {
+    int n = ((unsigned char)s[i] < 0x80) ? 1 : str_char_bytes(s, len, i);
+    if (n == 0) {
+      units += utf8 ? 3 : 1;
+      i++;
+    } else {
+      units += utf8 ? n : (n == 4 ? 2 : 1);
+      i += n;
+    }
+  }
+  return units;
 }
 
 /* printf into the buffer, for the parts of a message that are not text: keys,

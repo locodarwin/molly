@@ -27,13 +27,18 @@
  *     is finished, and a request flushes its own buffer first so a question is
  *     never asked about stale text.
  *
- *   - **The whole text, every time.** `didChange` can carry a range edit or the
- *     full document; this sends the full document. Range edits would mean
- *     recording every change at the row primitives, in the server's position
- *     encoding, in order -- and getting one wrong desynchronizes the server
- *     silently, which is the worst way for this to fail. A source file is tens
- *     of kilobytes and a pipe moves that in microseconds, and a buffer bigger
- *     than LSP_MAX_DOC is not sent at all.
+ *   - **Range edits by comparison.** `didChange` can carry the whole document
+ *     or the part of it that changed. To a server that takes the second, molly
+ *     sends one range a change: the rows between those that still match the
+ *     copy of what the server was last sent, from the top and from the bottom.
+ *     The obvious way, recording every edit at the row primitives in the
+ *     server's position encoding, in order, desynchronizes the server silently
+ *     the first time one is missed -- the worst way for this to fail. A
+ *     comparison cannot miss one: whatever the edits were, the range takes
+ *     the server's text to the buffer's. The cost is the copy, and a pass over
+ *     the text when something changed, which memcmp makes milliseconds for
+ *     tens of megabytes. A server that only takes the whole document gets it
+ *     every time, up to LSP_MAX_FULL; past that it is not sent the file.
  *
  * Positions: the protocol counts a column in UTF-16 code units unless the
  * server agrees to something else, and molly counts bytes. The client offers
@@ -50,7 +55,8 @@
  * past these is a server that has gone wrong or a file no server will thank
  * molly for. */
 #define LSP_MAX_MESSAGE (64 << 20)
-#define LSP_MAX_DOC     (16 << 20)
+#define LSP_MAX_DOC     (64 << 20)   /* opened, then sent range edits */
+#define LSP_MAX_FULL    (16 << 20)   /* sent whole on every change */
 
 #define LSP_MAX_PENDING 16
 
@@ -753,25 +759,34 @@ void lsp_diag_clear(struct buffer *b) {
   b->ndiag = 0;
 }
 
-/* The buffer's text as the server should see it: rows joined by newlines, and
- * one at the end when the file has one. Always "\n", whatever the file is
- * saved with -- positions are lines and columns, which a CR would only add a
- * column to. -1 when it is too big to send. */
-static int doc_text(struct buffer *b, struct abuf *ab) {
+/* Whether row i is followed by a line break in what the server is sent. */
+static int row_ends_line(const struct buffer *b, int i) {
+  return i + 1 < b->numrows || b->final_newline;
+}
+
+/* The text of rows [from, to] as the server should see it: joined by
+ * newlines, and one at the end when the file has one. Always "\n", whatever
+ * the file is saved with -- positions are lines and columns, which a CR would
+ * only add a column to. -1 when it is more than `max` bytes. */
+static int rows_text(struct buffer *b, int from, int to, size_t max, struct abuf *ab) {
   int i;
   size_t total = 0;
-  for (i = 0; i < b->numrows; i++) total += (size_t)buf_row(b, i)->size + 1;
-  if (total > LSP_MAX_DOC) return -1;
+  for (i = from; i <= to; i++) total += (size_t)buf_row(b, i)->size + 1;
+  if (total > max) return -1;
   ab->b = xmalloc(total + 1);
   ab->cap = (int)total + 1;
   ab->len = 0;
-  for (i = 0; i < b->numrows; i++) {
+  for (i = from; i <= to; i++) {
     erow *r = buf_row(b, i);
     memcpy(ab->b + ab->len, r->chars, (size_t)r->size);
     ab->len += r->size;
-    if (i + 1 < b->numrows || b->final_newline) ab->b[ab->len++] = '\n';
+    if (row_ends_line(b, i)) ab->b[ab->len++] = '\n';
   }
   return 0;
+}
+
+static int doc_text(struct buffer *b, size_t max, struct abuf *ab) {
+  return rows_text(b, 0, b->numrows - 1, max, ab);
 }
 
 static void text_document(struct abuf *ab, const struct buffer *b) {
@@ -786,6 +801,9 @@ static void doc_forget(struct buffer *b) {
   b->lsp_name = NULL;
   b->lsp_srv = 0;
   b->lsp_version = 0;
+  free(b->lsp_text);
+  b->lsp_text = NULL;
+  b->lsp_text_len = 0;
 }
 
 static void doc_close(struct buffer *b) {
@@ -809,7 +827,9 @@ static void doc_open(struct buffer *b, struct server *s) {
 
   free(b->lsp_name);
   b->lsp_name = xstrdup(b->filename);
-  if (doc_text(b, &text) < 0) {
+  /* A server that takes range edits is sent a big file once; one that takes
+   * only the whole document would be sent it again on every change. */
+  if (doc_text(b, s->sync == 1 ? LSP_MAX_FULL : LSP_MAX_DOC, &text) < 0) {
     /* Declined, and remembered as declined until the name changes, so the
      * sweep does not measure a huge file again every tick. */
     b->lsp_srv = -1;
@@ -829,14 +849,140 @@ static void doc_open(struct buffer *b, struct server *s) {
   ab_append(&ab, "}}", 2);
   notify(s, "textDocument/didOpen", &ab);
   free(ab.b);
-  free(text.b);
+  free(b->lsp_text);
+  b->lsp_text = NULL;
+  b->lsp_text_len = 0;
+  if (s->sync == 2) {
+    b->lsp_text = text.b;
+    b->lsp_text_len = (size_t)text.len;
+  } else {
+    free(text.b);
+  }
+}
+
+/* Whether s[0, end) holds a carriage return that is not half of a CRLF. The
+ * protocol counts one as a line break, but a server that splits lines only at
+ * "\n" does not, and a range placed by line number after one would land on a
+ * different line in each. Rare enough that the whole text is sent instead. */
+static int bare_cr(const char *s, size_t end, size_t len) {
+  const char *p = s, *stop = s + end;
+  while (p < stop) {
+    p = memchr(p, '\r', (size_t)(stop - p));
+    if (p == NULL) break;
+    if ((size_t)(p - s) + 1 >= len || p[1] != '\n') return 1;
+    p++;
+  }
+  return 0;
+}
+
+static int count_nl(const char *s, size_t from, size_t to) {
+  const char *p = s + from, *stop = s + to;
+  int n = 0;
+  while (p < stop && (p = memchr(p, '\n', (size_t)(stop - p))) != NULL) {
+    n++;
+    p++;
+  }
+  return n;
+}
+
+/* Tell a server that takes range edits what changed since b->lsp_text, which
+ * is what it has.
+ *
+ * Whole rows that match from the top, then from the bottom; what is between is
+ * the change, as one range of the old text and the rows that replace it. Both
+ * ends of the range are kept at the start of a line in the old text (or at its
+ * very end), so the start is always column 0 and the line numbers are the
+ * rows'. Only the end of a last line with no newline after it needs a column,
+ * counted the way the server counts the text it was sent.
+ *
+ * Nothing here can leave the server out of step with the copy: a change that
+ * cannot be sent -- too big -- leaves both as they were, and the next change
+ * is measured from there and carries this one with it. */
+static void doc_change_range(struct buffer *b, struct server *s) {
+  const char *old = b->lsp_text;
+  size_t olen = b->lsp_text_len, p = 0, q, ls, tail, newlen;
+  int n = b->numrows, i, j, endline;
+  long endch = 0;
+  struct abuf mid = ABUF_INIT, ab = ABUF_INIT;
+
+  for (i = 0; i < n; i++) {
+    erow *r = buf_row(b, i);
+    size_t len = (size_t)r->size;
+    if (olen - p < len || memcmp(old + p, r->chars, len) != 0) break;
+    if (row_ends_line(b, i) ? (olen - p == len || old[p + len] != '\n')
+                            : p + len != olen)
+      break;
+    p += len + (row_ends_line(b, i) ? 1 : 0);
+  }
+  q = olen;
+  for (j = n - 1; j >= i; j--) {
+    erow *r = buf_row(b, j);
+    size_t len = (size_t)r->size, whole = len + (row_ends_line(b, j) ? 1 : 0), at;
+    if (q - p < whole) break;
+    at = q - whole;
+    if (memcmp(old + at, r->chars, len) != 0) break;
+    if (whole > len && old[at + len] != '\n') break;
+    if (at > 0 && old[at - 1] != '\n') break;
+    q = at;
+  }
+  if (i > j && p == q) return;   /* the same text: nothing to say */
+
+  if (bare_cr(old, q, olen)) {
+    struct abuf text = ABUF_INIT;
+    if (doc_text(b, LSP_MAX_DOC, &text) < 0) return;
+    b->lsp_version++;
+    text_document(&ab, b);
+    json_putf(&ab, ",\"version\":%d},\"contentChanges\":[{\"text\":", b->lsp_version);
+    json_put_str(&ab, text.b, text.len);
+    ab_append(&ab, "}]}", 3);
+    notify(s, "textDocument/didChange", &ab);
+    free(ab.b);
+    free(b->lsp_text);
+    b->lsp_text = text.b;
+    b->lsp_text_len = (size_t)text.len;
+    return;
+  }
+
+  if (i <= j && rows_text(b, i, j, LSP_MAX_DOC, &mid) < 0) return;
+
+  endline = i + count_nl(old, p, q);
+  if (q > 0 && old[q - 1] != '\n') {
+    /* The end of a last line with no line break after it. */
+    ls = q;
+    while (ls > p && old[ls - 1] != '\n') ls--;
+    endch = json_str_units(old + ls, (int)(q - ls), s->utf8);
+  }
+
+  b->lsp_version++;
+  text_document(&ab, b);
+  json_putf(&ab, ",\"version\":%d},\"contentChanges\":[{\"range\":{"
+            "\"start\":{\"line\":%d,\"character\":0},"
+            "\"end\":{\"line\":%d,\"character\":%ld}},\"text\":",
+            b->lsp_version, i, endline, endch);
+  json_put_str(&ab, mid.b, mid.len);
+  ab_append(&ab, "}]}", 3);
+  notify(s, "textDocument/didChange", &ab);
+  free(ab.b);
+
+  /* And the copy made what the server now has. */
+  tail = olen - q;
+  newlen = p + (size_t)mid.len + tail;
+  if (newlen > olen) b->lsp_text = xrealloc(b->lsp_text, newlen + 1);
+  memmove(b->lsp_text + p + mid.len, b->lsp_text + q, tail);
+  if (mid.len > 0) memcpy(b->lsp_text + p, mid.b, (size_t)mid.len);
+  b->lsp_text_len = newlen;
+  free(mid.b);
 }
 
 static void doc_change(struct buffer *b, struct server *s) {
   struct abuf text = ABUF_INIT, ab = ABUF_INIT;
   b->lsp_sent = b->edits;
   if (s->sync == 0) return;
-  if (doc_text(b, &text) < 0) {
+  if (s->sync == 2 && b->lsp_text != NULL) {
+    doc_change_range(b, s);
+    return;
+  }
+  if (doc_text(b, LSP_MAX_FULL, &text) < 0) {
     /* It has grown past what molly sends. The server keeps the last version it
      * was given; closing would throw away diagnostics that are mostly still
      * right. */

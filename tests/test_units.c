@@ -4850,6 +4850,30 @@ static const char *lsp_logpath;
 static const char *lsp_logneedle;
 static int lsp_log_has(void) { return lsp_logged(lsp_logpath, lsp_logneedle); }
 
+/* The fake server's copy of the document (FAKE_LSP_MIRROR) is the buffer's
+ * text, or `lsp_expect` when that is set. */
+static char lsp_mirror[4200];
+static const char *lsp_expect;
+static int lsp_mirrored(void) {
+  struct abuf want = ABUF_INIT;
+  char *have = lsp_log(lsp_mirror);
+  int i, same;
+  if (lsp_expect != NULL) {
+    ab_append(&want, lsp_expect, (int)strlen(lsp_expect));
+  } else {
+    for (i = 0; i < lsp_buf->numrows; i++) {
+      erow *r = buf_row(lsp_buf, i);
+      ab_append(&want, r->chars, r->size);
+      if (i + 1 < lsp_buf->numrows || lsp_buf->final_newline) ab_append(&want, "\n", 1);
+    }
+  }
+  same = strlen(have) == (size_t)want.len &&
+         (want.len == 0 || memcmp(have, want.b, (size_t)want.len) == 0);
+  free(have);
+  free(want.b);
+  return same;
+}
+
 static void lsp_write(const char *name, const char *text) {
   FILE *fp = fopen(name, "w");
   fputs(text, fp);
@@ -5066,6 +5090,193 @@ static void test_lsp(void) {
   check("and lands on the right byte", lsp_buf->diag[0].x0 * 100 + lsp_buf->diag[0].x1, 710);
   lsp_stop_all();
   unsetenv("FAKE_LSP_ENCODING");
+
+  /* A server that takes range edits is sent only what changed, worked out by
+   * comparing the buffer with a copy of what the server has. The fake applies
+   * each range strictly and writes what it ends up with to a file, which has
+   * to be the buffer's text after every kind of change -- in both encodings,
+   * because the one column a range can need is counted in the server's. */
+  printf("\nlanguage server: range edits\n");
+  snprintf(lsp_mirror, sizeof(lsp_mirror), "%s/mirror", tmpl);
+  setenv("FAKE_LSP_MIRROR", lsp_mirror, 1);
+  {
+    int enc;
+    for (enc = 0; enc < 2; enc++) {
+      const char *name = enc ? "UTF-16" : "UTF-8";
+      char label[160];
+      erow *r;
+#define SYNCED(what) \
+      (snprintf(label, sizeof(label), "%s: %s", name, what), \
+       check(label, lsp_pump(lsp_mirrored, 10000), 1))
+
+      setenv("FAKE_LSP_ENCODING", enc ? "utf-16" : "utf-8", 1);
+      remove(logpath);
+      remove(lsp_mirror);
+      lsp_expect = NULL;
+      lsp_write("r.c", "one\ntwo\nthree\n");
+      lsp_open_file("r.c");
+      SYNCED("the server has the file as opened");
+
+      editor_row_insert_char(row_at(1), 1, 'X');
+      SYNCED("a letter typed in the middle");
+      snprintf(label, sizeof(label), "%s: was sent as a range", name);
+      check(label, lsp_logged(logpath, "\"ranged\": [true]"), 1);
+      check("and not as the whole text", lsp_logged(logpath, "\"ranged\": [false]"), 0);
+      editor_insert_row(0, "zero", 4);
+      SYNCED("a row inserted at the top");
+      editor_delete_row(row_count() - 1);
+      SYNCED("the last row deleted");
+      editor_insert_row(1, "a", 1);
+      editor_insert_row(3, "b", 1);
+      editor_delete_row(2);
+      SYNCED("several changes between two syncs");
+
+      /* The last line without a newline after it: the one place a range
+       * ends in a column, which has to be counted in the server's units --
+       * é is two bytes and one unit, the emoji four bytes and two. */
+      lsp_buf->final_newline = 0;
+      lsp_buf->edits++;
+      SYNCED("the newline at the end taken away");
+      r = row_at(row_count() - 1);
+      editor_row_append_string(r, "\xc3\xa9\xf0\x9f\x98\x80z", 7);
+      SYNCED("text added to that last line");
+      editor_row_truncate(row_at(row_count() - 1), row_at(row_count() - 1)->size - 1);
+      SYNCED("and a letter taken off its end, after an emoji");
+
+      /* A byte that is not UTF-8 goes to the server as U+FFFD, three bytes of
+       * UTF-8 or one unit of UTF-16, and the end of the line is counted in
+       * those. */
+      editor_row_append_string(row_at(row_count() - 1), "\xff", 1);
+      {
+        struct abuf e = ABUF_INIT;
+        int i;
+        for (i = 0; i < row_count(); i++) {
+          erow *x = row_at(i);
+          if (i + 1 == row_count())
+            ab_append(&e, x->chars, x->size - 1), ab_append(&e, "\xef\xbf\xbd", 3);
+          else
+            ab_append(&e, x->chars, x->size), ab_append(&e, "\n", 1);
+        }
+        ab_append(&e, "", 1);
+        lsp_expect = e.b;
+        SYNCED("a byte that is not UTF-8 arrives as U+FFFD");
+        lsp_expect = NULL;
+        free(e.b);
+      }
+      editor_row_truncate(row_at(row_count() - 1), row_at(row_count() - 1)->size - 1);
+      SYNCED("and goes again, counted as the server counts it");
+      lsp_buf->final_newline = 1;
+      lsp_buf->edits++;
+      SYNCED("the newline at the end back");
+
+      /* A carriage return on its own is a line break to the protocol and not
+       * to every server, so a change after one sends the whole text. */
+      editor_row_insert_char(row_at(0), 2, '\r');
+      SYNCED("a carriage return on its own");
+      editor_row_insert_char(row_at(row_count() - 1), 0, 'Y');
+      SYNCED("a change below it");
+      snprintf(label, sizeof(label), "%s: was sent whole", name);
+      check(label, lsp_logged(logpath, "\"ranged\": [false]"), 1);
+      editor_row_delete_char(row_at(0), 2);
+      SYNCED("and the carriage return gone again");
+
+      editor_clear_rows();
+      SYNCED("every row deleted");
+      editor_insert_row(0, "again", 5);
+      editor_insert_row(1, "", 0);
+      SYNCED("and rows written into the empty file");
+      lsp_stop_all();
+#undef SYNCED
+    }
+  }
+
+  /* And at random, in UTF-16, which is the encoding where a byte count and a
+   * column part ways soonest: inserts and deletes anywhere, rows coming and
+   * going, the final newline toggled, carriage returns among the letters, and
+   * a sync after a random number of them. The fake's copy is checked after
+   * each sync; a range that missed would also have killed it. */
+  setenv("FAKE_LSP_ENCODING", "utf-16", 1);
+  {
+    static const char *bits[] = {"a", "bc", " ", "\t", "\xc3\xa9", "\xf0\x9f\x98\x80", "\r"};
+    int round, ok = 1, k;
+    srand(23);
+    remove(lsp_mirror);
+    lsp_expect = NULL;
+    lsp_write("f.c", "start\n");
+    lsp_open_file("f.c");
+    if (!lsp_pump(lsp_mirrored, 10000)) ok = 0;
+    for (round = 0; round < 150 && ok; round++) {
+      int edits = 1 + rand() % 4;
+      for (k = 0; k < edits; k++) {
+        int op = rand() % 10, n = row_count(), y = n ? rand() % n : 0;
+        erow *r = n ? row_at(y) : NULL;
+        int x = r ? rand() % (r->size + 1) : 0;
+        /* On a character, never inside one. */
+        while (r && x > 0 && x < r->size && utf8_is_cont((unsigned char)r->chars[x])) x--;
+        if (op < 4 && r) {
+          const char *b = bits[rand() % 7];
+          editor_row_insert_n(r, x, b, strlen(b));
+        } else if (op < 6 && r && x < r->size) {
+          editor_row_delete_n(r, x, utf8_char_bytes(r->chars, r->size, x));
+        } else if (op == 6) {
+          editor_insert_row(n ? rand() % (n + 1) : 0, "row", 3);
+        } else if (op == 7 && n > 0) {
+          editor_delete_row(y);
+        } else if (op == 8 && r) {
+          editor_row_truncate(r, x);
+        } else if (op == 9) {
+          lsp_buf->final_newline = !lsp_buf->final_newline;
+          lsp_buf->edits++;
+        }
+      }
+      if (!lsp_pump(lsp_mirrored, 10000)) ok = 0;
+    }
+    check("150 rounds of random edits, the server in step after every one", ok, 1);
+    check("which got there by ranges", lsp_logged(logpath, "\"ranged\": [true]"), 1);
+    lsp_stop_all();
+  }
+  unsetenv("FAKE_LSP_ENCODING");
+
+  /* The point of it: a file over 16 MB, which molly used not to send at all
+   * because every change would have sent it again. Opened once, then a range
+   * a change. */
+  printf("\nlanguage server: a file too big to send on every change\n");
+  {
+    FILE *fp = fopen("big.c", "w");
+    int i;
+    for (i = 0; i < 400000; i++)
+      fprintf(fp, "int line_%06d; /* about fifty bytes a line */\n", i);
+    fclose(fp);
+  }
+  remove(logpath);
+  remove(lsp_mirror);
+  lsp_open_file("big.c");
+  check("a 20 MB file is opened with a server", lsp_pump(lsp_mirrored, 30000), 1);
+  editor_row_insert_char(row_at(5), 0, 'Q');
+  check("a change reaches it", lsp_pump(lsp_mirrored, 30000), 1);
+  check("as a range", lsp_logged(logpath, "\"ranged\": [true]"), 1);
+  lsp_stop_all();
+
+  /* A server that wants the whole text every time is still not sent one. */
+  setenv("FAKE_LSP_SYNC", "1", 1);
+  lsp_open_file("big.c");
+  lsp_pump(lsp_open, 2000);
+  check("to a server that takes only whole documents it is not sent",
+        lsp_buf->lsp_srv, -1);
+  lsp_stop_all();
+  remove(logpath);
+  remove(lsp_mirror);
+  lsp_write("r.c", "one\ntwo\n");
+  lsp_open_file("r.c");
+  check("which is sent a small one", lsp_pump(lsp_mirrored, 10000), 1);
+  editor_row_insert_char(row_at(1), 0, 'W');
+  check("and its changes", lsp_pump(lsp_mirrored, 10000), 1);
+  check("whole", lsp_logged(logpath, "\"ranged\": [false]") &&
+        !lsp_logged(logpath, "\"ranged\": [true]"), 1);
+  lsp_stop_all();
+  unsetenv("FAKE_LSP_SYNC");
+  unsetenv("FAKE_LSP_MIRROR");
+  remove("big.c");
 
   printf("\nlanguage server: one that asks questions of its own\n");
   remove(logpath);

@@ -377,6 +377,10 @@ struct buffer {
   int lsp_srv;
   unsigned lsp_sent;
   int lsp_version;
+  /* The text the server has, exactly as it was sent, when it takes range
+   * edits: what a change is measured against. NULL otherwise. */
+  char *lsp_text;
+  size_t lsp_text_len;
   char *lsp_uri;
   char *lsp_name;
   struct diag *diag;   /* sorted by start */
@@ -1184,6 +1188,7 @@ int json_int(const struct json *v, int dflt);
 struct json_doc *json_parse(const char *s, size_t len);
 void json_free(struct json_doc *doc);
 void json_put_str(struct abuf *ab, const char *s, int len);
+long json_str_units(const char *s, int len, int utf8);
 void json_write(struct abuf *ab, const struct json *v);
 void json_putf(struct abuf *ab, const char *fmt, ...);
 

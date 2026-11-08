@@ -1964,10 +1964,13 @@ delete a file is refused entirely; it is never applied in part.
 
 ### What it deliberately does not do
 
-- **Every change sends the whole file.** The protocol also allows sending
-  only what changed, but a mistake there would leave the server and molly
-  with different text and no sign of it. A source file goes down a
-  pipe in microseconds; a file over 16 MB is not sent to a server at all.
+- **A file over 64 MB is not sent to a server.** Below that, a server is
+  sent the file once when it opens, and after that only what changed, when
+  the server takes changes that way (most do). Molly finds the change by
+  comparing the text with a copy of what the server has, rather than by
+  recording each edit, so the two cannot drift apart unnoticed. A server
+  that only takes the whole file is sent all of it after every change, and
+  so is not sent a file over 16 MB.
 - **Completion does not open while you type a word** unless you turn on
   `[editor] complete while typing`, for the reason given under
   [Completion](#completion).

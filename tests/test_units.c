@@ -4820,6 +4820,17 @@ static void test_lsp(void) {
     trust_cleanup();
     check("restarting forgets the noes, for good, leaving the yes above",
           trust_lookup("/src/b") * 10 + trust_lookup("/src/a"), 11);
+
+    /* A directory's name can hold a line break, and the file is a line an
+     * answer: a no for "/x/a\nyes /home" was written as two lines, and the
+     * second one, read back, trusted every project under /home. */
+    trust_set("/x/a\nyes /home", 0);
+    check("an answer for a name with a line break holds for the session",
+          trust_lookup("/x/a\nyes /home"), 0);
+    trust_cleanup();
+    check("and is not written, so it cannot become another answer",
+          trust_lookup("/home/me/project"), -1);
+    check("while the answers around it are still kept", trust_lookup("/src/a"), 1);
     setenv("MOLLY_STATE", "", 1);
     trust_cleanup();
     trust_set("/elsewhere", 1);

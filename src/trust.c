@@ -79,8 +79,13 @@ static void save(void) {
   snprintf(tmp, sizeof(tmp), "%s.tmp", path);
   fp = fopen(tmp, "w");
   if (fp == NULL) return;
+  /* Not a directory whose name holds a line break: the file is a line an
+   * answer, so a no for "/x/a\nyes /home" would be read back as two answers,
+   * the second trusting every project under /home -- a name an archive can
+   * bring with it. Such an answer holds for the session and is not kept. */
   for (i = 0; i < nanswers; i++)
-    fprintf(fp, "%s %s\n", answers[i].yes ? "yes" : "no", answers[i].dir);
+    if (strchr(answers[i].dir, '\n') == NULL)
+      fprintf(fp, "%s %s\n", answers[i].yes ? "yes" : "no", answers[i].dir);
   if (fclose(fp) == 0) rename(tmp, path);
   else unlink(tmp);
 }

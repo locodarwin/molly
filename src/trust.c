@@ -69,15 +69,11 @@ static void read_file(void) {
 }
 
 static void save(void) {
-  char path[4096], dir[4096], tmp[4200];
+  char path[4096], tmp[4200];
   FILE *fp;
   int i;
   if (!state_path(path, sizeof(path), "projects")) return;
-  snprintf(dir, sizeof(dir), "%s", path);
-  *strrchr(dir, '/') = '\0';
-  if (mkdir_p(dir) != 0) return;
-  snprintf(tmp, sizeof(tmp), "%s.tmp", path);
-  fp = fopen(tmp, "w");
+  fp = state_begin(path, tmp, sizeof(tmp));
   if (fp == NULL) return;
   /* Not a directory whose name holds a line break: the file is a line an
    * answer, so a no for "/x/a\nyes /home" would be read back as two answers,
@@ -86,8 +82,7 @@ static void save(void) {
   for (i = 0; i < nanswers; i++)
     if (strchr(answers[i].dir, '\n') == NULL)
       fprintf(fp, "%s %s\n", answers[i].yes ? "yes" : "no", answers[i].dir);
-  if (fclose(fp) == 0) rename(tmp, path);
-  else unlink(tmp);
+  state_commit(fp, tmp, path);
 }
 
 static void load(void) {

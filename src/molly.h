@@ -1230,6 +1230,8 @@ int recent_count(void);
 void editor_recent_dialog(void);
 void recent_cleanup(void);
 int state_path(char *dst, size_t n, const char *name);
+FILE *state_begin(const char *path, char *tmp, size_t n);
+void state_commit(FILE *fp, const char *tmp, const char *path);
 
 /* trust.c: the projects a language server may be started in */
 int trust_lookup(const char *root);

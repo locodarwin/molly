@@ -4890,6 +4890,26 @@ static void test_lsp(void) {
     check("and is not written, so it cannot become another answer",
           trust_lookup("/home/me/project"), -1);
     check("while the answers around it are still kept", trust_lookup("/src/a"), 1);
+    {
+      /* Through a temporary of its own, as the recent files list is. */
+      char tmpname[700], text[16] = "";
+      size_t n;
+      snprintf(tmpname, sizeof(tmpname), "%s/projects.tmp", state);
+      fp = fopen(tmpname, "w");
+      if (fp != NULL) {
+        fputs("keep\n", fp);
+        fclose(fp);
+      }
+      trust_set("/src/c", 1);
+      fp = fopen(tmpname, "r");
+      n = fp != NULL ? fread(text, 1, sizeof(text) - 1, fp) : 0;
+      if (fp != NULL) fclose(fp);
+      text[n] = '\0';
+      check_str("a file named projects.tmp is not the temporary", text, "keep\n");
+      trust_cleanup();
+      check("and the answer was still kept", trust_lookup("/src/c/d"), 1);
+      unlink(tmpname);
+    }
     setenv("MOLLY_STATE", "", 1);
     trust_cleanup();
     trust_set("/elsewhere", 1);
@@ -6013,6 +6033,27 @@ static void test_recent(void) {
       if (strcmp(recent_at(i), "/etc/hostname") == 0) bogus = 1;
     check("a name with a line break is not listed, nor half of it", bogus, 0);
     check("and the list is as it was", strstr(recent_at(0), "/f10.txt") != NULL, 1);
+  }
+
+  /* Saved through a temporary of its own: a fixed recent.tmp was shared by
+   * every session saving at once, and clobbered a file that had the name. */
+  {
+    char tmpname[4200], text[16] = "";
+    size_t n;
+    snprintf(tmpname, sizeof(tmpname), "%s/recent.tmp", tmpl);
+    fp = fopen(tmpname, "w");
+    if (fp != NULL) {
+      fputs("keep\n", fp);
+      fclose(fp);
+    }
+    recent_note("f3.txt");
+    fp = fopen(tmpname, "r");
+    n = fp != NULL ? fread(text, 1, sizeof(text) - 1, fp) : 0;
+    if (fp != NULL) fclose(fp);
+    text[n] = '\0';
+    check_str("a file named recent.tmp is not the temporary", text, "keep\n");
+    recent_cleanup();
+    check("and the list was still saved", strstr(recent_at(0), "/f3.txt") != NULL, 1);
   }
   setenv("MOLLY_STATE", "", 1);
   recent_cleanup();

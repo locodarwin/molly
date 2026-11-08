@@ -40,6 +40,40 @@ int state_path(char *dst, size_t n, const char *name) {
   return 1;
 }
 
+/* Open a temporary beside the state file `path` to write it through, making
+ * the directory first. NULL if it cannot be done, which loses nothing but the
+ * write. Unique per call, by mkstemp: a fixed `<name>.tmp` was shared by every
+ * session saving at the same moment, which could mix their writes, and it
+ * clobbered any file that happened to have the name. */
+FILE *state_begin(const char *path, char *tmp, size_t n) {
+  char dir[4096];
+  char *slash;
+  int fd;
+  FILE *fp;
+  snprintf(dir, sizeof(dir), "%s", path);
+  slash = strrchr(dir, '/');
+  if (slash != NULL) {
+    *slash = '\0';
+    if (*dir != '\0' && mkdir_p(dir) != 0) return NULL;
+  }
+  if (snprintf(tmp, n, "%s.XXXXXX", path) >= (int)n) return NULL;
+  fd = mkstemp(tmp);
+  if (fd == -1) return NULL;
+  fp = fdopen(fd, "w");
+  if (fp == NULL) {
+    close(fd);
+    unlink(tmp);
+  }
+  return fp;
+}
+
+/* Finish what state_begin started: the temporary renamed over `path`, or
+ * removed if the write did not complete. */
+void state_commit(FILE *fp, const char *tmp, const char *path) {
+  if (fclose(fp) == 0 && rename(tmp, path) == 0) return;
+  unlink(tmp);
+}
+
 static int recent_path(char *dst, size_t n) { return state_path(dst, n, "recent"); }
 
 static void load(void) {
@@ -58,19 +92,14 @@ static void load(void) {
 }
 
 static void save(void) {
-  char path[4096], dir[4096], tmp[4200];
+  char path[4096], tmp[4200];
   FILE *fp;
   int i;
   if (!recent_path(path, sizeof(path))) return;
-  snprintf(dir, sizeof(dir), "%s", path);
-  *strrchr(dir, '/') = '\0';
-  if (mkdir_p(dir) != 0) return;
-  snprintf(tmp, sizeof(tmp), "%s.tmp", path);
-  fp = fopen(tmp, "w");
+  fp = state_begin(path, tmp, sizeof(tmp));
   if (fp == NULL) return;
   for (i = 0; i < nrecent; i++) fprintf(fp, "%s\n", recent[i]);
-  if (fclose(fp) == 0) rename(tmp, path);
-  else unlink(tmp);
+  state_commit(fp, tmp, path);
 }
 
 /* A file was opened: to the top of the list, written straight away so that

@@ -2011,6 +2011,63 @@ static void test_windows_too_small(void) {
   buflist_cleanup();
 }
 
+/* A terminal shrunk under nested splits. Every window is held to its minimum
+ * while there is room for all of them, and when there is not, the one with the
+ * keyboard is the last to go: it used to be only a split's own two halves that
+ * were held to a minimum, so a window inside a half that was itself split could
+ * vanish while the keyboard was in it, taking what was typed out of sight. A
+ * window's screeny says where it starts, and so how tall its neighbors are. */
+static void test_windows_squeezed(void) {
+  struct mouse_event ev;
+
+  printf("\nwindows: a terminal too short for all of them\n");
+
+  window_init();
+  buflist_init();
+  win_screen();
+  window_split(WIN_ROWS);
+  win_screen();
+  window_split(WIN_ROWS);   /* three stacked, the keyboard in the bottom one */
+
+  window_layout_rect(0, 0, 80, 6);
+  check("six rows hold three windows of two: the middle one starts on row 2",
+        window_view_at(1)->screeny, 2);
+  check("and the bottom one on row 4", window_view_at(2)->screeny, 4);
+
+  window_focus(1);
+  window_layout_rect(0, 0, 80, 5);
+  check("at five, the window with the keyboard keeps its two rows",
+        window_view_at(1)->screeny, 1);
+  check("and the one below it its two", window_view_at(2)->screeny, 3);
+
+  /* The top window is the row left over, too short to draw. A click there is
+   * on nothing: the keyboard stays where it is rather than going somewhere
+   * nobody can see. */
+  memset(&ev, 0, sizeof(ev));
+  ev.type = MOUSE_PRESS;
+  ev.button = MOUSE_BUTTON_LEFT;
+  ev.x = 5;
+  ev.y = 0;
+  window_mouse(NULL, &ev);
+  ev.type = MOUSE_RELEASE;
+  window_mouse(NULL, &ev);
+  window_drag_end();
+  check("a click on a window squeezed out of sight does not focus it",
+        window_index_of(E.curview), 1);
+
+  window_layout_rect(0, 0, 80, 3);
+  check("at three, still the window with the keyboard first",
+        window_view_at(1)->screeny, 0);
+  check("with its two rows", window_view_at(2)->screeny, 2);
+
+  /* The shares were kept, so the room coming back puts them back. */
+  win_screen();
+  check("and the full screen gives the top window its half back",
+        window_view_at(0)->screenrows, 10);
+
+  buflist_cleanup();
+}
+
 /* Moving a border with the keyboard. As above, the tree is laid out by the
  * test after every call, since window_move_border() lays out against a terminal
  * there is none of. */
@@ -6119,6 +6176,7 @@ int main(void) {
   test_filter();
   test_windows();
   test_windows_too_small();
+  test_windows_squeezed();
   test_windows_resize();
   test_grep();
   test_lsp();

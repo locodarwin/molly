@@ -1559,9 +1559,12 @@ them.
 A window needs at least one row of text plus its status bar, and eight columns.
 A split that would leave less than that is refused with a message saying which
 way it would not fit. Shrinking the terminal under a split you already have
-shares out what is left in the same proportions, and a window squeezed below
-the minimum is left blank until there is room for it again, so the window you
-are typing in stays legible while you drag a corner.
+shares out what is left in the same proportions, keeping every window at its
+minimum while there is room for all of them. When there is not, the window you
+are typing in is the last to give up its room, so it stays legible while you
+drag a corner. A window squeezed below the minimum is left blank, and clicks on
+it do nothing, until there is room for it again; moving to it with F6 brings it
+back into view.
 
 ## The Terminal
 

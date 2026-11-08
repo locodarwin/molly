@@ -383,6 +383,41 @@ static int frac_cells(int avail, int frac) {
   return (int)(((long long)avail * frac + WIN_FRAC_ONE / 2) / WIN_FRAC_ONE);
 }
 
+static int min_extent(const struct window *w, int axis);
+
+/* Whether the window with the keyboard is in this subtree. */
+static int holds_focus(const struct window *w) {
+  if (w->kind == WIN_LEAF) return w->view == E.curview;
+  return holds_focus(w->kid[0]) || holds_focus(w->kid[1]);
+}
+
+/* Where a split's cut goes, of `avail` cells.
+ *
+ * Its share, held to what every window on either side needs (min_extent),
+ * which is the rule a border move is held to as well -- so a resize keeps
+ * windows in sight that a split or a move left in sight, as long as the
+ * terminal has room for them. Only a split's own two children used to be held
+ * to a minimum, and shrinking the terminal under a half that was itself split
+ * squeezed a window inside it out of sight.
+ *
+ * When there is not room for both sides, the side the keyboard is in gets what
+ * it needs and the other side what is left, down to nothing. The window you
+ * are typing in is then the last to go, rather than one that might be hidden
+ * while you type into it unseen. */
+static int split_cut_for(const struct window *w, int avail) {
+  int lo = min_extent(w->kid[0], w->kind);
+  int hi = avail - min_extent(w->kid[1], w->kind);
+  int cut = frac_cells(avail, w->frac);
+
+  if (lo <= hi) {
+    if (cut < lo) cut = lo;
+    if (cut > hi) cut = hi;
+    return cut;
+  }
+  if (holds_focus(w->kid[0])) return (lo < avail) ? lo : avail;
+  return (hi > 0) ? hi : 0;
+}
+
 static void layout_node(struct window *w, int x, int y, int cw, int ch) {
   int avail, cut;
 
@@ -399,37 +434,15 @@ static void layout_node(struct window *w, int x, int y, int cw, int ch) {
 
   if (w->kind == WIN_COLS) {
     avail = cw - 1;                 /* the separator column is not either child's */
-    if (avail < 2) {
-      /* Narrower than two columns of window: the second child gets nothing and
-       * goes undrawn. Reachable only by shrinking the terminal under a split
-       * that was legal when it was made. */
-      layout_node(w->kid[0], x, y, (avail > 0) ? avail : 0, ch);
-      layout_node(w->kid[1], x + cw, y, 0, ch);
-      return;
-    }
-    cut = frac_cells(avail, w->frac);
-    if (cut < WIN_MIN_COLS) cut = WIN_MIN_COLS;
-    if (cut > avail - WIN_MIN_COLS) cut = avail - WIN_MIN_COLS;
-    if (cut < 1) cut = avail / 2;   /* too narrow for two minimums: halve it */
-    if (cut < 1) cut = 1;
-    if (cut > avail - 1) cut = avail - 1;
+    if (avail < 0) avail = 0;
+    cut = split_cut_for(w, avail);
     layout_node(w->kid[0], x, y, cut, ch);
     layout_node(w->kid[1], x + cut + 1, y, avail - cut, ch);
     return;
   }
 
-  avail = ch;                       /* stacked: no separator row to pay for */
-  if (avail < 2) {
-    layout_node(w->kid[0], x, y, cw, (avail > 0) ? avail : 0);
-    layout_node(w->kid[1], x, y + ch, cw, 0);
-    return;
-  }
-  cut = frac_cells(avail, w->frac);
-  if (cut < WIN_MIN_ROWS) cut = WIN_MIN_ROWS;
-  if (cut > avail - WIN_MIN_ROWS) cut = avail - WIN_MIN_ROWS;
-  if (cut < 1) cut = avail / 2;
-  if (cut < 1) cut = 1;
-  if (cut > avail - 1) cut = avail - 1;
+  avail = (ch > 0) ? ch : 0;        /* stacked: no separator row to pay for */
+  cut = split_cut_for(w, avail);
   layout_node(w->kid[0], x, y, cw, cut);
   layout_node(w->kid[1], x, y + cut, cw, avail - cut);
 }
@@ -455,11 +468,12 @@ void window_layout(void) {
  * minimums (and the separator column, side by side); a split across it needs
  * only the larger of the two, because both children get the whole of it.
  *
- * layout_node() only holds a split's own two children to WIN_MIN_*, which is
- * enough for a split made by window_split() -- that refuses to make a window
- * too small -- but not for a border moved by hand: dragging a border into a
- * half that is itself split would squeeze the windows inside it out of sight
- * with nothing said. This is what the border moves are held to instead. */
+ * Holding only a split's own two children to WIN_MIN_* is enough for a split
+ * made by window_split() -- that refuses to make a window too small -- but not
+ * for a border moved by hand or for a terminal shrunk under a nested split:
+ * either would squeeze the windows inside a half that is itself split out of
+ * sight with nothing said. Both the border moves and the layout are held to
+ * this instead. */
 static int min_extent(const struct window *w, int axis) {
   int a, b;
   if (w->kind == WIN_LEAF) return (axis == WIN_COLS) ? WIN_MIN_COLS : WIN_MIN_ROWS;
@@ -584,15 +598,21 @@ static void draw_separator(const struct window *w) {
   grid_role(ROLE_TEXT);
 }
 
+/* Whether a leaf has room to be drawn: a row of text and its status bar. */
+static int shown(const struct window *w) {
+  return w->w >= 1 && w->h >= 2;
+}
+
 static void draw_node(struct window *w, const struct view *focus) {
   if (w == NULL) return;
 
   if (w->kind == WIN_LEAF) {
     struct view *was;
     /* Squeezed past its minimum by a resize: left blank rather than drawn into
-     * a rect it does not fit. The window the keyboard is in is still legible,
-     * which is the property that matters while someone drags a corner. */
-    if (w->w < 1 || w->h < 2) return;
+     * a rect it does not fit. The window the keyboard is in is the last to be
+     * squeezed (split_cut_for), so it stays legible while there is room for
+     * it, which is the property that matters while someone drags a corner. */
+    if (!shown(w)) return;
     was = view_select(w->view);
     screen_draw_text_area();
     screen_draw_status_bar(w->view == focus);
@@ -685,6 +705,9 @@ static struct window *leaf_at(int x, int y) {
   int n = leaves(l), i;
   for (i = 0; i < n; i++) {
     struct window *w = l[i];
+    /* Not one that was squeezed out of sight: a click on the blank row it
+     * left would put the keyboard in a window nobody can see. */
+    if (!shown(w)) continue;
     if (x >= w->x && x < w->x + w->w && y >= w->y && y < w->y + w->h)
       return w;
   }

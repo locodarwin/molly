@@ -4578,6 +4578,69 @@ def test_split_resize(tmpdir):
           "Xalpha\n")
 
 
+def test_split_drag_ends(tmpdir):
+    """A mouse drag in the windows belongs to the press that started it.
+
+    The window a press landed in, and the border it picked up, were remembered
+    until the next press in the windows: a release outside them did not end the
+    drag, nor did closing the window. A drag into the windows from the message
+    bar then carried on the old one -- in a window that had been freed, under
+    the sanitizer a use after free. Run there as well as here.
+    """
+    print("\nsplits: a drag ends with its press")
+
+    name = os.path.join(tmpdir, "dragend.txt")
+    F6, F8, F9 = "\x1b[17~", "\x1b[19~", "\x1b[20~"
+
+    def press(x, y):
+        return "\x1b[<0;%d;%dM" % (x, y)
+
+    def drag(x, y):
+        return "\x1b[<32;%d;%dM" % (x, y)
+
+    def release(x, y):
+        return "\x1b[<0;%d;%dm" % (x, y)
+
+    def fresh():
+        with open(name, "w") as fh:
+            fh.write("alpha\nbeta\n")
+
+    def after(keys):
+        fresh()
+        run([MOLLY, name], keys + ["X", SAVE])
+        with open(name) as fh:
+            return fh.read()
+
+    def bars(keys):
+        fresh()
+        scr = Screen(24, 80)
+        scr.feed(run([MOLLY, name], keys))
+        return [i for i, r in enumerate(scr.text()) if " - 2 lines" in r]
+
+    # Click in the upper window and let go, then go back down with F6. A drag
+    # from the message bar into the lower window selects in the lower window,
+    # which is where the X goes; it used to extend a selection in the upper
+    # one, leaving the lower window's cursor where it was.
+    check("a drag after a finished click is not part of it",
+          after([F8, press(1, 2), release(1, 2), F6,
+                 press(1, 24), drag(4, 14), release(4, 14)]), "Xa\n")
+
+    # The upper window's status bar is the border. Let go of it over the menu
+    # bar, and a later drag from the message bar left it where it was.
+    check("a border let go of outside the windows is let go of",
+          bars([F8, press(60, 12), drag(60, 10), release(60, 1),
+                press(10, 24), drag(10, 5), release(10, 5)])[0], 9)
+
+    # The same two with the window closed in between: what the drag pointed
+    # at was freed.
+    check("a click in a window that then closes",
+          after([F8, press(3, 15), release(3, 15), F9,
+                 press(1, 24), drag(4, 3), release(4, 3)]), "Xa\n")
+    check("a border whose split then closes",
+          bars([F8, press(60, 12), drag(60, 10), release(60, 1), F9,
+                press(10, 24), drag(10, 5), release(10, 5)]), [22])
+
+
 def test_grep(tmpdir):
     """Ctrl-E: find in files, the results buffer, and getting from it to a file.
 
@@ -7364,6 +7427,7 @@ def main():
         test_tab_cells(tmpdir)
         test_splits(tmpdir)
         test_split_resize(tmpdir)
+        test_split_drag_ends(tmpdir)
         test_filter(tmpdir)
         test_insert_output(tmpdir)
         test_grep(tmpdir)

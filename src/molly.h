@@ -1631,6 +1631,7 @@ void vt_resize(struct vt *t, int rows, int cols);
 /* window.c */
 int window_close_current(void);
 int window_count(void);
+void window_drag_end(void);
 int window_index_of(const struct view *v);
 int window_mouse(const struct layer *self, const struct mouse_event *ev);
 int window_move_border(int dx, int dy);

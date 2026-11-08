@@ -1933,7 +1933,12 @@ void editor_process_key(int c) {
   if (c == MOUSE_KEY) {
     struct mouse_event ev;
     input_last_mouse(&ev);
+    /* A drag in the windows belongs to the press that started it, so every
+     * press begins afresh -- the windows' own picks up again below -- and every
+     * release ends it, including one that lands outside the windows. */
+    if (ev.type == MOUSE_PRESS) window_drag_end();
     layer_dispatch_mouse(&ev);
+    if (ev.type == MOUSE_RELEASE) window_drag_end();
     return;
   }
 

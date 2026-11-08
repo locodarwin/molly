@@ -294,6 +294,7 @@ int window_close_current(void) {
    * every instruction in between -- including any that die() might reach. */
   dying = cur->view;
   E.curview = first_leaf(sibling)->view;
+  window_drag_end();
   free(parent);
   free(cur);
   view_free(dying);
@@ -320,6 +321,7 @@ static void free_tree_except(struct window *w, struct window *keep) {
 void window_only(void) {
   struct window *cur = current_leaf();
   if (cur == NULL || cur->parent == NULL) return;
+  window_drag_end();
   free_tree_except(E.winroot, cur);
   cur->parent = NULL;
   E.winroot = cur;
@@ -625,6 +627,18 @@ static struct view *drag_view;
  * instead of drag_view, never alongside it: a press is either on a border or in
  * a window. */
 static struct window *drag_split;
+
+/* Forget the drag in progress, if any. Both of the above point into the tree,
+ * so this runs whenever a window leaves it: a press held through a close, or
+ * ended somewhere molly did not see, left them naming freed memory, and the
+ * next drag into the windows from the tab or message bar used it. It also runs
+ * on every press and release, wherever it lands (cmd.c), so a drag belongs
+ * only to the press that started it -- one that began on the tab bar is not
+ * the continuation of a click in a window long since let go of. */
+void window_drag_end(void) {
+  drag_view = NULL;
+  drag_split = NULL;
+}
 
 /* The side-by-side split whose separator column is at (x, y), if any. */
 static struct window *separator_at(struct window *w, int x, int y) {

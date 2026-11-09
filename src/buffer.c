@@ -105,8 +105,12 @@ static void rows_rebase(uintptr_t was, size_t waslen) {
 void saved_snapshot_take(void) {
   int i, n = row_count();
   size_t need, w = 0;
-  size_t *off = malloc(sizeof(size_t) * ((size_t)n + 1));
-  unsigned char *crlf = malloc((size_t)n + 1);
+  size_t *off;
+  unsigned char *crlf;
+  /* A big file is never edited, so it is always what was saved. */
+  if (B.big != NULL) return;
+  off = malloc(sizeof(size_t) * ((size_t)n + 1));
+  crlf = malloc((size_t)n + 1);
 
   if (off == NULL || crlf == NULL) {
     free(off);
@@ -351,7 +355,9 @@ void tab_width_set(int n) {
  * stopped being the right one. */
 void editor_remeasure_all(void) {
   int i;
-  for (i = 0; i < row_count(); i++) wrap_row_invalidate(row_at(i));
+  /* Not a big file's, which never wraps: it would read the whole file. */
+  if (B.big == NULL)
+    for (i = 0; i < row_count(); i++) wrap_row_invalidate(row_at(i));
   wrap_map_changed(V.buf);
 }
 
@@ -413,6 +419,10 @@ static void rows_reserve(int more) {
 
 void editor_insert_row(int at, char *s, size_t len) {
   erow *row;
+  /* Every edit comes through these, so they are where a file too big to
+   * read into memory is kept from being written into: its rows are pages
+   * bigfile.c reads and throws away. The commands refuse first, and say so. */
+  if (B.big != NULL) return;
   if (at < 0 || at > row_count()) return;
   /* Allocate the new row's text before touching the array, so a failure here
    * dies with the array still consistent and editor_cleanup frees each row
@@ -449,6 +459,7 @@ void editor_free_row(erow *row) {
 }
 
 void editor_delete_row(int at) {
+  if (B.big != NULL) return;
   if (at < 0 || at >= row_count()) return;
   gap_move(at);
   /* Row `at` is now the first one past the gap, and one less row makes the gap
@@ -469,7 +480,9 @@ void editor_delete_row(int at) {
 /* Every row of the current buffer gone, the array kept for what comes next. */
 void editor_clear_rows(void) {
   int i;
-  for (i = 0; i < row_count(); i++) editor_free_row(row_at(i));
+  /* A big file's rows are its pages', which bigfile.c frees. */
+  if (B.big == NULL)
+    for (i = 0; i < row_count(); i++) editor_free_row(row_at(i));
   B.numrows = 0;
   B.gap = 0;
   B.edits++;
@@ -497,6 +510,7 @@ void editor_free_rows(void) {
 
 /* Cut a row short at byte `at`. */
 void editor_row_truncate(erow *row, int at) {
+  if (B.big != NULL) return;
   if (at < 0 || at >= row->size) return;
   row_own(row);
   row->size = at;
@@ -505,6 +519,7 @@ void editor_row_truncate(erow *row, int at) {
 }
 
 void editor_row_insert_char(erow *row, int at, int c) {
+  if (B.big != NULL) return;
   if (at < 0 || at > row->size) at = row->size;
   row_own(row);
   row->chars = xrealloc(row->chars, (size_t)row->size + 2);
@@ -516,6 +531,7 @@ void editor_row_insert_char(erow *row, int at, int c) {
 }
 
 void editor_row_append_string(erow *row, char *s, size_t len) {
+  if (B.big != NULL) return;
   row_own(row);
   row->chars = xrealloc(row->chars, (size_t)row->size + len + 1);
   memcpy(&row->chars[row->size], s, len);
@@ -525,6 +541,7 @@ void editor_row_append_string(erow *row, char *s, size_t len) {
 }
 
 void editor_row_delete_char(erow *row, int at) {
+  if (B.big != NULL) return;
   if (at < 0 || at >= row->size) return;
   row_own(row);
   memmove(&row->chars[at], &row->chars[at + 1], row->size - at);
@@ -534,6 +551,7 @@ void editor_row_delete_char(erow *row, int at) {
 }
 
 void editor_row_insert_n(erow *row, int at, const char *s, size_t n) {
+  if (B.big != NULL) return;
   if (at < 0 || at > row->size) at = row->size;
   row_own(row);
   row->chars = xrealloc(row->chars, (size_t)row->size + n + 1);
@@ -545,6 +563,7 @@ void editor_row_insert_n(erow *row, int at, const char *s, size_t n) {
 }
 
 void editor_row_delete_n(erow *row, int at, int n) {
+  if (B.big != NULL) return;
   if (at < 0 || at + n > row->size) return;
   row_own(row);
   memmove(&row->chars[at], &row->chars[at + n], row->size - at - n);
@@ -895,7 +914,7 @@ void editor_save(void) {
     return;
   }
   if (B.readonly) {
-    editor_set_status_message("This file is read-only. View > Read only turns that off.");
+    editor_set_status_message("%s", editor_readonly_why());
     return;
   }
   /* A typed name becomes the buffer's only once a save to it has worked, so a bad
@@ -1215,6 +1234,8 @@ void editor_open(char *filename, struct file_text *ft) {
  * recovery file (molly-recover.PID) has no obvious owner to prompt for. */
 void editor_check_recovery(void) {
   if (B.filename == NULL || B.recovery_path[0] == '\0') return;
+  /* Not into a file too big to read into memory, which cannot take it. */
+  if (B.big != NULL) return;
   struct stat st;
   const char *rp;
   /* The usual name, or this user's own beside it, which is where the work went

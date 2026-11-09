@@ -71,6 +71,7 @@ void editor_insert_newline(void) {
  * which build rows afresh and know which break each one had. */
 void editor_set_row_eol(int y, int crlf) {
   struct uchange *u;
+  if (B.big != NULL) return;   /* see editor_insert_row() */
   if (y < 0 || y >= row_count() || row_at(y)->crlf == (crlf != 0)) return;
   u = uc_new(UC_EOL, y, row_at(y)->crlf, "", 0);
   u->crlf = (unsigned char)(crlf != 0);

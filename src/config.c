@@ -232,6 +232,8 @@ static int live_shell_output(void) { return shell_output_kb; }
 int shell_timeout_ms(void) { return shell_timeout_s * 1000; }
 int shell_output_max(void) { return shell_output_kb * 1024; }
 
+static void apply_view_over(int v) { big_set_view_over_kb(v); }
+
 static void apply_match_case(int v) { search_set_case(v); }
 static void apply_regex(int v) { search_set_regex(v); }
 
@@ -347,6 +349,15 @@ static struct setting settings[] = {
   {"search", "regular expression", SET_BOOL, 0, 0, 0, 0,
    "read the search query as a pattern",
    apply_regex, search_regex_is_on},
+
+  /* 0, which is half of the memory available as the file opens: a file read
+   * into memory costs about 1.4 times its size, and the rest of the machine
+   * needs some. Kilobytes, as the shell's output limit is, so that a test can
+   * make a small file big. */
+  {"files", "big file", SET_INT, 0, 2147483647, 0, 0,
+   "kilobytes past which a file is shown read-only instead of read into "
+   "memory (0: half the memory available)",
+   apply_view_over, big_view_over_kb},
 };
 
 #define NSETTINGS ((int)(sizeof(settings) / sizeof(settings[0])))

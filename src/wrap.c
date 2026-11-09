@@ -173,11 +173,11 @@ static int row_rows(erow *row, int cols) {
  * nothing wraps, and its slices when something does. */
 static int disp_rows(int i, int cols) {
   if (B.nfolds > 0 && fold_hidden(V.buf, i)) return 0;
-  return V.wrap ? row_rows(row_at(i), cols) : 1;
+  return view_wraps() ? row_rows(row_at(i), cols) : 1;
 }
 
 /* The map is the identity only with wrap off and nothing folded. */
-static int identity(void) { return !V.wrap && B.nfolds == 0; }
+static int identity(void) { return !view_wraps() && B.nfolds == 0; }
 
 void wrap_row_invalidate(erow *row) {
   row->wcols = -1;
@@ -230,7 +230,7 @@ void wrap_map_changed(struct buffer *b) {
  * many blocks as the rows fill, and every one stale if they were counted for
  * something else. */
 static void blocks_fit(int cols) {
-  int need = (row_count() + WRAP_BLOCK - 1) / WRAP_BLOCK, k, key = V.wrap ? cols : 0;
+  int need = (row_count() + WRAP_BLOCK - 1) / WRAP_BLOCK, k, key = view_wraps() ? cols : 0;
   if (need == 0) need = 1;
   if (B.wblk == NULL || need > B.nwblk) {
     B.wblk = xrealloc(B.wblk, sizeof(*B.wblk) * (size_t)need);
@@ -307,7 +307,7 @@ int drow_of_cursor(const struct cursor *c) {
   for (; i < c->cy && i < row_count(); i++) n += disp_rows(i, cols);
   /* Past the last row the cursor is on a phantom row, one display row each. */
   if (c->cy >= row_count()) return n + (c->cy - row_count());
-  if (!V.wrap) return n;
+  if (!view_wraps()) return n;
   wrap_walk(row_at(c->cy), cols, -1,
             editor_row_cx_to_rx(row_at(c->cy), c->cx), &d);
   return n + d.frag;
@@ -323,7 +323,7 @@ int drow_cursor_col(const struct cursor *c) {
 
   if (c->cy >= row_count()) return 0;
   rx = editor_row_cx_to_rx(row_at(c->cy), c->cx);
-  if (!V.wrap) return rx;
+  if (!view_wraps()) return rx;
   wrap_walk(row_at(c->cy), wrap_cols(), -1, rx, &d);
   return rx - d.rcol0;
 }
@@ -419,7 +419,7 @@ void drow_at(int index, struct drow *out) {
   i = 0;
   at = 0;
   if (memo.buf == V.buf && memo.gen == B.wrapgen && memo.cols == cols &&
-      memo.wrap == V.wrap && memo.numrows == row_count() && index >= memo.index) {
+      memo.wrap == view_wraps() && memo.numrows == row_count() && index >= memo.index) {
     i = memo.filerow;
     at = memo.index;
   } else {
@@ -438,11 +438,11 @@ void drow_at(int index, struct drow *out) {
       memo.buf = V.buf;
       memo.gen = B.wrapgen;
       memo.cols = cols;
-      memo.wrap = V.wrap;
+      memo.wrap = view_wraps();
       memo.numrows = row_count();
       memo.index = at;
       memo.filerow = i;
-      if (V.wrap) {
+      if (view_wraps()) {
         wrap_walk(row_at(i), cols, index - at, -1, out);
       } else {
         out->rcol0 = 0;

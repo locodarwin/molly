@@ -975,6 +975,11 @@ static void apply_workspace(int *changes, int *elsewhere, int *others) {
         continue;
       }
     }
+    /* A file too big to read into memory is read-only (bigfile.c). */
+    if (V.buf->big != NULL) {
+      apply_refused++;
+      continue;
+    }
     {
       int n = apply_edits(f, box.utf8, V.buf == home ? &hy : NULL,
                           V.buf == home ? &hx : NULL);

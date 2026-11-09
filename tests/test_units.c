@@ -6333,6 +6333,324 @@ static void test_recent(void) {
   if (system(cmd) != 0) printf("  note  could not remove %s\n", tmpl);
 }
 
+/* ---- a file too big to read into memory ------------------------------------ */
+
+/* What a file loads as when it is read in: its rows, kept to compare a big
+ * file's against. */
+struct big_ref {
+  int n;
+  char **chars;
+  int *size;
+  unsigned char *crlf;
+  long long *off;     /* where each line starts in the file */
+  int eol_crlf, final_newline;
+};
+
+static void big_ref_take(struct big_ref *r, const char *bytes, size_t len) {
+  int i;
+  long long at = 0;
+  store_load(bytes, len);
+  r->n = row_count();
+  r->chars = malloc(sizeof(char *) * (size_t)(r->n + 1));
+  r->size = malloc(sizeof(int) * (size_t)(r->n + 1));
+  r->crlf = malloc((size_t)r->n + 1);
+  r->off = malloc(sizeof(long long) * (size_t)(r->n + 1));
+  for (i = 0; i < r->n; i++) {
+    erow *row = row_at(i);
+    const char *nl;
+    r->size[i] = row->size;
+    r->chars[i] = malloc((size_t)row->size + 1);
+    memcpy(r->chars[i], row->chars, (size_t)row->size + 1);
+    r->crlf[i] = row->crlf;
+    r->off[i] = at;
+    nl = memchr(bytes + at, '\n', len - (size_t)at);
+    at = nl != NULL ? (long long)(nl - bytes) + 1 : (long long)len;
+  }
+  r->eol_crlf = B.eol_crlf;
+  r->final_newline = B.final_newline;
+}
+
+static void big_ref_free(struct big_ref *r) {
+  int i;
+  for (i = 0; i < r->n; i++) free(r->chars[i]);
+  free(r->chars);
+  free(r->size);
+  free(r->crlf);
+  free(r->off);
+}
+
+/* `bytes` written to `path` and opened as a big file, in a buffer of its own
+ * that becomes the current one. */
+static int big_load(const char *path, const char *bytes, size_t len) {
+  FILE *fp = fopen(path, "wb");
+  const char *why = NULL;
+  struct big *g;
+  int fd;
+  if (fp == NULL) return 0;
+  fwrite(bytes, 1, len, fp);
+  fclose(fp);
+  fd = open(path, O_RDONLY);
+  if (fd == -1) return 0;
+  g = big_open(fd, path, &why);
+  if (g == NULL) return 0;
+  buf_show(buf_index_of(buf_new()));
+  big_attach(g, path);
+  cursors_collapse();
+  memset(&CUR, 0, sizeof CUR);
+  return 1;
+}
+
+/* Where a cut at `cut` bytes leaves a line: short of any character it would
+ * split. */
+static int big_cut_at(const char *s, int size, int cut) {
+  int keep = size < cut ? size : cut;
+  if (size > cut)
+    while (keep > 0 && utf8_is_cont((unsigned char)s[keep])) keep--;
+  return keep;
+}
+
+/* Row y as the big file has it, against the reference: the same bytes, or the
+ * first `cut` of them less a split character, and the same line ending. */
+static int big_row_ok(const struct big_ref *r, int y, int cut) {
+  erow *row = row_at(y);
+  int keep = big_cut_at(r->chars[y], r->size[y], cut);
+  if (row->size == keep && memcmp(row->chars, r->chars[y], (size_t)keep) == 0 &&
+      row->chars[keep] == '\0' && row->crlf == r->crlf[y] &&
+      big_row_cut(V.buf, y) == (r->size[y] > cut) &&
+      big_line_offset(V.buf, y) == r->off[y])
+    return 1;
+  printf("          row %d: size %d want %d, crlf %d want %d, cut %d, at %lld want %lld\n",
+         y, row->size, keep, row->crlf, r->crlf[y], big_row_cut(V.buf, y),
+         big_line_offset(V.buf, y), r->off[y]);
+  return 0;
+}
+
+/* A file of short and long lines, LF and CRLF endings, bare carriage returns,
+ * NULs and characters of two and four bytes, which is what the reading of a
+ * page has to split up the way the reading of a whole file does. */
+static size_t big_random_text(char *out, size_t cap) {
+  static const char *bits[] = {"a", "bc", "\n", "\n", "\n", "\r\n", "\r", "\xc3\xa9",
+                               "\xf0\x9f\x98\x80", "", "xyzzy", "\r\r\n"};
+  size_t n = 0, want = (size_t)(rand() % (int)(cap / 2));
+  while (n + 8 < cap && n < want) {
+    const char *b = bits[rand() % (int)(sizeof(bits) / sizeof(bits[0]))];
+    size_t len = strlen(b);
+    if (*b == '\0') {
+      out[n++] = '\0';
+      continue;
+    }
+    if (rand() % 40 == 0) {   /* now and then a line longer than the cut */
+      int k, run = 20 + rand() % 60;
+      for (k = 0; k < run && n + 8 < cap; k++) {
+        const char *c = bits[rand() % 2 ? 0 : 7];
+        memcpy(out + n, c, strlen(c));
+        n += strlen(c);
+      }
+      continue;
+    }
+    memcpy(out + n, b, len);
+    n += len;
+  }
+  return n;
+}
+
+static void test_bigfile(void) {
+  char tmpl[] = "/tmp/molly-big-XXXXXX", path[600];
+  static char text[6000];
+  struct big_ref r;
+  int round, ok, y;
+  enum { CUT = 16 };
+
+  printf("\nbig files: rows read from the disk as they are asked for\n");
+  if (mkdtemp(tmpl) == NULL) {
+    check("a scratch directory to work in", 0, 1);
+    return;
+  }
+  snprintf(path, sizeof path, "%s/big.txt", tmpl);
+
+  /* When a file is big. */
+  big_set_view_over_kb(1);
+  check("over the setting a file is big", big_wanted(1025), 1);
+  check("and at it, not", big_wanted(1024), 0);
+  big_set_view_over_kb(0);
+  check("with it 0, a byte is not half of the memory", big_wanted(1), 0);
+  check("and an exabyte is", big_wanted(1LL << 60), 1);
+
+  /* Small pages, so that a few kilobytes are dozens of them, and the fewest
+   * kept, so that they are thrown away all the time. */
+  big_tune(3, 40, CUT, 8);
+
+  {
+    const char *s = "one\r\ntwo\r\nthree four five six seven\r\n\r\nend";
+    big_ref_take(&r, s, strlen(s));
+    ok = big_load(path, s, strlen(s));
+    check("a file opens big", ok && V.buf->big != NULL, 1);
+    check("with a row a line", row_count(), r.n);
+    check("read-only", B.readonly, 1);
+    check("CRLF, as its first line says", B.eol_crlf, 1);
+    check("no final newline", B.final_newline, 0);
+    check_str("a row is its line", row_at(1)->chars, "two");
+    check("and remembers its ending", row_at(1)->crlf, 1);
+    check("a long line is cut", row_at(2)->size, CUT);
+    check("and says so", big_row_cut(V.buf, 2), 1);
+    check("a short one is not", big_row_cut(V.buf, 1), 0);
+    check("an empty line is empty", row_at(3)->size, 0);
+    check_str("the last, with no newline", row_at(4)->chars, "end");
+    check("a row past the end is empty", row_at(row_count())->size, 0);
+
+    /* Nothing that edits can reach the pages. */
+    editor_insert_row(0, "x", 1);
+    check("a row is not inserted", row_count(), r.n);
+    editor_delete_row(0);
+    check("nor deleted", row_count(), r.n);
+    editor_row_insert_char(row_at(0), 0, 'X');
+    editor_row_insert_n(row_at(0), 0, "XY", 2);
+    editor_row_append_string(row_at(0), "Z", 1);
+    editor_row_delete_char(row_at(0), 0);
+    editor_row_delete_n(row_at(0), 0, 2);
+    editor_row_truncate(row_at(0), 1);
+    editor_set_row_eol(0, 0);
+    check_str("and a row is not changed", row_at(0)->chars, "one");
+    check("nor its ending", row_at(0)->crlf, 1);
+    check("nor is the buffer modified", B.dirty, 0);
+
+    /* What needs the file in memory is refused, and not offered. */
+    {
+      const struct command *wrap = cmd_find_by_name("view.soft-wrap");
+      const struct command *fold = cmd_find_by_name("view.fold-all");
+      const struct command *ro = cmd_find_by_name("view.read-only");
+      const struct command *next = cmd_find_by_name("cursor.add-all");
+      const struct command *all = cmd_find_by_name("edit.select-all");
+      int was = V.wrap;
+      cmd_run(wrap);
+      check("soft wrap is not turned on", V.wrap, was);
+      check("and why is said", strstr(E.statusmsg, "too big to read into memory") != NULL, 1);
+      V.wrap = 1;
+      check("a window's wrap does not wrap one", view_wraps(), 0);
+      V.wrap = was;
+      check("nor is it offered", cmd_available(wrap), 0);
+      check("nor folding", cmd_available(fold), 0);
+      check("nor making it editable", cmd_available(ro), 0);
+      cmd_run(ro);
+      check("which is refused", B.readonly, 1);
+      check("nor cursors at matches", cmd_available(next), 0);
+      check("but selecting all is", cmd_available(all), 1);
+      check("there are no colors", B.syn == NULL, 1);
+      cmd_run(cmd_find_by_name("edit.paste"));
+      check("a paste is refused", row_count() == r.n && strcmp(row_at(0)->chars, "one") == 0, 1);
+    }
+
+    /* A selection is counted from where its ends are in the file, carriage
+     * returns and all, and copied from the rows. */
+    {
+      int n;
+      char *s2;
+      CUR.sy = 0;
+      CUR.sx = 1;
+      CUR.cy = 1;
+      CUR.cx = 2;
+      CUR.sel_active = 1;
+      check("a selection is counted in the file's bytes", selection_bytes(), 5 + 2 - 1);
+      s2 = selection_dup(&n);
+      check_str("and copied as its rows", s2 != NULL ? s2 : "", "ne\ntw");
+      free(s2);
+      CUR.sel_active = 0;
+    }
+    buf_close(buf_current());
+    big_ref_free(&r);
+  }
+
+  /* Random files against the same file read whole, in an order that throws
+   * pages away and reads them again. */
+  srand(29);
+  ok = 1;
+  for (round = 0; round < 200 && ok; round++) {
+    size_t len = big_random_text(text, sizeof text);
+    int k;
+    if (len == 0) continue;
+    big_ref_take(&r, text, len);
+    if (!big_load(path, text, len)) {
+      ok = 0;
+      break;
+    }
+    if (row_count() != r.n || B.eol_crlf != r.eol_crlf ||
+        B.final_newline != r.final_newline)
+      ok = 0;
+    for (y = 0; y < r.n && ok; y++) ok = big_row_ok(&r, y, CUT);
+    for (y = r.n - 1; y >= 0 && ok; y--) ok = big_row_ok(&r, y, CUT);
+    for (k = 0; k < 300 && ok && r.n > 0; k++) ok = big_row_ok(&r, rand() % r.n, CUT);
+    if (big_pages_held(V.buf) > 8) ok = 0;
+    if (!ok) printf("          round %d, row %d\n", round, y);
+    buf_close(buf_current());
+    big_ref_free(&r);
+  }
+  check("random files read as they do whole, row by row", ok, 1);
+
+  /* A row handed out stays put while seven other pages are read: the code
+   * that asked for it may ask for a few more before it is done. */
+  {
+    int i;
+    char *p = text;
+    for (i = 0; i < 200; i++) p += sprintf(p, "line %d\n", i);
+    ok = big_load(path, text, (size_t)(p - text));
+    if (ok) {
+      erow *first = row_at(0);
+      for (i = 1; i <= 7; i++) (void)row_at(i * 3);
+      check_str("a row is still there after seven other pages", first->chars, "line 0");
+      check("which are all kept", big_pages_held(V.buf), 8);
+      buf_close(buf_current());
+    } else {
+      check("the file opens", 0, 1);
+    }
+  }
+
+  /* Cut short under it: a log rotated by truncating it. The lines that are
+   * gone read as empty, and nothing reads past the end. */
+  {
+    int i, before = 1;
+    char *p = text;
+    for (i = 0; i < 100; i++) p += sprintf(p, "row %02d\n", i);
+    ok = big_load(path, text, (size_t)(p - text));
+    if (ok && truncate(path, 7 * 50) == 0) {
+      for (i = 0; i < 50 && before; i++) {
+        char want[16];
+        snprintf(want, sizeof want, "row %02d", i);
+        before = strcmp(row_at(i)->chars, want) == 0;
+      }
+      check("the lines still in the file read as they were", before, 1);
+      check("the ones cut off read as empty", row_at(80)->size, 0);
+      check("and the file has as many lines as it had", row_count(), 100);
+      buf_close(buf_current());
+    } else {
+      check("the file opens and is cut short", 0, 1);
+    }
+  }
+
+  /* Opened the way a file is opened: big by the setting, and not otherwise. */
+  {
+    FILE *fp = fopen(path, "w");
+    int i;
+    for (i = 0; fp != NULL && i < 300; i++) fprintf(fp, "a line of the file %d\n", i);
+    if (fp != NULL) fclose(fp);
+    big_tune(0, 0, 0, 0);
+    big_set_view_over_kb(1);
+    ok = editor_open_in_new_buffer(xstrdup(path));
+    check("a file over the setting opens", ok, 1);
+    check("as a big file", V.buf->big != NULL, 1);
+    check("of all its lines", row_count(), 300);
+    check("and says why it is read-only", strstr(E.statusmsg, "read-only") != NULL, 1);
+    check_str("its last line is there", row_at(299)->chars, "a line of the file 299");
+    buf_close(buf_current());
+    big_set_view_over_kb(0);
+    ok = editor_open_in_new_buffer(xstrdup(path));
+    check("under it, it is read in", ok && V.buf->big == NULL && row_count() == 300, 1);
+    buf_close(buf_current());
+  }
+
+  unlink(path);
+  rmdir(tmpl);
+}
+
 int main(void) {
   test_loop_sources();
   test_wait_key_services_sources();
@@ -6377,6 +6695,7 @@ int main(void) {
   test_undo_big_step();
   test_storage_edit();
   test_storage_gap();
+  test_bigfile();
   test_syntax_roles();
   test_wrap();
   test_wrap_counts();

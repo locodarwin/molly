@@ -137,7 +137,8 @@ void git_refresh(struct buffer *b) {
   free(b->gitmark);
   b->gitmark = NULL;
   b->ngitmark = 0;
-  if (!git_gutter || b->filename == NULL || b->tty != NULL || !where(b, qd, qb, sizeof(qd))) {
+  if (!git_gutter || b->filename == NULL || b->tty != NULL || b->big != NULL ||
+      !where(b, qd, qb, sizeof(qd))) {
     b->git_tracked = 0;
     return;
   }

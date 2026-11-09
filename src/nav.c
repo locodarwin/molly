@@ -154,13 +154,14 @@ static int partner(char c, char *other, int *dir) {
 
 /* The bracket matching the one at (cy, cx) -- or, failing that, the one just
  * before it, which is where the cursor is after typing one. 1 with the place
- * in *my, *mx; 0 when the cursor is not at a bracket or it has no match.
- * Brackets are counted, not parsed: one inside a string or a comment counts
- * the same as one in code. */
+ * in *my, *mx; 0 when the cursor is not at a bracket or it has no match; -1
+ * for Esc, in a file too big to read into memory, where the look reads the
+ * file as it goes. Brackets are counted, not parsed: one inside a string or a
+ * comment counts the same as one in code. */
 int nav_match(int cy, int cx, int *my, int *mx) {
   erow *r;
   char c = 0, other;
-  int dir, depth = 0, y, x;
+  int dir, depth = 0, y, x, rows = 0;
   if (cy >= row_count()) return 0;
   r = row_at(cy);
   if (cx < r->size && partner(r->chars[cx], &other, &dir)) {
@@ -179,12 +180,17 @@ int nav_match(int cy, int cx, int *my, int *mx) {
       while (x >= row_at(y)->size) {
         if (++y >= row_count()) return 0;
         x = 0;
+        /* A file too big to read into memory is read as this goes. */
+        if ((++rows & 4095) == 0 && big_stopped("Looking for the match", rows, row_count() - cy))
+          return -1;
         if (row_at(y)->size > 0) break;
       }
     } else {
       x--;
       while (x < 0) {
         if (--y < 0) return 0;
+        if ((++rows & 4095) == 0 && big_stopped("Looking for the match", rows, cy))
+          return -1;
         x = row_at(y)->size - 1;
       }
     }
@@ -203,11 +209,17 @@ int nav_match(int cy, int cx, int *my, int *mx) {
 
 /* Ctrl-]: to the matching bracket. */
 void nav_match_jump(void) {
-  int y, x;
-  if (!nav_match(CUR.cy, CUR.cx, &y, &x)) {
+  int y, x, r = nav_match(CUR.cy, CUR.cx, &y, &x);
+  if (r < 0) {
+    editor_set_status_message("Stopped looking for the match.");
+    return;
+  }
+  if (r == 0) {
     editor_set_status_message("No bracket here to match.");
     return;
   }
+  /* What a long look through a big file said while it went is over. */
+  if (B.big != NULL) editor_set_status_message("");
   cursors_collapse();
   CUR.sel_active = 0;
   CUR.cy = y;

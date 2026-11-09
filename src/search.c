@@ -155,6 +155,7 @@ static int match_is_char_aligned(const char *hay, int n) {
 #define SEARCH_NOT_FOUND 0
 #define SEARCH_FOUND     1
 #define SEARCH_TOO_HARD (-1)
+#define SEARCH_STOPPED  (-2)  /* Esc, in a file too big to read into memory */
 
 /* How far the sweep may run before giving up. */
 enum search_sweep {
@@ -205,7 +206,18 @@ static int editor_search_string(const char *query, int qlen,
     kmax = n;
   for (k = 0; k <= kmax; k++) {
     int i = dir > 0 ? (cur + k) % n : ((cur - k) % n + n) % n;
-    erow *row = row_at(i);
+    erow *row;
+    /* A big file's rows are read from the disk as the sweep reaches them, and
+     * a pattern can take most of a minute over one: it says how far it has
+     * got, and stops at Esc. */
+    if ((k & 4095) == 4095 && big_stopped("Searching", k, (long long)kmax + 1)) {
+      CUR.cx = saved_cx;
+      CUR.cy = saved_cy;
+      V.coloff = saved_coloff;
+      V.drowoff = saved_drowoff;
+      return SEARCH_STOPPED;
+    }
+    row = row_at(i);
     int maxstart = row->size - qlen;
     int on_start_row = (i == CUR.cy) && (k == 0);
 
@@ -278,6 +290,8 @@ static int editor_search_string(const char *query, int qlen,
 static void search_report_miss(int r, const char *advice) {
   if (r == SEARCH_TOO_HARD)
     editor_set_status_message("Pattern too complex. Try a simpler one");
+  else if (r == SEARCH_STOPPED)
+    editor_set_status_message("Search stopped");
   else
     editor_set_status_message("%s", advice);
 }

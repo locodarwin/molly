@@ -1378,8 +1378,33 @@ the only route to Fresh's multi-gigabyte claim.
   take under a tenth of a millisecond. Unit tests compare each shortcut with
   the full walk, and the block counts with counting afresh after random
   edits, folds and width changes; making either drop a case fails them.
-- **What is left.** A file is still read whole, so a file larger than memory
-  does not open; only paging the block from disk would change that.
+- **Files larger than memory, on 2026-11-09, read-only.** A file is still read
+  whole when it fits; one bigger than half of the memory available as it opens,
+  or one whose read runs out of memory, is shown from the disk instead
+  (`bigfile.c`). Two things ruled out paging the block in: each row is ended
+  in place by a NUL written into the block, which on a mapped file makes every
+  page a private copy, and the row array alone is 24 bytes a line, 1.5 GB for
+  61 million of them. So the buffer keeps no rows at all. It has as many as the
+  file has lines, and `buf_row()` reads each one as it is asked for, into a
+  page of rows kept for a while: an index of where one line in 1,024 starts
+  (half a megabyte for 8 GB), and up to 64 MB of pages, never fewer than
+  eight, so that a row handed out stays put while its caller asks for a few
+  more. Because a line number is still a line number, the cursor, selection,
+  splits, bookmarks, Go to line and the history did not change. Reads are
+  `pread`, not a mapping, so a log truncated under it reads short rather than
+  killing molly. What needs every row in memory is off, by a `CMD_LOADED`
+  flag on its command or a check where it starts: editing and saving, syntax
+  colors, soft wrap, folding, cursors at matches, the language server and the
+  git gutter. A line is cut at 1 MB, and a copy at 64 MB. Measured on an 8 GB
+  log of 61 million lines under a 512 MB address-space limit: open 3.4 s
+  from the disk and under 1 s cached, a jump to any line at once, a search through
+  all of it 13 s for plain text and 25 s for a pattern. The open, the search
+  and the bracket match say how far they have got, and stop at `Esc`. A
+  `[files] big file` setting moves the line, which is how the tests make a
+  small file big; one test opens 160 MB under a 100 MB limit.
+- **What is left.** Editing a file larger than memory, which would need the
+  edits kept apart from the file and a save that streams it; and following a
+  file as it grows, as `tail -f` does.
 
 ---
 

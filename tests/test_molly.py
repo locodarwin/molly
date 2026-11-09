@@ -1804,24 +1804,22 @@ def test_open_unreadable(tmpdir):
         check("and no recovery file was left by a fatal exit",
               os.path.exists("work.txt.molly-recover"), False)
 
-        # Too big for memory. Only where an allocation that big is refused:
-        # with overcommit set to always, malloc agrees and the read would run.
-        with open("/proc/sys/vm/overcommit_memory") as fh:
-            always = fh.read().strip() == "1"
-        if not always:
-            os.unlink("mem")
-            with open("big", "wb") as fh:
-                fh.truncate(1 << 43)
-            try:
-                out = run([MOLLY, "work.txt"],
-                          ["Y", OPEN, DOWN, "\r", SAVE, "\x11"])
-                check("a file too big for memory says so",
-                      any("Can't open big: Cannot allocate memory" in m
-                          for m in status_lines(out)), True)
-                with open("work.txt") as fh:
-                    check("and the session goes on", fh.read(), "YXwork\n")
-            finally:
-                os.unlink("big")
+        # Too big for memory: 8 TB, all of it a hole. It used to be refused
+        # for the memory it would take; it is shown from the disk now, which
+        # means reading it through to count its lines, and Esc stops that.
+        os.unlink("mem")
+        with open("big", "wb") as fh:
+            fh.truncate(1 << 43)
+        try:
+            out = run([MOLLY, "work.txt"],
+                      ["Y", OPEN, DOWN, "\r", 1.0, "\x1b", 0.5, SAVE, "\x11"])
+            check("a file too big for memory is read until Esc",
+                  any("Can't open big: stopped by Esc" in m
+                      for m in status_lines(out)), True)
+            with open("work.txt") as fh:
+                check("and the session goes on", fh.read(), "YXwork\n")
+        finally:
+            os.unlink("big")
     finally:
         os.chdir(cwd)
 
@@ -4641,6 +4639,104 @@ def test_split_drag_ends(tmpdir):
                 press(10, 24), drag(10, 5), release(10, 5)]), [22])
 
 
+def test_big_file(tmpdir):
+    """A file too big to read into memory is shown from the disk, read-only.
+
+    The `big file` setting makes a small file big here, so that this runs in no
+    time and under the sanitizer as well: the rows are the same rows either
+    way, read from the file a page at a time as they are drawn.
+    test_big_file_memory opens one bigger than molly is let have.
+    """
+    print("\nbig files: shown from the disk, read-only")
+
+    name = os.path.join(tmpdir, "big.log")
+    body = "".join("line %05d %s\n" % (i + 1, "x" * (i % 50)) for i in range(3000))
+    with open(name, "w") as fh:
+        fh.write(body)
+    rc = os.path.join(tmpdir, "bigrc")
+    with open(rc, "w") as fh:
+        fh.write("[files]\nbig file = 1\n")
+    env = {"MOLLY_CONFIG": rc}
+    F8 = "\x1b[19~"
+
+    def screen(keys, path=name):
+        scr = Screen(24, 80)
+        scr.feed(run([MOLLY, path], keys, env=env))
+        return scr.text()
+
+    def shows(rows, text):
+        return any(text in r for r in rows)
+
+    t = screen([])
+    check("a file over the setting opens read-only", "3000 lines [read-only]" in t[-2], True)
+    check("and says why", "too big to read into memory" in t[-1], True)
+
+    t = screen([GOTO, "2500\r"])
+    check("a line far down is a jump away", shows(t, "line 02500"), True)
+    check("at its own number", "Ln 2500," in t[-2], True)
+
+    t = screen(["X", SAVE])
+    check("typing is refused, and why is said", "too big to read into memory" in t[-1], True)
+    with open(name) as fh:
+        check("and the file is as it was", fh.read() == body, True)
+
+    t = screen(["\x06", "line 02999\r"])
+    check("a search goes through the file", "Ln 2999," in t[-2], True)
+
+    t = screen(["\x1bz"])
+    check("soft wrap is off in one", "Soft wrap is off in a file too big" in t[-1], True)
+
+    # Two windows at two places in one file: the rows are the file's lines,
+    # so each window is wherever it is. The upper one keeps the scroll it had
+    # at its full height.
+    t = screen([GOTO, "100\r", F8, GOTO, "2900\r"])
+    check("two windows show two places in it",
+          shows(t[1:11], "line 00089") and shows(t[12:22], "line 02900"), True)
+
+    out = os.path.join(tmpdir, "bigcopy.txt")
+    screen([GOTO, "10\r", SH_DOWN, SH_DOWN, COPY, "\x0e", PASTE, SAVE, out + "\r"])
+    with open(out) as fh:
+        check("lines copied out of it are the file's",
+              fh.read().startswith("line 00010 xxxxxxxxx\nline 00011 xxxxxxxxxx\n"), True)
+
+    # A line longer than a row is let have is its first megabyte, and the
+    # status bar says so while the cursor is on it.
+    long_name = os.path.join(tmpdir, "long.log")
+    with open(long_name, "w") as fh:
+        fh.write("short\n" + "y" * 2500000 + "\nend\n")
+    t = screen([DOWN], long_name)
+    check("a long line is cut, and says so", "Cut at 1 MB" in t[-2], True)
+    t = screen([DOWN, DOWN], long_name)
+    check("and the line after it is there", shows(t, "end") and "Ln 3," in t[-2], True)
+
+
+def test_big_file_memory(tmpdir):
+    """A file bigger than the memory molly is let have opens all the same.
+
+    Under `ulimit -v`, which the sanitizer's own reservations do not fit, so
+    this is not in sanitize.sh. Reading the file in fails for want of memory,
+    and that is what sends it to be shown from the disk; the file cache the
+    kernel keeps of it is not molly's to count.
+    """
+    print("\nbig files: bigger than the memory there is")
+
+    name = os.path.join(tmpdir, "huge.log")
+    block = "".join("%07d %s\n" % (i, "z" * 91) for i in range(10000))
+    with open(name, "w") as fh:
+        for _ in range(160):
+            fh.write(block)
+        fh.write("the last line\n")
+    try:
+        argv = ["/bin/sh", "-c", 'ulimit -v 100000 && exec "$0" "$1"', MOLLY, name]
+        scr = Screen(24, 80)
+        scr.feed(run(argv, [2.0, GOTO, "99999999\r", 1.0]))
+        t = scr.text()
+        check("a 160 MB file opens in 100 MB", "1600001 lines [read-only]" in t[-2], True)
+        check("and its last line is a jump away", any("the last line" in r for r in t), True)
+    finally:
+        os.unlink(name)
+
+
 def test_grep(tmpdir):
     """Ctrl-E: find in files, the results buffer, and getting from it to a file.
 
@@ -7428,6 +7524,8 @@ def main():
         test_splits(tmpdir)
         test_split_resize(tmpdir)
         test_split_drag_ends(tmpdir)
+        test_big_file(tmpdir)
+        test_big_file_memory(tmpdir)
         test_filter(tmpdir)
         test_insert_output(tmpdir)
         test_grep(tmpdir)

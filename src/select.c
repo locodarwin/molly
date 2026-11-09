@@ -68,6 +68,13 @@ int selection_bytes(void) {
     if (bx > sz) bx = sz;
     return (bx > ax) ? bx - ax : 0;
   }
+  /* Where the ends are in the file, for one too big to read into memory: a
+   * walk of the rows between would read them all, every frame. Carriage
+   * returns count, and what a long line's row leaves out. */
+  if (V.buf->big != NULL) {
+    long long t = big_line_offset(V.buf, by) + bx - big_line_offset(V.buf, ay) - ax;
+    return t > INT_MAX ? INT_MAX : (int)t;
+  }
   int total = 0;
   if (ay < row_count()) total += (*row_at(ay)).size - ax;
   int i;
@@ -126,18 +133,28 @@ char *selection_dup(int *outlen) {
   if (!selection_range(&ax, &ay, &bx, &by)) return NULL;
   if (ay == by && ax == bx) return NULL;
 
-  size_t size;
+  size_t size, max = CLIP_MAX;
+  /* From a file too big to read into memory, less: the rows are read from the
+   * disk to be copied, and the copy is in memory three times over by the time
+   * the terminal has been sent it. */
+  if (V.buf->big != NULL) {
+    max = BIG_COPY_MAX;
+    if (selection_bytes() > BIG_COPY_MAX) {
+      *outlen = -1;
+      return NULL;
+    }
+  }
   if (ay == by) {
     size = (size_t)(bx - ax);
   } else {
     /* tail of the top row + its newline */
     size = (size_t)((*row_at(ay)).size - ax) + 1;
     int i;
-    for (i = ay + 1; i < by && i < row_count() && size <= CLIP_MAX; i++)
+    for (i = ay + 1; i < by && i < row_count() && size <= max; i++)
       size += (size_t)(*row_at(i)).size + 1;
     size += (size_t)bx;                  /* head of the bottom row */
   }
-  if (size > CLIP_MAX) {
+  if (size > max) {
     *outlen = -1;
     return NULL;
   }

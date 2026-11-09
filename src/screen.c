@@ -476,6 +476,13 @@ void screen_draw_status_bar(int focused) {
     snprintf(rec, sizeof(rec), "REC  %s", probs);
     snprintf(probs, sizeof(probs), "%s", rec);
   }
+  /* A long line in a file too big to read into memory is only its start
+   * (bigfile.c), and the line the cursor is on says so. */
+  if (V.buf->big != NULL && CUR.cy < row_count() && big_row_cut(V.buf, CUR.cy)) {
+    char cut[sizeof(probs)];
+    snprintf(cut, sizeof(cut), "Cut at %s  %s", big_cut_size(), probs);
+    snprintf(probs, sizeof(probs), "%s", cut);
+  }
   if (V.ncursors > 1)
     rlen = snprintf(rstatus, sizeof(rstatus), "%sLn %d, Col %d  %d cursors",
         probs, CUR.cy + 1, charcol + 1, V.ncursors);

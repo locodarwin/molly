@@ -218,7 +218,7 @@ static void palette_row(void *user, int i, char *dst, size_t dsz) {
 static unsigned char palette_row_role(void *user, int i) {
   struct palette_pane *pp = user;
   const struct command *c = pp->hits[i].cmd;
-  if (c->enabled != NULL && !c->enabled()) return ROLE_MENU_DISABLED;
+  if (!cmd_available(c)) return ROLE_MENU_DISABLED;
   return ROLE_DIALOG;
 }
 
@@ -366,7 +366,7 @@ int palette_open(void) {
       const struct command *sel;
       if (pp.n == 0) continue;
       sel = pp.hits[widgets[2].sel].cmd;
-      if (sel->enabled != NULL && !sel->enabled()) {
+      if (!cmd_available(sel)) {
         msg = "Not available right now";
         continue;
       }

@@ -998,7 +998,9 @@ void syntax_ensure(int upto) {
  * can change under a buffer that already has rows in it. */
 void syntax_retype(void) {
   if (V.buf == NULL) return;
-  B.syn = syntax_for_filename(B.filename);
+  /* A big file has no colors: a row's depend on every row above it, and
+   * finding out would read the file from the top (bigfile.c). */
+  B.syn = B.big != NULL ? NULL : syntax_for_filename(B.filename);
   B.syn_valid = 0;
   /* A buffer freed and another made at the same address could otherwise be
    * handed the roles of a row of the first. Every open comes through here. */

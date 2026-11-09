@@ -133,6 +133,8 @@ static void buf_free(struct buffer *b) {
   b->tty = NULL;
   V.buf = b;
   editor_free_rows();
+  big_free(b->big);
+  b->big = NULL;
   editor_free_undo_redo();
   free(b->filename);
   b->filename = NULL;

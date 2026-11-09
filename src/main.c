@@ -217,6 +217,8 @@ int main(int argc, char *argv[]) {
   }
 
   startup_message();
+  /* Read-only for a reason the status bar cannot give in a word. */
+  if (V.buf->big != NULL) editor_set_status_message("%s", editor_readonly_why());
 
   /* May replace the HELP message and paint its own frame while it waits for an
    * answer -- once per buffer that has recovery data, since a crash with three

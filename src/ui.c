@@ -656,7 +656,46 @@ int editor_open_in_new_buffer(char *path) {
    * for memory, included. Those used to be found with the new buffer already
    * made, and ended the session there, unsaved work in other buffers and all. */
   fd = file_open_read(path, &why);
-  if (fd != -1 && file_read_fd(fd, &ft) == -1) why = strerror(errno);
+  /* Too big to read in -- by its size, or by a read that ran out of memory --
+   * and it is shown from the disk instead (bigfile.c). */
+  if (fd != -1) {
+    struct stat st;
+    int big = fstat(fd, &st) == 0 && big_wanted((long long)st.st_size);
+    if (!big && file_read_fd(fd, &ft) == -1) {
+      why = strerror(errno);
+      /* A small file that cannot be had is the machine out of memory, not the
+       * file too big for it, and is refused as it always was. */
+      if (errno == ENOMEM && (long long)st.st_size >= (1 << 20) &&
+          (fd = file_open_read(path, &why)) != -1)
+        big = 1;
+    }
+    if (big) {
+      struct big *g = big_open(fd, path, &why);
+      open_failure = why;
+      if (g == NULL) {
+        const char *slash = strrchr(path, '/');
+        editor_set_status_message("Can't open %s: %s",
+                                  slash && slash[1] ? slash + 1 : path, why);
+        free(path);
+        return 0;
+      }
+      if (!(cur->filename == NULL && cur->numrows == 0 && !cur->dirty &&
+            !cur->grep_results && !cur->problems && cur->tty == NULL))
+        buf_show(buf_index_of(buf_new()));
+      big_attach(g, path);
+      recent_note(path);
+      cursors_collapse();
+      memset(&CUR, 0, sizeof CUR);
+      V.drowoff = 0;
+      V.coloff = 0;
+      screen_force_repaint();
+      editor_set_status_message("Opened %s read-only - %d lines, too big to read into "
+                                "memory (%d of %d)", buf_name(V.buf), row_count(),
+                                buf_current() + 1, buf_count());
+      free(path);
+      return 1;
+    }
+  }
   open_failure = why;
   if (why != NULL) {
     /* The last part only: the dialog gives a whole path, and the reason is what

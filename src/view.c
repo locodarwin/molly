@@ -170,7 +170,7 @@ int editor_row_cx_to_charcol(erow *row, int cx) {
  * and the one it is moving to -- an arrow key does not get slower because the
  * file is long. */
 static void drow_step(struct cursor *c, int dir) {
-  if (V.wrap) {
+  if (view_wraps()) {
     wrap_step(c, dir);
     return;
   }
@@ -264,7 +264,7 @@ void editor_scroll(void) {
    * to scroll sideways to, and a nonzero offset would shift every slice of
    * every row by it. So one of the two is always zero, and every column
    * calculation downstream can go on subtracting coloff without asking. */
-  if (V.wrap) {
+  if (view_wraps()) {
     V.coloff = 0;
     return;
   }

@@ -257,7 +257,9 @@ static int copy_block(void) {
 
 /* Said instead of copying: the clipboard is left as it was. */
 static void too_large(void) {
-  editor_set_status_message("Selection too large to copy (over 2 GB)");
+  editor_set_status_message(V.buf->big != NULL
+      ? "Selection too large to copy (over 64 MB, from a file this big)"
+      : "Selection too large to copy (over 2 GB)");
 }
 
 static int cmd_copy(void) {
@@ -797,7 +799,7 @@ static int linenumbers_on(void) { return V.linenum; }
 static int menubar_on(void) { return E.menubar; }
 static int tabbar_on(void) { return E.tabbar; }
 static int syntax_on(void) { return V.syntax; }
-static int wrap_on(void) { return V.wrap; }
+static int wrap_on(void) { return view_wraps(); }
 /* With one window there is nothing to move to, nothing to close and nothing to
  * be the only one of, so all four gray out together. Splitting stays available:
  * whether there is room for it is a question about the window's size, and
@@ -969,17 +971,17 @@ static const struct command commands[] = {
    * menu can least afford, being the tallest one and so the first to scroll on
    * a short terminal. */
   {.name = "cursor.add-next", .label = "Add cursor at next match",
-   .help = "Cursor: next match", .group = "CURSORS",
+   .help = "Cursor: next match", .group = "CURSORS", .flags = CMD_LOADED,
    .run = cmd_cursor_add_next, .enabled = have_rows},
   {.name = "cursor.add-below", .label = "Add cursor below",
    .help = "Cursor below", .group = "CURSORS", .run = cmd_cursor_add_below},
   {.name = "cursor.add-above", .label = "Add cursor above",
    .help = "Cursor above", .group = "CURSORS", .run = cmd_cursor_add_above},
   {.name = "cursor.skip-next", .label = "Skip this match",
-   .help = "Cursor: skip match", .group = "CURSORS",
+   .help = "Cursor: skip match", .group = "CURSORS", .flags = CMD_LOADED,
    .run = cmd_cursor_skip, .enabled = have_rows},
   {.name = "cursor.add-all", .label = "Add cursor at every match",
-   .help = "Cursor: all matches", .group = "CURSORS",
+   .help = "Cursor: all matches", .group = "CURSORS", .flags = CMD_LOADED,
    .run = cmd_cursor_add_all, .enabled = have_rows},
   {.name = "cursor.drop-last", .label = "Drop the last cursor",
    .help = "Drop last cursor", .group = "CURSORS",
@@ -1066,7 +1068,7 @@ static const struct command commands[] = {
    .run = cmd_curline, .checked = view_curline},
   {.name = "view.highlight-word", .label = "Highlight word",
    .run = cmd_occurrences, .checked = view_occurrences},
-  {.name = "view.read-only", .label = "Read only",
+  {.name = "view.read-only", .label = "Read only", .flags = CMD_LOADED,
    .run = cmd_readonly, .checked = is_readonly},
   {.name = "macro.record", .label = "Record macro",
    .help = "Record/stop macro", .group = "EDITING", .run = cmd_macro_record,
@@ -1076,16 +1078,18 @@ static const struct command commands[] = {
   {.name = "app.suspend", .label = "Suspend to shell", .run = cmd_suspend},
   {.name = "git.blame", .label = "Git blame line", .run = cmd_blame},
   {.name = "git.log", .label = "Git file history", .run = cmd_gitlog},
-  {.name = "view.fold", .label = "Fold",
+  {.name = "view.fold", .label = "Fold", .flags = CMD_LOADED,
    .help = "Fold / unfold", .group = "VIEW", .run = cmd_fold},
-  {.name = "view.fold-all", .label = "Fold all", .run = cmd_fold_all},
-  {.name = "view.unfold-all", .label = "Unfold all", .run = cmd_unfold_all},
+  {.name = "view.fold-all", .label = "Fold all", .flags = CMD_LOADED,
+   .run = cmd_fold_all},
+  {.name = "view.unfold-all", .label = "Unfold all", .flags = CMD_LOADED,
+   .run = cmd_unfold_all},
   {.name = "file.recent", .label = "Recent files…",
    .help = "Recent files", .group = "FILES", .run = cmd_recent},
   {.name = "view.tab-bar", .label = "Tab bar",
    .help = "Show a tab per file", .group = "VIEW", .run = cmd_tab_bar,
    .checked = tabbar_on},
-  {.name = "view.soft-wrap", .label = "Soft wrap",
+  {.name = "view.soft-wrap", .label = "Soft wrap", .flags = CMD_LOADED,
    .help = "Wrap long lines", .group = "VIEW", .run = cmd_wrap,
    .checked = wrap_on},
   /* Unbound, beside Save settings: both are things done now and then from the
@@ -1909,10 +1913,22 @@ int cmd_run(const struct command *c) {
   /* Enter in a list of places is a jump, not an edit, read-only or not. */
   if (V.buf->readonly && (c->flags & CMD_EDITS) &&
       !(c->run == cmd_newline && (V.buf->git_view || V.buf->problems))) {
-    editor_set_status_message("This file is read-only. View > Read only turns that off.");
+    editor_set_status_message("%s", editor_readonly_why());
+    return 0;
+  }
+  if (V.buf->big != NULL && (c->flags & CMD_LOADED)) {
+    big_refuse(c->label != NULL ? c->label : "That");
     return 0;
   }
   return c->run();
+}
+
+/* Whether a menu or the palette should offer a command: what it says of
+ * itself, and not one that needs the file in memory when it is not. */
+int cmd_available(const struct command *c) {
+  if (c == NULL) return 0;
+  if ((c->flags & CMD_LOADED) && V.buf != NULL && V.buf->big != NULL) return 0;
+  return c->enabled == NULL || c->enabled();
 }
 
 void editor_process_key(int c) {
@@ -1959,7 +1975,7 @@ void editor_process_key(int c) {
   if (cmd != NULL) {
     res = cmd_run(cmd);
   } else if ((c == PASTE_KEY || c == '\t' || (c < 256 && !iscntrl(c))) && B.readonly) {
-    editor_set_status_message("This file is read-only. View > Read only turns that off.");
+    editor_set_status_message("%s", editor_readonly_why());
   } else if (c == PASTE_KEY) {
     /* At every cursor, as one undo step, with no indenting or closing of pairs:
      * it brings its own. */

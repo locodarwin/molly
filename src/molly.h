@@ -389,6 +389,11 @@ struct buffer {
   /* This buffer is an integrated terminal, and its text is the terminal's
    * screen rather than rows. See tty.c. */
   struct tty *tty;
+
+  /* This buffer is a file too big to read into memory, shown read-only: its
+   * rows are read from the file as they are asked for, and `row` is unused.
+   * See bigfile.c. */
+  struct big *big;
 };
 
 /* One window onto a buffer. */
@@ -545,10 +550,15 @@ extern struct editorConfig E;
  * that reads rows did not change when the storage did. Code that *writes* a
  * row goes through the editor_row_* functions, which give it text of its own
  * first; writing through `chars` directly would change the saved snapshot. */
+erow *big_row(const struct buffer *b, int i);
 static inline erow *buf_row(const struct buffer *b, int i) {
+  if (b->big != NULL) return big_row(b, i);
   return &b->row[i < b->gap ? i : i + (b->rowcap - b->numrows)];
 }
 static inline int row_count(void) { return V.buf->numrows; }
+/* Whether this window wraps long lines: its setting, which a file too big to
+ * read into memory overrules (bigfile.c). */
+static inline int view_wraps(void) { return V.wrap && V.buf->big == NULL; }
 static inline erow *row_at(int i) { return buf_row(V.buf, i); }
 
 /* Width available for text once the line-number gutter takes its columns. The
@@ -821,6 +831,8 @@ typedef void (*loop_handler)(void *user);
 #define CMD_HIDDEN   0x02  /* not offered in the command palette: mechanism, not an
                             * action -- the seven menu openers and the palette
                             * itself, which has no business listing itself */
+#define CMD_LOADED   0x08  /* needs the whole file in memory: refused in a file
+                            * too big to read in -- see bigfile.c */
 
 /* What a command tells the dispatcher to do afterwards. */
 #define CMD_KEEP_SELECTION  0x01  /* do not clear the selection (copy) */
@@ -1062,6 +1074,24 @@ struct file_text {
 };
 int file_read_fd(int fd, struct file_text *ft);
 void editor_open(char *filename, struct file_text *ft);
+
+/* bigfile.c */
+struct big;
+int big_wanted(long long size);
+struct big *big_open(int fd, const char *name, const char **why);
+void big_attach(struct big *g, const char *filename);
+void big_free(struct big *g);
+long long big_line_offset(const struct buffer *b, int y);
+int big_refuse(const char *what);
+int big_stopped(const char *doing, long long done, long long total);
+int big_row_cut(const struct buffer *b, int y);
+const char *big_cut_size(void);
+const char *editor_readonly_why(void);
+void big_tune(int step_lines, int step_bytes, int cut, int pages);
+int big_pages_held(const struct buffer *b);
+int big_view_over_kb(void);
+void big_set_view_over_kb(int kb);
+int cmd_available(const struct command *c);
 void editor_recompute_dirty(void);
 void editor_row_append_string(erow *row, char *s, size_t len);
 void editor_row_delete_char(erow *row, int at);
@@ -1485,6 +1515,9 @@ int search_find_in_row(int cy, const char *query);
 /* The most a copy may hold: the clipboard's length is an int. A selection or
  * block bigger than this is refused, with *outlen -1 rather than 0. */
 #define CLIP_MAX (INT_MAX - 1)
+/* The most a copy may hold from a file too big to read into memory, where
+ * the selection is read from the disk to be copied. */
+#define BIG_COPY_MAX (64 << 20)
 char *selection_dup(int *outlen);
 int selection_bytes(void);
 int selection_span(int *ax, int *ay, int *bx, int *by);

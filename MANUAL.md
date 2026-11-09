@@ -1239,6 +1239,48 @@ would change the text says so and does nothing, and `Ctrl-S` refuses instead of
 failing halfway. **View ▸ Read only** turns it off, for when you mean to save
 somewhere else, or on, to look at a file without risk of changing it.
 
+### Files too big to read into memory
+
+A file is read into memory when it opens, which takes about 1.4 times its size.
+A file bigger than half of the memory available at that moment opens another
+way: it is **shown from the disk, read-only**, and only the part you are looking
+at is read. So is a file whose ordinary read runs out of memory. The status bar
+says `[read-only]`, and the message bar says why.
+
+Opening reads the file through once, to count its lines. That takes as long as
+the disk takes to read it (about four seconds for 8 GB on a fast SSD, and under
+one when the file is already cached), the message bar shows how far it has got,
+and `Esc` stops it. After that molly keeps a few megabytes of the file at a
+time, however big it is: an 8 GB log opens and is searched in 512 MB.
+
+Most things work as they do in any file: moving around, `Ctrl-G` to a line,
+searching and finding again, selecting and copying, bookmarks, `Alt-←`, and two
+windows on the file at two places in it. A search reads the file as it goes,
+says how far it has got and stops at `Esc`. Through all of an 8 GB log that is
+about 13 seconds for plain text and 25 for a regular expression, on a fast
+machine with the file cached.
+
+What needs the whole file in memory is off, grayed in the menus and refused
+with a reason at the keyboard:
+
+- editing of every kind, and saving
+- syntax colors, since a line's colors depend on every line above it
+- soft wrap and folding, which count the screen rows of every line
+- cursors at matches (`Ctrl-D`, `Alt-D` and `Alt-A`)
+- the language server and the git gutter
+
+A line longer than 1 MB is shown, and searched, as its first megabyte, and the
+status bar says `Cut at 1 MB` while the cursor is on one. A copy can be up to
+64 MB.
+
+The file is read with ordinary reads rather than mapped into memory, so one cut
+short underneath it, as a log rotated by truncating it is, does not crash
+molly: the lines that have gone read as empty. A file that grows shows what it
+had when it was opened.
+
+**`[files] big file`** sets the size, in kilobytes, from which a file opens this
+way, in place of half of the memory available.
+
 ## Several Files at Once
 
 Molly holds any number of files open at once. Each one is a **buffer**: its own
@@ -2284,6 +2326,7 @@ Names are matched on their words, so `line numbers`, `Line-Numbers` and
 | `input` | `mouse` | `on` | Report the mouse to molly. Turning it off hands clicks and drag-select back to the terminal for good, rather than only while `Shift` is held. See [The Mouse](#the-mouse). |
 | `search` | `match case` | `off` | Starting state of the Find dialog's **Match case** checkbox. |
 | `search` | `regular expression` | `off` | Starting state of its **Regular expression** checkbox. |
+| `files` | `big file` | `0` | Kilobytes past which a file is shown from the disk, read-only, instead of being read into memory; 0 for half of the memory available when it opens. See [Files too big to read into memory](#files-too-big-to-read-into-memory). |
 
 ### Rebinding keys
 

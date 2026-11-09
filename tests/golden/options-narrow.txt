@@ -1,13 +1,13 @@
 --- screen ---
  F E S V G W H
 alph╔═══════ Options ════════╗
-beta║  view    git gutter on ║
-gamm║  input   mouse      on ║
-~   ║  shell   timeout    10 ║
+beta║  input   mouse      on ║
+gamm║  shell   timeout    10 ║
 ~   ║  shell   output l 8192 ║
 ~   ║  search  match cas off ║
 ~   ║  search  regular e off ║
-~   ║ [search] read the sear ║
+~   ║  files   big file    0 ║
+~   ║ [files] kilobytes past ║
 ~   ║ Space/←→ change  Enter ║
 samp╚════════════════════════╝ol 1
 HELP: Ctrl-S = save | Ctrl-Q = qui

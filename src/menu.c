@@ -177,8 +177,7 @@ static int item_is_separator(const struct menu *m, int i) {
 
 static int item_is_enabled(const struct menu *m, int i) {
   const struct command *c = item_cmd(m, i);
-  if (c == NULL) return 0;
-  return c->enabled == NULL || c->enabled();
+  return cmd_available(c);
 }
 
 /* --- the band ------------------------------------------------------------- */

@@ -91,7 +91,9 @@ molly --version       # print the version and exit
 - **Open dialog** (`Ctrl-O`) to browse to a file, and **recent files**
   (`Alt-O`) for the last twenty.
 - **Big files**: a 743 MB, ten-million-line log opens in under half a second,
-  in about 1.5 times its size in memory.
+  in about 1.5 times its size in memory. A file bigger than half of the memory
+  there is opens read-only, read from the disk as it is shown: an 8 GB log
+  opens and is searched in 512 MB.
 
 ### Programming tools
 

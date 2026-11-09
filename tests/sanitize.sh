@@ -30,7 +30,8 @@ try:
     for name in ("test_control_bytes", "test_stray_bytes", "test_only_regular_files",
                  "test_save_keeps_the_file", "test_line_endings", "test_line_endings_per_line", "test_paste",
                  "test_signal_in_a_prompt", "test_save", "test_terminal", "test_lsp_snippets",
-                 "test_malformed_input", "test_split_drag_ends"):
+                 "test_malformed_input", "test_split_drag_ends",
+                 "test_big_file"):
         getattr(t, name)(d)
 finally:
     shutil.rmtree(d, ignore_errors=True)

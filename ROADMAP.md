@@ -1479,7 +1479,7 @@ rather than written down.
 | What Ctrl-D matches | **Literal text, case-sensitively**, and not through `search.c`; the Find dialog's modes must not change what it finds |
 | Cursors after an undo | **One.** A record restores a position, not a list |
 | Where the multi-cursor commands live | **The palette and the help screen, not the Edit menu**: keyboard operations, as transpose already was |
-| LSP | **Done.** Diagnostics, definition, hover and completion; whole-document sync, answers through a mailbox the main loop opens |
+| LSP | **Done.** Diagnostics, definition, hover and completion, then rename, references, signature help, formatting, code actions and snippets; whole-document sync at first, range edits since 2026-11-08; answers through a mailbox the main loop opens |
 | LSP servers | **Found on PATH, silent when missing**; one per command line, so C and C++ share clangd |
 | Integrated terminal | **Done.** A terminal is a buffer; keys go to the program except the ways out, found by command; exit closes it |
 | Big files | **In.** Buffer rewrite is planned, not optional |

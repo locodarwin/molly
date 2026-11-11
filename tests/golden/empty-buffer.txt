@@ -7,7 +7,7 @@
 ~
 ~
 ~
-~                       Molly editor -- version <VERSION>
+~                         Molly editor -- version <VERSION>
 ~
 ~
 ~

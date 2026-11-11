@@ -36,7 +36,7 @@
 #include <time.h>
 #include <unistd.h>
 #define KILO_TAB_STOP 8
-#define MOLLY_VERSION "0.1.0-dev"
+#define MOLLY_VERSION "1.0.0"
 
 #define CTRL_KEY(k) ((k) & 0x1f)
 

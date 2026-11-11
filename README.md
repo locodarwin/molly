@@ -11,7 +11,7 @@
   <a href="#features">Features</a> ·
   <a href="#keys">Keys</a> ·
   <a href="MANUAL.md">Manual</a> ·
-  <a href="ROADMAP.md">Roadmap</a>
+  <a href="DESIGN.md">Design</a>
 </p>
 
 ---
@@ -22,9 +22,6 @@ self-imposed limits of one file, one cursor, no regex and no config. It is
 modeled on [Fresh](https://github.com/sinelaw/fresh), a terminal editor that
 behaves like a GUI one: a menu bar, the mouse, dialogs, splits, and everything
 discoverable from inside the editor.
-
-> **Status: early.** The groundwork is done and features are landing fast.
-> What comes next, and why, is in [`ROADMAP.md`](ROADMAP.md).
 
 ## Quick start
 
@@ -232,6 +229,8 @@ The essentials are below; `F1` inside Molly shows them all, and
 
 ## Install
 
+Molly runs on Linux. macOS is not supported, and Windows may come later.
+
 `make` builds Molly with any C11 compiler; there is nothing else to install.
 `make install` copies it to `/usr/local/bin`, or to `~/.local/bin` when that
 isn't writable, so no `sudo` is needed.
@@ -258,8 +257,8 @@ that limited it.
 
 Molly should never become slow to start, dependent on a runtime, or impossible
 to use without reading the manual first. Features will be added; the feel
-should stay the same. What is planned, in what order, and what has been ruled
-out is in [`ROADMAP.md`](ROADMAP.md).
+should stay the same. The decisions behind it, and what has been ruled out, are
+in [`DESIGN.md`](DESIGN.md).
 
 ## Acknowledgments
 

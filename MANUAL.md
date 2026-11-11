@@ -1,13 +1,5 @@
 # Molly - A Command-Line Text Editor
 
-> **Note:** molly is at `0.1.0-dev`. Earlier versions of this note listed ten
-> features it did not have: more than one file open at once, regular-expression
-> search, syntax highlighting, a configuration file, window splits, a shell
-> filter, multi-cursor editing, soft wrap, a language server and an integrated
-> terminal. It now has all ten.
-> This manual describes what is there today. For what is coming, and in what
-> order, see [`ROADMAP.md`](ROADMAP.md).
-
 Molly is a small, dependency-free text editor for the terminal, written in C.
 It provides modeless editing in the style of tools like nano (type to insert,
 the arrow keys move around, and the `Ctrl` combinations do the work) along with

@@ -1449,15 +1449,13 @@ void chord_name(int key, char *dst, size_t n) {
  *           Ctrl-N / Ctrl-P stay as aliases.
  *   Ctrl-?  was help, still is; F1 becomes primary.
  *
- * The roadmap suggested moving repaint to Ctrl-Shift-L. That is not available:
- * a terminal sends the same single byte for Ctrl-Shift-L as for Ctrl-L, so the
- * binding could never have fired. F5 instead -- see ROADMAP.md section 6.
+ * The first plan moved repaint to Ctrl-Shift-L. That is not available: a
+ * terminal sends the same single byte for Ctrl-Shift-L as for Ctrl-L, so the
+ * binding could never have fired. F5 instead -- see DESIGN.md, Keys.
  *
  * Ctrl-A for select-all is the one CUA binding whose absence would have been
- * conspicuous. Ctrl-W (select word), Ctrl-K (delete to end of line) and Ctrl-/
- * (toggle comment) are free and still unbound: they need commands that do not
- * exist yet, and binding a chord before there is something to bind it to is how
- * a keymap acquires entries nobody can explain. */
+ * conspicuous. Ctrl-K deletes to the end of the line. Ctrl-/ is the same byte as
+ * Ctrl-?, help, so toggling a comment is Alt-; instead. */
 struct binding { const char *chord; const char *cmd; };
 
 static const struct binding default_bindings[] = {
@@ -1466,7 +1464,7 @@ static const struct binding default_bindings[] = {
   /* Ctrl-N for New and Ctrl-W for Close, which is what CUA says and what every
    * editor and browser with tabs does. Both were spoken for on paper: Ctrl-N was
    * olly's find-next, which keeps working as Ctrl-P's opposite number only
-   * because F3 is the primary now -- so it is free; and ROADMAP.md section 6
+   * because F3 is the primary now -- so it is free; and the first keymap plan
    * earmarked Ctrl-W for select-word, which does not exist, and close-tab is the
    * far more expected meaning. Both are one line of mollyrc away for anyone who
    * disagrees. */

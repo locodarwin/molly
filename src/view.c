@@ -164,7 +164,7 @@ int editor_row_cx_to_charcol(erow *row, int cx) {
  * *screen column*, because there is no other sane reading of "up" between two
  * slices of one line: the byte offset would move the cursor a windowful along
  * the same row. The two differ only on a row with a tab or a wide glyph before
- * the cursor, which is the asymmetry ROADMAP.md section 7 writes down.
+ * the cursor, which is the asymmetry DESIGN.md's decisions table writes down.
  *
  * The wrapped half is wrap_step(), which is local to the row the cursor is on
  * and the one it is moving to -- an arrow key does not get slower because the
